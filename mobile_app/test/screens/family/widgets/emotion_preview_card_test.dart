@@ -22,6 +22,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/screens/family/widgets/emotion_preview_card.dart';
+import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:flutter_application_1/theme/family_theme.dart';
 
 void main() {
   setUpAll(() {
@@ -35,15 +37,13 @@ void main() {
   });
 
   Widget buildHarness({required Brightness brightness}) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF59B294),
-      brightness: brightness,
-    );
+    // 2026-10 新設計：卡片改走家屬主題（UbanColors 色票，FamCard 的 surface 底＋陰影、不畫描邊）。
     // 刻意只設定 `theme`、不設定 `darkTheme`——Flutter 在 `darkTheme` 為
     // null 時，`ThemeMode.system`（MaterialApp 預設值）一律套用 `theme`，
     // 不受測試執行環境的系統亮度設定影響，結果才具決定性。
     return MaterialApp(
-      theme: ThemeData(colorScheme: scheme, useMaterial3: true),
+      theme: FamilyTheme.buildTheme(_FakeContext(),
+          isDark: brightness == Brightness.dark),
       home: Scaffold(
         // elderId 為 null → 同步進入 error 狀態，不需要網路。
         body: EmotionPreviewCard(elderName: '測試長輩', elderId: null),
@@ -52,24 +52,30 @@ void main() {
   }
 
   BoxDecoration outerCardDecoration(WidgetTester tester) {
-    final container = tester.widget<Container>(
+    // FamCard 的外層是 DecoratedBox（surface 底、圓角 24、卡片陰影）。
+    final box = tester.widget<DecoratedBox>(
       find
           .descendant(
             of: find.byType(EmotionPreviewCard),
-            matching: find.byType(Container),
+            matching: find.byType(DecoratedBox),
           )
           .first,
     );
-    return container.decoration as BoxDecoration;
+    return box.decoration as BoxDecoration;
   }
 
-  group('任務 1a：卡片背景／邊框必須隨主題切換', () {
-    testWidgets('深色模式下卡片背景不能是寫死的 Colors.white，必須等於 colorScheme.surface',
+  group('任務 1a：卡片背景必須隨主題切換', () {
+    testWidgets(
+        'canary：淺色與深色兩組家屬色票的 surface 顏色本來就不同，證明下面的相等斷言並非恆真',
         (tester) async {
-      final darkScheme = ColorScheme.fromSeed(
-        seedColor: const Color(0xFF59B294),
-        brightness: Brightness.dark,
-      );
+      expect(UbanColors.familyLight.surface,
+          isNot(equals(UbanColors.familyDark.surface)),
+          reason: '若淺色/深色的 surface 顏色相同，下面的「等於 UbanColors.surface」'
+              '斷言就算卡片仍寫死同一個顏色也會誤判通過，必須先證明兩者不同。');
+    });
+
+    testWidgets('深色模式下卡片背景不能是寫死的 Colors.white，必須等於家屬深色 surface',
+        (tester) async {
       await tester.pumpWidget(buildHarness(brightness: Brightness.dark));
       await tester.pump(const Duration(milliseconds: 200));
 
@@ -79,56 +85,21 @@ void main() {
         decoration.color,
         isNot(equals(Colors.white)),
         reason: '深色模式下卡片背景不能維持寫死的白色，否則就是使用者回報的'
-            '「整張卡片是純白底」——其上下相鄰的健康趨勢／人生故事膠囊卡片'
-            '在深色模式下都不是白色。',
+            '「整張卡片是純白底」。',
       );
-      expect(decoration.color, equals(darkScheme.surface));
+      expect(decoration.color, equals(UbanColors.familyDark.surface));
+      // 新設計：卡片用陰影、不畫描邊（family.css `.card`）。
+      expect(decoration.border, isNull);
+      expect(decoration.boxShadow, isNotEmpty);
     });
 
-    testWidgets('深色模式下卡片邊框必須等於 colorScheme.outline（不是寫死的淺灰色）',
-        (tester) async {
-      final darkScheme = ColorScheme.fromSeed(
-        seedColor: const Color(0xFF59B294),
-        brightness: Brightness.dark,
-      );
-      await tester.pumpWidget(buildHarness(brightness: Brightness.dark));
-      await tester.pump(const Duration(milliseconds: 200));
-
-      final decoration = outerCardDecoration(tester);
-      final border = decoration.border as Border;
-
-      expect(border.top.color, equals(darkScheme.outline));
-      expect(border.top.width, equals(1.5));
-    });
-
-    testWidgets('淺色模式下卡片背景改用 colorScheme.surface 後仍能正確渲染（不拋例外）',
-        (tester) async {
-      final lightScheme = ColorScheme.fromSeed(
-        seedColor: const Color(0xFF59B294),
-        brightness: Brightness.light,
-      );
+    testWidgets('淺色模式下卡片背景為家屬淺色 surface，且不拋例外', (tester) async {
       await tester.pumpWidget(buildHarness(brightness: Brightness.light));
       await tester.pump(const Duration(milliseconds: 200));
 
       final decoration = outerCardDecoration(tester);
-      expect(decoration.color, equals(lightScheme.surface));
+      expect(decoration.color, equals(UbanColors.familyLight.surface));
       expect(tester.takeException(), isNull);
-    });
-
-    testWidgets(
-        'canary：淺色與深色兩種 colorScheme 的 surface 顏色本來就不同，證明上面的相等斷言並非恆真',
-        (tester) async {
-      final lightScheme = ColorScheme.fromSeed(
-        seedColor: const Color(0xFF59B294),
-        brightness: Brightness.light,
-      );
-      final darkScheme = ColorScheme.fromSeed(
-        seedColor: const Color(0xFF59B294),
-        brightness: Brightness.dark,
-      );
-      expect(lightScheme.surface, isNot(equals(darkScheme.surface)),
-          reason: '若淺色/深色的 surface 顏色相同，上面兩組「等於 colorScheme.surface」'
-              '的斷言就算卡片仍寫死同一個顏色也會誤判通過，必須先證明兩者不同。');
     });
   });
 
@@ -187,4 +158,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+}
+
+class _FakeContext implements BuildContext {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

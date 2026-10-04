@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
+import 'widgets/fam_data_ui.dart';
+import 'widgets/fam_ui.dart';
 
-/// 😊 情緒關注事件（第四十九輪：拿掉假造的一整天情緒曲線，改真實資料）
+/// 情緒關注事件（第四十九輪：拿掉假造的一整天情緒曲線，改真實資料）
 ///
 /// 原本的 `_generateMockData()` 每次進畫面隨機生 12 個點，在
 /// 開心/平靜/焦慮/悲傷 四類之間輪替，畫成一整天的平滑曲線與百分比分佈——
@@ -17,6 +20,8 @@ import '../../services/api_service.dart';
 /// 而不是連續曲線。清單是空的，代表這段期間沒有偵測到明顯負面情緒——但也
 /// 可能是長輩這段期間很少用語音對話，兩者在資料上無法區分，畫面上會誠實
 /// 提示這一點，不假裝「一切都好」。
+///
+/// 2026-10 起外觀改家屬新設計（`UbanSegmented`、`FamCard`、色點取代 emoji）；資料與 API 不變。
 class EmotionTimelineScreen extends StatefulWidget {
   final String elderName;
   final int? elderId;
@@ -45,6 +50,11 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
   List<Map<String, dynamic>> _events = [];
   String _errorMsg = '';
   int? _familyId;
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   @override
   void initState() {
@@ -127,37 +137,34 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
     _load();
   }
 
+
   @override
   Widget build(BuildContext context) {
+    // 2026-10：push 出來的家屬頁要自己掛家屬主題；Builder 讓下方 context 位於主題之內。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
+    final c = _c;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          '情緒時間軸',
-          style: GoogleFonts.notoSansTc(
-            color: const Color(0xFF1E293B),
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        centerTitle: true,
-      ),
+      backgroundColor: c.bg,
+      appBar: famSubBar(context, title: '情緒時間軸'),
       body: RefreshIndicator(
         onRefresh: _load,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildRangeSelector(),
+              const SizedBox(height: 12),
               _buildExplainerBanner(),
+              const SizedBox(height: 12),
               _buildContent(),
-              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -166,114 +173,62 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
   }
 
   Widget _buildRangeSelector() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        children: _EventsRange.values.map((r) {
-          final selected = r == _range;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => _changeRange(r),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: selected ? const Color(0xFF3B82F6) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _rangeLabel(r),
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : const Color(0xFF64748B),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
+    return UbanSegmented(
+      small: true,
+      labels: [for (final r in _EventsRange.values) _rangeLabel(r)],
+      index: _EventsRange.values.indexOf(_range),
+      onChanged: (i) => _changeRange(_EventsRange.values[i]),
     ).animate().fadeIn(duration: 300.ms);
   }
 
   Widget _buildExplainerBanner() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF3B82F6)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '這裡只列出系統從對話中偵測到的負面情緒（悲傷／生氣），不是完整的一整天情緒曲線；沒有紀錄不代表長輩心情一定平穩，也可能是這段期間互動較少。',
-              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF3B82F6), height: 1.5),
-            ),
-          ),
-        ],
-      ),
+    return const FamNote(
+      text: '這裡只列出系統從對話中偵測到的負面情緒（悲傷／生氣），不是完整的一整天情緒曲線；沒有紀錄不代表長輩心情一定平穩，也可能是這段期間互動較少。',
     ).animate().fadeIn(delay: 100.ms, duration: 300.ms);
   }
 
   Widget _buildContent() {
+    final c = _c;
     switch (_status) {
       case _SectionStatus.loading:
-        return const Padding(
-          padding: EdgeInsets.only(top: 60),
-          child: Center(child: CircularProgressIndicator()),
+        return const FamCard(
+          child: FamStateBlock(
+            height: 160,
+            child: CircularProgressIndicator(),
+          ),
         );
       case _SectionStatus.error:
-        return Padding(
-          padding: const EdgeInsets.only(top: 40),
-          child: Center(
+        return FamCard(
+          child: FamStateBlock(
+            height: 160,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 32),
-                const SizedBox(height: 10),
                 Text(
                   _errorMsg,
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(color: const Color(0xFFEF4444), fontSize: 14),
+                  style: famText(c.danger, 14, weight: FontWeight.w700, height: 1.5),
                 ),
-                const SizedBox(height: 12),
-                TextButton.icon(
+                const SizedBox(height: 10),
+                FamButton(
+                  label: '重試',
+                  kind: FamButtonKind.tonal,
+                  expand: false,
+                  height: 44,
                   onPressed: _load,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: Text('重試', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
           ),
         );
       case _SectionStatus.empty:
-        return Padding(
-          padding: const EdgeInsets.only(top: 40),
-          child: Center(
-            child: Column(
-              children: [
-                const Text('🙂', style: TextStyle(fontSize: 40)),
-                const SizedBox(height: 12),
-                Text(
-                  '這段期間沒有偵測到負面情緒事件',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-              ],
+        return FamCard(
+          child: FamStateBlock(
+            height: 160,
+            child: Text(
+              '這段期間沒有偵測到負面情緒事件',
+              textAlign: TextAlign.center,
+              style: famText(c.text, 15, weight: FontWeight.w700, height: 1.5),
             ),
           ),
         ).animate().fadeIn(duration: 300.ms);
@@ -283,28 +238,31 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
   }
 
   Widget _buildEventsList() {
+    final c = _c;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '近${_rangeLabel(_range)}內共 ${_events.length} 次負面情緒關注事件',
-              style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)),
-            ),
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+          child: Text(
+            '近${_rangeLabel(_range)}內共 ${_events.length} 次負面情緒關注事件',
+            style: famText(c.text2, 13, weight: FontWeight.w700, height: 1.4),
           ),
         ),
-        ..._events.map(_buildEventCard),
+        for (var i = 0; i < _events.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          _buildEventCard(_events[i]),
+        ],
       ],
     );
   }
 
   Widget _buildEventCard(Map<String, dynamic> event) {
+    final c = _c;
     final emotion = event['emotion'] as String?;
     final isAngry = emotion == 'angry';
-    final color = isAngry ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
-    final emoji = isAngry ? '😠' : '😢';
+    // 嚴重度用色點表示（不用 emoji）：生氣＝danger、悲傷＝info。
+    final dotColor = isAngry ? c.danger : c.info;
     final label = isAngry ? '生氣' : '悲傷';
 
     final ts = DateTime.tryParse((event['timestamp'] ?? '').toString());
@@ -316,43 +274,27 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
     final confidencePct = confidence is num ? (confidence * 100).round() : null;
     final rawText = (event['raw_text'] as String?)?.trim();
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border(left: BorderSide(color: color, width: 4)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2)),
-        ],
-      ),
+    return FamCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 22)),
-              const SizedBox(width: 8),
+              FamDot(color: dotColor),
+              const SizedBox(width: 10),
+              // 時間字串與同列的信心度徽章：標題可收縮（鐵律 #14）。
               Expanded(
                 child: Text(
-                  '$label · $timeLabel',
+                  '$label・$timeLabel',
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(fontSize: 14, fontWeight: FontWeight.w800, color: color),
+                  style: famText(c.text, 14.5, weight: FontWeight.w700, height: 1.35),
                 ),
               ),
-              if (confidencePct != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '信心度 $confidencePct%',
-                    style: GoogleFonts.notoSansTc(fontSize: 11, fontWeight: FontWeight.w700, color: color),
-                  ),
-                ),
+              if (confidencePct != null) ...[
+                const SizedBox(width: 8),
+                FamChip(label: '信心度 $confidencePct%'),
+              ],
             ],
           ),
           if (rawText != null && rawText.isNotEmpty) ...[
@@ -361,12 +303,12 @@ class _EmotionTimelineScreenState extends State<EmotionTimelineScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(12),
+                color: c.surface2,
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 '「$rawText」',
-                style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFF475569), height: 1.5),
+                style: famText(c.text2, 13.5, height: 1.5),
               ),
             ),
           ],

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_1/screens/family/memoirs_gallery_screen.dart';
+import 'package:flutter_application_1/screens/family/widgets/fam_ui.dart';
 
 import 'package:flutter_application_1/models/memoir_story.dart';
 import 'package:flutter_application_1/services/memoir_service.dart';
@@ -27,8 +28,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('📖 王阿公的數位自傳回憶錄'), findsOneWidget);
-    expect(find.text('珍藏 0 篇口述回憶 · 世代傳承'), findsOneWidget);
+    expect(find.text('王阿公的人生故事'), findsOneWidget);
+    expect(find.text('珍藏 0 篇口述回憶・世代傳承'), findsOneWidget);
     expect(find.text('目前此分類尚無故事'), findsOneWidget);
   });
 
@@ -58,12 +59,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // 驗證標題列
-    expect(find.text('📖 王阿公的數位自傳回憶錄'), findsOneWidget);
-    expect(find.text('珍藏 1 篇口述回憶 · 世代傳承'), findsOneWidget);
+    expect(find.text('王阿公的人生故事'), findsOneWidget);
+    expect(find.text('珍藏 1 篇口述回憶・世代傳承'), findsOneWidget);
 
-    // 驗證分類 ChoiceChip
-    expect(find.widgetWithText(ChoiceChip, '全部'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, '經典回憶'), findsOneWidget);
+    // 驗證分類篩選膠囊（2026-10 新設計：FamFilterChip，「全部」帶篇數）
+    expect(find.widgetWithText(FamFilterChip, '全部 1'), findsOneWidget);
+    expect(find.widgetWithText(FamFilterChip, '經典回憶'), findsOneWidget);
 
     // 驗證真實故事有被呈現
     expect(find.text('廟口童玩與純真田埂時光'), findsOneWidget);
@@ -112,7 +113,7 @@ void main() {
 
     // 驗證委託小豬提問彈窗
     expect(find.text('委託小豬向王阿公提問'), findsOneWidget);
-    expect(find.text('💡 點選推薦問題：'), findsOneWidget);
+    expect(find.text('點選推薦問題：'), findsOneWidget);
     expect(find.text('託付給小豬'), findsOneWidget);
   });
 }

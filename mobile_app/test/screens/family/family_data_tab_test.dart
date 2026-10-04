@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/models/elder.dart';
 import 'package:flutter_application_1/screens/family/family_data_tab.dart';
+import 'package:flutter_application_1/widgets/ui/uban_switch.dart';
 
 void main() {
   setUpAll(() {
@@ -154,7 +155,7 @@ void main() {
 
     expect(find.text('受關照長輩檔案'), findsOneWidget);
     expect(find.text('陳阿嬤'), findsOneWidget);
-    expect(find.text('🎨 外觀風格與色彩主題'), findsOneWidget);
+    expect(find.text('外觀'), findsOneWidget);
     // 「登出目前帳號」在清單最下方，預設測試視窗高度看不到、也還沒被
     // SliverList 掛載進 Element 樹，故不在本測試斷言（這裡只驗證「內容有
     // 畫出來」，捲動可互動性由下面兩個專門的測試驗證）。
@@ -193,13 +194,14 @@ void main() {
     ));
     await tester.pump(const Duration(seconds: 2));
 
-    final switchFinder = find.byType(Switch);
+    // 2026-10 新設計：開關改為 UbanSwitch；外觀群組的深色模式開關排在最前面（其後是通知開關）。
+    final switchFinder = find.byType(UbanSwitch).first;
     expect(switchFinder, findsOneWidget, reason: '深色主題開關必須存在於畫面上');
 
     await tester.tap(switchFinder);
     await tester.pump();
 
-    expect(received, isTrue, reason: '點擊 Switch 後 onToggleDarkMode 必須被呼叫，否則代表手勢被擋住了');
+    expect(received, isTrue, reason: '點擊 UbanSwitch 後 onToggleDarkMode 必須被呼叫，否則代表手勢被擋住了');
   });
 
   testWidgets('登出按鈕可互動：點擊後真的會開啟確認對話框', (WidgetTester tester) async {

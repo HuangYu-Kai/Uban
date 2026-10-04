@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import '../../widgets/ui/uban_glass_nav_bar.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../widgets/ui/ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../theme/family_theme.dart';
 import '../elder_profile_edit_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../identification_screen.dart';
@@ -25,10 +25,17 @@ import 'memoirs_gallery_screen.dart';
 import 'health_trends_screen.dart';
 import 'outing_trends_screen.dart';
 import 'widgets/emotion_preview_card.dart';
+import 'widgets/fam_data_ui.dart';
+import 'widgets/fam_interaction_ui.dart';
+import 'widgets/fam_ui.dart';
 import '../../widgets/error_boundary.dart';
 
 /// ⚙️ 子女端「資料與設定」Tab (FamilyDataTab)
 /// 包含：照顧者資訊、關照長輩完整檔案、AI 陪伴偏好、人生故事膠囊、安全通知設定、裝置與訂閱管理
+///
+/// 2026-10 起外觀改家屬新設計（海灣藍）：`.me-card`、`.group2`／`.setrow`（不放圖示方塊）、
+/// `.entry`、`.story`；對話框改 [UbanDialog]（經 [showFamDialog]，內容與回傳值不變）。
+/// **純 UI 改版**：所有 callback、Navigator 目的地、API 與 SharedPreferences 讀寫都與改版前相同。
 class FamilyDataTab extends StatefulWidget {
   final Elder? currentElder;
   final int userId;
@@ -76,9 +83,15 @@ class FamilyDataTab extends StatefulWidget {
 }
 
 class _FamilyDataTabState extends State<FamilyDataTab> {
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
+  // 取色與開 dialog／sheet／SnackBar 都用它，才吃得到家屬色票；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
+
   String _caregiverName = '';
   String _subscriptionDisplay = '一般會員';
-  
+
   // 智慧防護與通知開關
   bool _isEmergencyOn = true;
   bool _isDailySummaryOn = true;
@@ -166,11 +179,11 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
         final tier = (res['tier_level'] ?? 'free').toString();
         setState(() {
           if (tier == 'diamond') {
-            _subscriptionDisplay = '💎 鑽石守護版';
+            _subscriptionDisplay = '鑽石守護版';
           } else if (tier == 'gold') {
-            _subscriptionDisplay = '👑 黃金尊榮版';
+            _subscriptionDisplay = '黃金尊榮版';
           } else {
-            _subscriptionDisplay = '🛡️ 一般會員';
+            _subscriptionDisplay = '一般會員';
           }
         });
       }
@@ -195,129 +208,127 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     }
   }
 
-  void _handleEditProfile() {
-    final cs = Theme.of(context).colorScheme;
-    final TextEditingController controller = TextEditingController(text: _caregiverName);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: cs.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: cs.primary.withValues(alpha: 0.5), width: 1.2),
+  void _openSubscription() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FamilySubscriptionScreen()),
+    ).then((_) => _loadSubscriptionInfo());
+  }
+
+  void _openMemoirsGallery(String elderId, String name) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MemoirsGalleryScreen(
+          elderId: elderId,
+          elderName: name,
+          familyUserName: widget.userName,
         ),
-        title: Row(
-          children: [
-            Icon(Icons.edit_note_rounded, color: cs.primary, size: 24),
-            const SizedBox(width: 8),
-            Text(
-              '編輯我的顯示名稱',
-              style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold, color: cs.onSurface, fontSize: 18),
-            ),
-          ],
-        ),
-        content: TextField(
-          controller: controller,
-          style: GoogleFonts.notoSansTc(color: cs.onSurface),
-          decoration: InputDecoration(
-            hintText: '輸入您的稱呼 (例: 大兒子、小女兒)',
-            hintStyle: GoogleFonts.notoSansTc(color: cs.outline),
-            filled: true,
-            fillColor: cs.surfaceContainerLow,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: cs.outlineVariant),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: cs.outlineVariant),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: cs.primary, width: 1.5),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('取消', style: GoogleFonts.notoSansTc(color: cs.outline)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: cs.primary,
-              foregroundColor: cs.onPrimary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () async {
-              final newName = controller.text.trim();
-              if (newName.isNotEmpty) {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('caregiver_name', newName);
-                if (mounted) {
-                  setState(() {
-                    _caregiverName = newName;
-                  });
-                }
-              }
-              if (!context.mounted) return;
-              Navigator.pop(context);
-            },
-            child: Text('儲存', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
-          ),
-        ],
       ),
     );
   }
 
-  void _handleLogout() {
-    final cs = Theme.of(context).colorScheme;
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: cs.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: cs.error.withValues(alpha: 0.6), width: 1.2),
-        ),
-        title: Row(
+  void _handleEditProfile() {
+    final TextEditingController controller = TextEditingController(text: _caregiverName);
+    showFamDialog<void>(
+      _themeCtx,
+      (dialogContext) {
+        final c = UbanColors.of(dialogContext);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(Icons.logout_rounded, color: cs.error, size: 24),
-            const SizedBox(width: 8),
-            Text(
-              '安全登出',
-              style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold, color: cs.onSurface, fontSize: 18),
+            famDialogTitle(c, '編輯我的顯示名稱'),
+            const SizedBox(height: 14),
+            UbanTextField(
+              controller: controller,
+              autofocus: true,
+              hintText: '輸入您的稱呼 (例: 大兒子、小女兒)',
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: FamButton(
+                    label: '取消',
+                    kind: FamButtonKind.ghost,
+                    onPressed: () => Navigator.pop(dialogContext),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FamButton(
+                    label: '儲存',
+                    onPressed: () async {
+                      final newName = controller.text.trim();
+                      if (newName.isNotEmpty) {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('caregiver_name', newName);
+                        if (mounted) {
+                          setState(() {
+                            _caregiverName = newName;
+                          });
+                        }
+                      }
+                      if (!dialogContext.mounted) return;
+                      Navigator.pop(dialogContext);
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-        content: Text(
-          '確定要登出當前帳號並回到身分選擇頁面嗎？',
-          style: GoogleFonts.notoSansTc(color: cs.onSurfaceVariant, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text('取消', style: GoogleFonts.notoSansTc(color: cs.outline)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: cs.error,
-              foregroundColor: cs.onError,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        );
+      },
+    );
+  }
+
+  void _handleLogout() {
+    showFamDialog<void>(
+      _themeCtx,
+      (dialogContext) {
+        final c = UbanColors.of(dialogContext);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            famDialogTitle(c, '安全登出'),
+            const SizedBox(height: 10),
+            Text(
+              '確定要登出當前帳號並回到身分選擇頁面嗎？',
+              style: famText(c.text2, 15, height: 1.5),
             ),
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              await SessionManager.releaseSession();
-              if (!mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const IdentificationScreen()),
-                (route) => false,
-              );
-            },
-            child: Text('確認登出', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: FamButton(
+                    label: '取消',
+                    kind: FamButtonKind.ghost,
+                    onPressed: () => Navigator.pop(dialogContext),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FamButton(
+                    label: '確認登出',
+                    kind: FamButtonKind.danger,
+                    onPressed: () async {
+                      Navigator.pop(dialogContext);
+                      await SessionManager.releaseSession();
+                      if (!mounted) return;
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const IdentificationScreen()),
+                        (route) => false,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -356,170 +367,106 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
   void _showUnbindConfirmDialog() {
     if (widget.currentElder == null) return;
     final elder = widget.currentElder!;
-    final cs = Theme.of(context).colorScheme;
+    // 在對話框關閉、畫面可能已換頁之前先取得 messenger（原本就是這個順序）。
+    final messenger = ScaffoldMessenger.of(context);
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: cs.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: cs.error.withValues(alpha: 0.6), width: 1.5),
-        ),
-        title: Row(
+    showFamDialog<void>(
+      _themeCtx,
+      (dialogContext) {
+        final c = UbanColors.of(dialogContext);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(Icons.link_off_rounded, color: cs.error, size: 24),
-            const SizedBox(width: 8),
-            Text('解除綁定確認', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold, color: cs.onSurface, fontSize: 18)),
+            famDialogTitle(c, '解除綁定確認'),
+            const SizedBox(height: 10),
+            Text(
+              '確定要解除與「${elder.name}」的照護配對嗎？\n\n解除後您將無法再接收該長輩的健康警報與即時狀態。',
+              style: famText(c.danger, 15, height: 1.5, weight: FontWeight.w600),
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: FamButton(
+                    label: '取消',
+                    kind: FamButtonKind.ghost,
+                    onPressed: () => Navigator.pop(dialogContext),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FamButton(
+                    label: '確定解除',
+                    kind: FamButtonKind.danger,
+                    onPressed: () async {
+                      final navigator = Navigator.of(dialogContext);
+                      final result = await ApiService.unbindElder(widget.userId, elder.id);
+                      if (!mounted) return;
+                      if (result['status'] == 'success') {
+                        navigator.pop();
+                        if (widget.onElderUpdated != null) {
+                          widget.onElderUpdated!();
+                        }
+                        messenger.showSnackBar(
+                          famSnackBar(_themeCtx, '已成功解除與該長輩的綁定', success: true),
+                        );
+                      } else {
+                        navigator.pop();
+                        messenger.showSnackBar(
+                          famSnackBar(_themeCtx, '解除失敗: ${result['error']}', error: true),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
           ],
-        ),
-        content: Text(
-          '確定要解除與「${elder.name}」的照護配對嗎？\n\n⚠️ 解除後您將無法再接收該長輩的健康警報與即時狀態。',
-          style: GoogleFonts.notoSansTc(color: cs.error, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('取消', style: GoogleFonts.notoSansTc(color: cs.outline)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
-            onPressed: () async {
-              final navigator = Navigator.of(context);
-              final messenger = ScaffoldMessenger.of(context);
-              final result = await ApiService.unbindElder(widget.userId, elder.id);
-              if (!mounted) return;
-              if (result['status'] == 'success') {
-                navigator.pop();
-                if (widget.onElderUpdated != null) {
-                  widget.onElderUpdated!();
-                }
-                messenger.showSnackBar(
-                  const SnackBar(content: Text('✅ 已成功解除與該長輩的綁定'), backgroundColor: Color(0xFFEF4444)),
-                );
-              } else {
-                navigator.pop();
-                messenger.showSnackBar(
-                  SnackBar(content: Text('⚠️ 解除失敗: ${result['error']}'), backgroundColor: const Color(0xFFEF4444)),
-                );
-              }
-            },
-            child: Text('確定解除', style: GoogleFonts.notoSansTc(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   void _showRecoveryAssistantDialog() {
     if (widget.currentElder == null) return;
-    final cs = Theme.of(context).colorScheme;
-    
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
+
+    showFamDialog<void>(
+      _themeCtx,
+      (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: cs.surfaceContainerHigh,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-                side: const BorderSide(color: Color(0xFFFF7043), width: 1.2),
-              ),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF7043).withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.phonelink_setup_rounded,
-                      color: Color(0xFFFF7043),
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '長輩移機與重裝助手',
-                      style: GoogleFonts.notoSansTc(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '如果長輩（${widget.currentElder!.displayName}）更換了新手機，或是不小心解除安裝了 Uban App，您可以在這裡為長輩產生一個具有時效性（15分鐘內有效）的快速登入連結，並傳送給長輩。',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: cs.onSurfaceVariant,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline_rounded, color: Color(0xFFEF4444), size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '注意：連結於 15 分鐘內有效，點擊後長輩設備即可自動免密登入回原本帳號。',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFFEF4444),
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              actions: [
+            final c = UbanColors.of(context);
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                famDialogTitle(c, '長輩移機與重裝助手'),
+                const SizedBox(height: 10),
+                Text(
+                  '如果長輩（${widget.currentElder!.displayName}）更換了新手機，或是不小心解除安裝了 Uban App，您可以在這裡為長輩產生一個具有時效性（15分鐘內有效）的快速登入連結，並傳送給長輩。',
+                  style: famText(c.text2, 14.5, height: 1.55),
+                ),
+                const SizedBox(height: 14),
+                const FamNote(
+                  text: '注意：連結於 15 分鐘內有效，點擊後長輩設備即可自動免密登入回原本帳號。',
+                  tone: FamTone.warm,
+                ),
+                const SizedBox(height: 22),
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton(
+                      child: FamButton(
+                        label: '取消',
+                        kind: FamButtonKind.ghost,
                         onPressed: _isGeneratingRecovery ? null : () => Navigator.pop(dialogContext),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          side: BorderSide(color: cs.outlineVariant, width: 1.2),
-                        ),
-                        child: Text(
-                          '取消',
-                          style: GoogleFonts.notoSansTc(
-                            color: cs.outline,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: ElevatedButton(
+                      child: FamButton(
+                        label: '產生並分享',
+                        loading: _isGeneratingRecovery,
                         onPressed: _isGeneratingRecovery
                             ? null
                             : () async {
@@ -528,7 +475,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
 
                                 if (shortId == null) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('⚠️ 無法產生連結：缺少長輩的配對身分資訊')),
+                                    famSnackBar(context, '無法產生連結：缺少長輩的配對身分資訊', error: true),
                                   );
                                   return;
                                 }
@@ -560,48 +507,26 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                                     final errorMsg = result['error'] ?? result['message'] ?? result['detail'] ?? '產生連結失敗';
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text(errorMsg)),
+                                        famSnackBar(context, errorMsg.toString(), error: true),
                                       );
                                     }
                                   }
                                 } catch (e) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('連線失敗: $e')),
+                                      famSnackBar(context, '連線失敗: $e', error: true),
                                     );
                                   }
                                 } finally {
-                                  setDialogState(() => _isGeneratingRecovery = false);
+                                  // dialog 可能已被關閉（分享成功後 pop），此時 StatefulBuilder 已 dispose。
+                                  if (context.mounted) {
+                                    setDialogState(() => _isGeneratingRecovery = false);
+                                  }
                                   if (mounted) {
                                     setState(() => _isGeneratingRecovery = false);
                                   }
                                 }
                               },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF7043),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: _isGeneratingRecovery
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                '產生並分享',
-                                style: GoogleFonts.notoSansTc(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
                       ),
                     ),
                   ],
@@ -614,8 +539,20 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     );
   }
 
+  // 卡片進場淡入（與改版前相同的節奏）。
+  Widget _fadeIn(Widget w, int delayMs) =>
+      w.animate().fadeIn(delay: delayMs.ms, duration: 350.ms);
+
   @override
   Widget build(BuildContext context) {
+    // 2026-10：資料分頁自己掛家屬主題（深色開關即時套用）；Builder 讓下方 context 位於主題之內。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
     return CustomScrollView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
@@ -640,35 +577,36 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
 
               // 1. 家屬個人卡片 (Caregiver Identity)
               ErrorBoundary(name: '家屬個人卡片', builder: () => _buildCaregiverCard()),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
 
-              // 🎨 介面主題風格設定（資料 Tab 切換淺色/深色模式，預設為淺色）
+              // 介面主題風格設定（資料 Tab 切換淺色/深色模式，預設為淺色）
               ErrorBoundary(
                 name: '外觀風格與色彩主題',
-                builder: () => _buildSettingsGroup('🎨 外觀風格與色彩主題', [
-                  _buildSwitchItem(
-                    widget.isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                    '深色主題模式 (Dark Theme)',
-                    widget.isDarkMode ? '目前使用深色模式（墨藍底色搭配薄荷綠線條）' : '目前使用淺色模式（象牙白底色搭配墨藍線條，預設）',
-                    widget.isDarkMode,
-                    (val) => widget.onToggleDarkMode?.call(val),
-                    Theme.of(context).colorScheme.primary,
-                  ),
-                ]),
+                builder: () => _fadeIn(
+                  FamGroup(title: '外觀', children: [
+                    FamSetRow(
+                      title: '深色模式',
+                      subtitle: widget.isDarkMode ? '目前使用深色模式' : '目前使用淺色模式（預設），晚上看比較不刺眼',
+                      trailing: UbanSwitch(
+                        value: widget.isDarkMode,
+                        onChanged: (val) => widget.onToggleDarkMode?.call(val),
+                      ),
+                    ),
+                  ]),
+                  200,
+                ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
 
               // 2. 當前受關照長輩詳細健康資料 (Elder Profile Summary)
               if (widget.currentElder != null) ...[
                 ErrorBoundary(name: '長輩檔案摘要卡片', builder: () => _buildElderSummaryCard()),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
 
                 // 2.5 健康趨勢入口 + 情緒關注預覽卡（第五十輪：接回導覽，見檔頭註解）
-                ErrorBoundary(name: '健康趨勢入口卡片', builder: () => _buildHealthTrendsEntryCard()),
-                const SizedBox(height: 18),
                 // 2.6 外出趨勢入口（移動軌跡延伸第三階段）
-                ErrorBoundary(name: '外出趨勢入口卡片', builder: () => _buildOutingTrendsEntryCard()),
-                const SizedBox(height: 18),
+                ErrorBoundary(name: '趨勢入口卡片', builder: () => _buildTrendsEntries()),
+                const SizedBox(height: 14),
                 ErrorBoundary(
                   name: '情緒關注預覽卡片',
                   builder: () => EmotionPreviewCard(
@@ -676,164 +614,128 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
                     elderId: widget.currentElder!.id,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
 
                 // 3. 長輩人生故事膠囊 (Memoirs & Family Legacy)
                 ErrorBoundary(name: '人生故事膠囊卡片', builder: () => _buildMemoirsCard()),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
 
                 // 4. 長輩互動與對話偏好 (Companion Preferences)
                 ErrorBoundary(name: 'AI 互動偏好卡片', builder: () => _buildAiHelperCard()),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
               ] else ...[
                 // 未選擇長輩引導卡片
                 ErrorBoundary(name: '未選擇長輩引導卡片', builder: () => _buildNoElderSelectedCard()),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
               ],
 
               // 5. 智慧照護與即時通知設定 (Care & Notification)
               ErrorBoundary(
                 name: '安全防護與日常通知設定',
-                builder: () => _buildSettingsGroup('🔔 安全防護與日常通知設定', [
-                  _buildSwitchItem(
-                    Icons.emergency_rounded,
-                    '緊急廣播與跌倒求救通知',
-                    '長輩端觸發緊急警報時，第一時間彈窗並強制響鈴提醒',
-                    _isEmergencyOn,
-                    (val) => setState(() => _isEmergencyOn = val),
-                    Theme.of(context).colorScheme.secondary,
-                  ),
-                  _buildSwitchItem(
-                    Icons.medication_rounded,
-                    '服藥打卡與關懷排程提醒',
-                    '長輩完成吃藥打卡或未按時服藥時，即時推播回報',
-                    _isMedicationPushOn,
-                    (val) => setState(() => _isMedicationPushOn = val),
-                    Theme.of(context).colorScheme.primary,
-                  ),
-                  _buildSwitchItem(
-                    Icons.summarize_rounded,
-                    '每日傍晚健康日誌摘要',
-                    '每日 18:00 推播長輩今日活動紀錄與心情簡報',
-                    _isDailySummaryOn,
-                    (val) => setState(() => _isDailySummaryOn = val),
-                    Theme.of(context).colorScheme.tertiary,
-                  ),
-                  _buildSwitchItem(
-                    Icons.psychology_rounded,
-                    '長輩作息與情緒預警',
-                    '長輩生活作息不規律或情緒低落時的主動關懷建議',
-                    _isAiInsightOn,
-                    (val) => setState(() => _isAiInsightOn = val),
-                    Theme.of(context).colorScheme.secondary,
-                  ),
-                ]),
+                builder: () => _fadeIn(
+                  FamGroup(title: '通知', children: [
+                    _switchRow(
+                      '跌倒與緊急求救',
+                      '長輩端觸發緊急警報時，第一時間彈窗並強制響鈴提醒',
+                      _isEmergencyOn,
+                      (val) => setState(() => _isEmergencyOn = val),
+                    ),
+                    _switchRow(
+                      '吃藥打卡',
+                      '長輩完成吃藥打卡或未按時服藥時，即時推播回報',
+                      _isMedicationPushOn,
+                      (val) => setState(() => _isMedicationPushOn = val),
+                    ),
+                    _switchRow(
+                      '每天 18:00 健康日誌',
+                      '每日 18:00 推播長輩今日活動紀錄與心情簡報',
+                      _isDailySummaryOn,
+                      (val) => setState(() => _isDailySummaryOn = val),
+                    ),
+                    _switchRow(
+                      '作息與情緒預警',
+                      '長輩生活作息不規律或情緒低落時的主動關懷建議',
+                      _isAiInsightOn,
+                      (val) => setState(() => _isAiInsightOn = val),
+                    ),
+                  ]),
+                  200,
+                ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
 
               // 6. 裝置配對、移機與訂閱管理 (Devices & Subscriptions)
               ErrorBoundary(
                 name: '裝置配對與加值服務',
-                builder: () => _buildSettingsGroup('📱 裝置配對與加值服務', [
-                  _buildActionItem(
-                    Icons.diamond_rounded,
-                    '訂閱方案與設備上限管理',
-                    '當前方案：$_subscriptionDisplay，管理監視設備數量與雲端功能',
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const FamilySubscriptionScreen(),
-                        ),
-                      ).then((_) => _loadSubscriptionInfo());
-                    },
-                    Theme.of(context).colorScheme.primary,
-                    trailingBadge: _subscriptionDisplay,
-                  ),
-                  Divider(height: 16, color: Theme.of(context).colorScheme.outlineVariant),
-                  _buildActionItem(
-                    Icons.add_circle_outline_rounded,
-                    '配對新長輩裝置',
-                    '掃描 QR Code 或輸入配對碼，連結其他長輩平板或手機',
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CaregiverPairingScreen(
-                            familyId: widget.userId,
-                            familyName: _caregiverName,
-                          ),
-                        ),
-                      ).then((_) {
-                        if (widget.onElderUpdated != null) {
-                          widget.onElderUpdated!();
-                        }
-                      });
-                    },
-                    Theme.of(context).colorScheme.primary,
-                  ),
-                  if (widget.currentElder != null) ...[
-                    Divider(height: 16, color: Theme.of(context).colorScheme.outlineVariant),
-                    _buildActionItem(
-                      Icons.phonelink_setup_rounded,
-                      '長輩移機與免密重裝助手',
-                      '產生 15 分鐘專屬登入連結，長輩換手機或重裝時一鍵復原',
-                      _showRecoveryAssistantDialog,
-                      Theme.of(context).colorScheme.secondary,
+                builder: () => _fadeIn(
+                  FamGroup(title: '裝置與加值', children: [
+                    FamSetRow(
+                      title: '訂閱方案與設備上限管理',
+                      subtitle: '當前方案：$_subscriptionDisplay，管理監視設備數量與雲端功能',
+                      chevron: true,
+                      onTap: _openSubscription,
                     ),
-                  ],
-                ]),
+                    FamSetRow(
+                      title: '配對新長輩裝置',
+                      subtitle: '掃描 QR Code 或輸入配對碼，連結其他長輩平板或手機',
+                      chevron: true,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CaregiverPairingScreen(
+                              familyId: widget.userId,
+                              familyName: _caregiverName,
+                            ),
+                          ),
+                        ).then((_) {
+                          if (widget.onElderUpdated != null) {
+                            widget.onElderUpdated!();
+                          }
+                        });
+                      },
+                    ),
+                    if (widget.currentElder != null)
+                      FamSetRow(
+                        title: '長輩移機與免密重裝助手',
+                        subtitle: '產生 15 分鐘專屬登入連結，長輩換手機或重裝時一鍵復原',
+                        chevron: true,
+                        onTap: _showRecoveryAssistantDialog,
+                      ),
+                  ]),
+                  200,
+                ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
 
               // 6.5 支援與意見回饋 (Support & Feedback)
               // ★ BUG 回報功能：低頻但重要，刻意不放頂層分頁、不放首頁／互動
               //   這種高頻畫面，比照裝置配對／訂閱等次級設定放在「資料」分頁。
               ErrorBoundary(
                 name: '支援與意見回饋',
-                builder: () => _buildSettingsGroup('🛟 支援與意見回饋', [
-                  _buildActionItem(
-                    Icons.bug_report_rounded,
-                    '回報問題 / 意見反饋',
-                    '遇到問題或有建議？點此回報，我們會盡快處理',
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FamilyBugReportScreen(familyId: widget.userId),
-                        ),
-                      );
-                    },
-                    Theme.of(context).colorScheme.tertiary,
-                  ),
-                ]),
+                builder: () => _fadeIn(
+                  FamGroup(title: '支援', children: [
+                    FamSetRow(
+                      title: '回報問題 / 意見反饋',
+                      subtitle: '遇到問題或有建議？點此回報，我們會盡快處理',
+                      chevron: true,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FamilyBugReportScreen(familyId: widget.userId),
+                          ),
+                        );
+                      },
+                    ),
+                  ]),
+                  200,
+                ),
               ),
               const SizedBox(height: 18),
 
               // 7. 系統資訊 (System Info)
               ErrorBoundary(name: '系統資訊卡片', builder: () => _buildSystemInfoCard()),
-              const SizedBox(height: 24),
-
-              // 8. 登出按鈕
-              OutlinedButton.icon(
-                onPressed: _handleLogout,
-                icon: const Icon(Icons.logout_rounded, size: 20),
-                label: Text(
-                  '登出目前帳號',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.secondary,
-                  side: BorderSide(color: Theme.of(context).colorScheme.outline, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ).animate().fadeIn(delay: 300.ms),
             ]),
           ),
         ),
@@ -841,161 +743,86 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     );
   }
 
-  // ─── 1. 家屬個人卡片 (Caregiver Card) ───
+  // ─── 1. 家屬個人卡片 (Caregiver Card，`.me-card`) ───
 
   Widget _buildCaregiverCard() {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = _c;
+    final name = _caregiverName.isNotEmpty ? _caregiverName : '主要照護家屬';
 
-    return Container(
-      key: widget.caregiverCardKey,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: cs.outline,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.primary,
-                  border: Border.all(color: cs.outline, width: 1.5),
-                ),
-                child: Center(
-                  child: Text(
-                    _caregiverName.isNotEmpty ? _caregiverName[0].toUpperCase() : 'U',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      color: cs.onPrimary,
-                    ),
+    return _fadeIn(
+      FamCard(
+        key: widget.caregiverCardKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                FamAvatar(name: _caregiverName.isNotEmpty ? _caregiverName : 'U', size: 52),
+                const SizedBox(width: 12),
+                // 名稱是使用者自訂字串，必須可收縮（鐵律 #14）。
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.text, 17, weight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '家屬管理員・帳號 ID: ${widget.userId}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.text2, 13, height: 1.4),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(width: 8),
+                FamIconButton(
+                  icon: Icons.edit_outlined,
+                  tooltip: '編輯名稱',
+                  onTap: _handleEditProfile,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(height: 1, color: c.line),
+            // 快速方案狀態：整列可點，進訂閱頁。
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _openSubscription,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            _caregiverName.isNotEmpty ? _caregiverName : '主要照護家屬',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: cs.onSurface,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: _handleEditProfile,
-                          icon: Icon(Icons.edit_outlined, color: cs.primary, size: 18),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          tooltip: '編輯名稱',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: cs.primary,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: cs.outline,
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            '家屬管理員',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 11,
-                              color: cs.onPrimary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '帳號 ID: ${widget.userId}',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                    Text('方案等級', style: famText(c.text2, 13)),
+                    const SizedBox(width: 8),
+                    Flexible(child: FamTier(label: _subscriptionDisplay)),
+                    const Spacer(),
+                    Text('管理方案',
+                        style: famText(c.brandStrong, 14, weight: FontWeight.w700)),
+                    Icon(Icons.chevron_right_rounded, size: 20, color: c.text3),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // 快速方案狀態
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const FamilySubscriptionScreen()),
-              ).then((_) => _loadSubscriptionInfo());
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isDark ? cs.surfaceContainer : const Color(0xFFFFFFFE),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: cs.outline, width: 1.2),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.verified_user_rounded, color: cs.primary, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    '方案等級：',
-                    style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
-                  ),
-                  Text(
-                    _subscriptionDisplay,
-                    style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '管理方案',
-                    style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.outline, fontWeight: FontWeight.w600),
-                  ),
-                  Icon(Icons.chevron_right_rounded, color: cs.outline, size: 16),
-                ],
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FamSmallBtn(
+                label: '登出目前帳號',
+                danger: true,
+                onTap: _handleLogout,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(duration: 350.ms);
+      0,
+    );
   }
 
   // ─── 2. 長輩基本資料與健康摘要卡 ───
@@ -1003,718 +830,257 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
   Widget _buildElderSummaryCard() {
     if (widget.currentElder == null) return const SizedBox.shrink();
     final elder = widget.currentElder!;
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    final chronicDiseases = _elderProfileData?['chronic_diseases'] ?? '無特別記載';
-    final medicationNotes = _elderProfileData?['medication_notes'] ?? '照護提醒正常';
+    final c = _c;
 
-    return Container(
-      key: widget.elderSummaryKey,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: cs.outline,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.outline, width: 1.2),
-                ),
-                child: Icon(Icons.elderly_rounded, color: cs.onPrimary, size: 22),
-              ),
-              const SizedBox(width: 10),
-              // ★ 鐵律 #14 例行檢查（第四十九輪）：標題與後方 Spacer／
-              // 「編輯資料」按鈕同列，字級 18pt，未提供可收縮空間時窄螢幕
-              // 或放大系統字級可能超出可用寬度；包 Flexible 並加 ellipsis
-              // 可收縮，比照本檔 :1021-1032（elder.displayName）既有寫法。
-              Flexible(
-                child: Text(
-                  '受關照長輩檔案',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: cs.onSurface,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _navigateToElderEdit,
-                icon: const Icon(Icons.edit_rounded, size: 16),
-                label: Text(
-                  '編輯資料',
-                  style: GoogleFonts.notoSansTc(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: cs.primary,
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.primary,
-                  border: Border.all(color: cs.outline, width: 1.5),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  elder.genderEmoji,
-                  style: const TextStyle(fontSize: 30),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        // ★ 第四十五輪（例行溢位檢查）：displayName 是長輩顯示名稱，
-                        // 長度不可控，20pt 同列還有固定寬度的「長輩端: Exxx」徽章，
-                        // 包 Flexible 並加 ellipsis 可收縮，避免 RenderFlex 溢位。
-                        Flexible(
-                          child: Text(
-                            elder.displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: cs.onSurface,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: cs.surface,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: cs.outline, width: 1.0),
-                          ),
-                          child: Text(
-                            '長輩端: ${elder.elderId ?? "E00${elder.id}"}',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: cs.onSurface,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${elder.age != null ? "${elder.age} 歲" : "年齡未填"} • ${elder.gender == "F" ? "女性" : "男性"} • 居於 ${(elder.location != null && elder.location!.isNotEmpty) ? elder.location : "台北市"}',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 13,
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // 健康摘要標籤
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? cs.surfaceContainer : const Color(0xFFFFFFFE),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outline, width: 1.2),
+    final chronicDiseases = (_elderProfileData?['chronic_diseases'] ?? '無特別記載').toString();
+    final medicationNotes = (_elderProfileData?['medication_notes'] ?? '照護提醒正常').toString();
+
+    return _fadeIn(
+      FamCard(
+        key: widget.elderSummaryKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ★ 鐵律 #14 例行檢查（第四十九輪）：標題與同列「編輯資料」按鈕，標題在 Expanded
+            // 內（FamSecHead）可收縮。
+            FamSecHead(
+              title: '受關照長輩檔案',
+              trailing: FamMore(label: '編輯資料', onTap: _navigateToElderEdit),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 10),
+            Row(
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.favorite_rounded, color: cs.secondary, size: 16),
-                    const SizedBox(width: 6),
-                    Text(
-                      '慢性病與健康注意：',
-                      style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: cs.onSurfaceVariant),
-                    ),
-                    Expanded(
-                      child: Text(
-                        chronicDiseases,
-                        style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurface, fontWeight: FontWeight.w600),
+                FamAvatar(name: elder.displayName, size: 52),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ★ 第四十五輪（例行溢位檢查）：displayName 是長輩顯示名稱，長度不可控，
+                      // 可收縮並加 ellipsis，避免 RenderFlex 溢位。
+                      Text(
+                        elder.displayName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: famText(c.text, 17, weight: FontWeight.w900),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.medication_liquid_rounded, color: cs.primary, size: 16),
-                    const SizedBox(width: 6),
-                    Text(
-                      '用藥備註：',
-                      style: GoogleFonts.notoSansTc(fontSize: 12, fontWeight: FontWeight.bold, color: cs.onSurfaceVariant),
-                    ),
-                    Expanded(
-                      child: Text(
-                        medicationNotes,
-                        style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurface, fontWeight: FontWeight.w600),
+                      const SizedBox(height: 3),
+                      Text(
+                        '長輩端: ${elder.elderId ?? "E00${elder.id}"}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: famText(c.text3, 12.5, tabular: true),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            Text(
+              '${elder.age != null ? "${elder.age} 歲" : "年齡未填"}・${elder.gender == "F" ? "女性" : "男性"}・居於 ${(elder.location != null && elder.location!.isNotEmpty) ? elder.location : "台北市"}',
+              style: famText(c.text2, 14, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            // 健康摘要：兩條標籤＋內容（內容可換行，長字串不溢位）。
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.surface2,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('慢性病與健康注意', style: famText(c.text2, 12, weight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(
+                    chronicDiseases,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: famText(c.text, 14.5, weight: FontWeight.w600, height: 1.4),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('用藥備註', style: famText(c.text2, 12, weight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(
+                    medicationNotes,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: famText(c.text, 14.5, weight: FontWeight.w600, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      50,
+    );
+  }
+
+  // ─── 2.5／2.6 健康趨勢與外出趨勢入口（`.twin` + `.entry`） ───
+  // 第五十輪新增：`HealthTrendsScreen` 早就做好真實資料串接（步數/體重/身高），
+  // 但全專案沒有任何入口導覽過去，屬於死碼。這裡補入口卡，點下去進
+  // `HealthTrendsScreen`；心率/血壓/血糖仍會顯示 `--`，那是該畫面自己誠實
+  // 標示「需穿戴裝置，目前無法偵測」，不在本卡片重複描述細節。
+  // 外出趨勢入口：刻意用靜態文字、不在本分頁預先打 `getDaily`——本頁已有多支
+  // 啟動即呼叫的 API，而且父層輪詢會頻繁重建；數字都在點進去的畫面裡，所以也沒有
+  // 迷你走勢（設計稿的 `.spark` 在此沒有可用資料，不假造）。
+  // 版面注意（第五十二輪）：Flexible／Expanded 只能是 Row／Column「有界主軸」的直接子節點，
+  // 不可在無界高度的 Column 底下再包 Flexible。這裡的 Expanded 都在 Row 內。
+
+  Widget _buildTrendsEntries() {
+    if (widget.currentElder == null) return const SizedBox.shrink();
+    final elder = widget.currentElder!;
+
+    return _fadeIn(
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: FamEntryCard(
+              title: '健康趨勢',
+              subtitle: '步數、體重、身高',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HealthTrendsScreen(
+                      elderName: elder.displayName,
+                      elderId: elder.id,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FamEntryCard(
+              title: '外出趨勢',
+              subtitle: '外出次數、距離、在外時間',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OutingTrendsScreen(
+                      // 與首頁 GPS 軌跡卡片一致：優先用長輩的 elderId 字串，缺漏才退回資料庫 id。
+                      elderId: elder.elderId ?? elder.id.toString(),
+                      userId: widget.userId,
+                      elderName: elder.displayName,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 50.ms, duration: 350.ms);
-  }
-
-  // ─── 2.5 健康趨勢入口卡 (Health Trends Entry) ───
-  // 第五十輪新增：`HealthTrendsScreen` 早就做好真實資料串接（步數/體重/身高），
-  // 但全專案沒有任何入口導覽過去，屬於死碼。這裡補一張入口卡，點下去進
-  // `HealthTrendsScreen`；心率/血壓/血糖仍會顯示 `--`，那是該畫面自己誠實
-  // 標示「需穿戴裝置，目前無法偵測」，不在本卡片重複描述細節。
-
-  Widget _buildHealthTrendsEntryCard() {
-    if (widget.currentElder == null) return const SizedBox.shrink();
-    final elder = widget.currentElder!;
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(24),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => HealthTrendsScreen(
-              elderName: elder.displayName,
-              elderId: elder.id,
-            ),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.outline, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: cs.secondary,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: cs.outline, width: 1.2),
-              ),
-              child: Icon(Icons.show_chart_rounded, color: cs.onSecondary, size: 24),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ★ 第五十二輪修正：這裡原本用 `Flexible` 包標題（鐵律 #14 的
-                  // 「同列有固定寬度 icon，標題要可收縮」模式），但套錯了層級
-                  // ——這個 `Text`是 `Column` 的直接子節點，`Column`（垂直
-                  // `RenderFlex`）本身又活在 `SliverList` 的清單項目裡、拿到
-                  // 的是無界（0~Infinity）高度。`Flexible`/`Expanded` 一旦是
-                  // 「主軸方向無界的 Flex」的直接子節點，Flutter 會直接丟出
-                  // 「RenderFlex children have non-zero flex but incoming
-                  // height constraints are unbounded」，且這個例外發生在
-                  // *layout* 階段而非 build 階段，`ErrorBoundary`（只包住
-                  // build 期間同步呼叫）完全攔不到；例外沿著 RenderObject
-                  // 樹一路往上炸穿 SliverList／SliverPadding／Viewport，導致
-                  // 整條 CustomScrollView 這一影格的版面計算全部失敗——這正
-                  // 是使用者回報「資料分頁一片空白、所有按鍵都按不動」的根因
-                  // （命中測試：test/screens/family/family_data_tab_test.dart）。
-                  // 「同列有固定寬度 icon 需要可收縮」的正確位置是 Flexible
-                  // 包在 *Row* 的直接子節點上（見 `_buildElderSummaryCard`／
-                  // `_buildCaregiverCard` 的寫法），不是 Row 底下再包一層
-                  // Column 之後的 Column 子節點。這裡改回一般 `Text`：寬度早
-                  // 已被外層 `Expanded`（在 Row 裡）夾住，`maxLines`／
-                  // `overflow` 一樣能在寬度不足時正常省略，不需要 Flexible。
-                  Text(
-                    '健康趨勢',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '步數、體重與身高的時間序紀錄',
-                    style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios_rounded, color: cs.outline, size: 16),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(delay: 75.ms, duration: 350.ms);
-  }
-
-  // ─── 2.6 外出趨勢入口卡 (Outing Trends Entry) ───
-  // 移動軌跡延伸第三階段：點進 `OutingTrendsScreen` 看長輩最近 7／30 天的
-  // 外出次數、移動距離與在外時間。刻意用靜態文字、不在本分頁預先打
-  // `getDaily`——本頁已有多支啟動即呼叫的 API，而且父層輪詢會頻繁重建，
-  // 入口卡不值得多一個網路請求；數字都在點進去的畫面裡。
-  // 版面照 `_buildHealthTrendsEntryCard` 第五十二輪修正後的寫法：標題是
-  // `Row` 內 `Expanded` 底下 `Column` 的一般 `Text`，不可在 Column 裡再包
-  // `Flexible`（會在無界高度下於 layout 階段丟例外）。
-
-  Widget _buildOutingTrendsEntryCard() {
-    if (widget.currentElder == null) return const SizedBox.shrink();
-    final elder = widget.currentElder!;
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(24),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OutingTrendsScreen(
-              // 與首頁 GPS 軌跡卡片一致：優先用長輩的 elderId 字串，缺漏才退回資料庫 id。
-              elderId: elder.elderId ?? elder.id.toString(),
-              userId: widget.userId,
-              elderName: elder.displayName,
-            ),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.outline, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: cs.secondary,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: cs.outline, width: 1.2),
-              ),
-              child: Icon(Icons.directions_walk_rounded, color: cs.onSecondary, size: 24),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '外出趨勢',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '每天外出次數、移動距離與在外時間',
-                    style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios_rounded, color: cs.outline, size: 16),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(delay: 85.ms, duration: 350.ms);
+      75,
+    );
   }
 
   // ─── 3. 人生故事膠囊 (Memoirs & Family Legacy) ───
 
   Widget _buildMemoirsCard() {
     final name = widget.currentElder?.displayName ?? '長輩';
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = _c;
 
     final stories = _memoirStories;
     final elderId = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? 'default_elder';
 
-    return Container(
-      key: widget.memoirsKey,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: cs.outline,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 卡片頂部標題列（點擊可進入完整回憶錄畫廊）
-          InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MemoirsGalleryScreen(
-                    elderId: elderId,
+    String two(int n) => n.toString().padLeft(2, '0');
+
+    return _fadeIn(
+      FamCard(
+        key: widget.memoirsKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 卡片頂部標題列（點擊「珍藏 N 篇」可進入完整回憶錄畫廊）
+            FamSecHead(
+              title: '$name的人生故事',
+              trailing: FamMore(
+                label: '珍藏 ${stories.length} 篇',
+                onTap: () => _openMemoirsGallery(elderId, name),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '由日常對話口述整理紀錄，珍藏長輩的人生智慧與家族回憶',
+              style: famText(c.text2, 13, height: 1.5),
+            ),
+            const SizedBox(height: 8),
+
+            // 故事列表（最多展示前 3 篇，點擊可開啟原聲聆聽詳情彈窗）
+            if (_isLoadingMemoirs)
+              const FamStateBlock(
+                height: 80,
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (stories.isEmpty)
+              const FamNote(
+                text: '長輩尚未與小豬分享故事，點擊下方「委託小豬提問」讓小豬主動發問吧！',
+              )
+            else
+              for (var i = 0; i < stories.take(3).length; i++)
+                FamStoryRow(
+                  first: i == 0,
+                  title: stories[i].title,
+                  meta:
+                      '${two(stories[i].recordedDate.month)}/${two(stories[i].recordedDate.day)}・${stories[i].tag}${stories[i].familyNotes.isNotEmpty ? '・${stories[i].familyNotes.length} 則筆記' : ''}',
+                  onTap: () => MemoirDetailSheet.show(
+                    _themeCtx,
+                    story: stories[i],
                     elderName: name,
                     familyUserName: widget.userName,
                   ),
                 ),
-              );
-            },
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: cs.tertiary,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: cs.outline, width: 1.2),
-                        ),
-                        child: Icon(Icons.auto_stories_rounded, color: cs.outline, size: 24),
-                      ),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
-                          '📖 $name的人生故事膠囊',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: cs.tertiary,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: cs.outline, width: 1.2),
-                  ),
-                  child: Text(
-                    '珍藏 ${stories.length} 篇',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: cs.outline,
-                    ),
-                  ),
-                ),
-              ],
+
+            const SizedBox(height: 10),
+
+            // 底部快捷按鈕：進入回憶錄畫廊與委託小豬提問（兩者原本就都導向畫廊）
+            FamButton(
+              label: '翻閱自傳畫廊 (${stories.length})',
+              kind: FamButtonKind.tonal,
+              height: 46,
+              onPressed: () => _openMemoirsGallery(elderId, name),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '由日常對話口述整理紀錄，珍藏長輩的人生智慧與家族回憶',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 12,
-              color: cs.onSurfaceVariant,
+            const SizedBox(height: 8),
+            FamButton(
+              label: '委託小豬提問',
+              kind: FamButtonKind.outline,
+              height: 46,
+              onPressed: () => _openMemoirsGallery(elderId, name),
             ),
-          ),
-          const SizedBox(height: 14),
-
-          // 故事列表（最多展示前 3 篇，點擊可開啟原聲聆聽詳情彈窗）
-          if (_isLoadingMemoirs)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else if (stories.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark ? cs.surfaceContainer : const Color(0xFFFFFFFE),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: cs.outline, width: 1.2),
-              ),
-              child: Text(
-                '長輩尚未與小豬分享故事，點擊下方「委託小豬提問」讓小豬主動發問吧！',
-                style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
-              ),
-            )
-          else
-            ...stories.take(3).map((st) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              decoration: BoxDecoration(
-                color: isDark ? cs.surfaceContainer : const Color(0xFFFFFFFE),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: cs.outline, width: 1.2),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => MemoirDetailSheet.show(
-                  context,
-                  story: st,
-                  elderName: name,
-                  familyUserName: widget.userName,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              st.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                color: cs.onSurface,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: cs.tertiary.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: cs.outline, width: 1.0),
-                            ),
-                            child: Text(
-                              st.tag,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: cs.outline,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        st.preview,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 12,
-                          color: cs.onSurfaceVariant,
-                          height: 1.4,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(Icons.volume_up_rounded, size: 13, color: Color(0xFF3B82F6)),
-                          const SizedBox(width: 3),
-                          Text(
-                            '原聲錄音',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF3B82F6),
-                            ),
-                          ),
-                          if (st.familyNotes.isNotEmpty) ...[
-                            const SizedBox(width: 10),
-                            Icon(Icons.favorite_rounded, size: 12, color: cs.error),
-                            const SizedBox(width: 2),
-                            Text(
-                              '${st.familyNotes.length} 則筆記',
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                          const Spacer(),
-                          Text(
-                            '點擊聆聽全文 >',
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )),
-
-          const SizedBox(height: 6),
-
-          // 底部快捷按鈕：進入回憶錄畫廊與委託小豬提問
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MemoirsGalleryScreen(
-                          elderId: elderId,
-                          elderName: name,
-                          familyUserName: widget.userName,
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.menu_book_rounded, size: 16),
-                  label: Text(
-                    '翻閱自傳畫廊 (${stories.length})',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: cs.onSurface,
-                    side: BorderSide(color: cs.outline, width: 1.2),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MemoirsGalleryScreen(
-                          elderId: elderId,
-                          elderName: name,
-                          familyUserName: widget.userName,
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Text('🐷', style: TextStyle(fontSize: 14)),
-                  label: Text(
-                    '委託小豬提問',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF97316),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    elevation: 0,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(delay: 100.ms, duration: 350.ms);
+      100,
+    );
   }
 
   // ─── 4. AI 陪伴助理設定狀態與偏好 ───
 
   Widget _buildAiHelperCard() {
     if (widget.currentElder == null) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (_isLoadingAiProfile) {
-      return Container(
-        height: 100,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainer,
-          borderRadius: BorderRadius.circular(24),
+      return FamCard(
+        key: widget.aiHelperKey,
+        child: const FamStateBlock(
+          height: 68,
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         ),
-        child: Center(child: CircularProgressIndicator(color: cs.primary)),
       );
     }
 
@@ -1723,106 +1089,58 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     final verbosity = _elderProfileData?['ai_text_verbosity'] ?? 65;
     final interests = _elderProfileData?['interests'] ?? '懷舊老歌, 台股動態, 泡茶, 散步';
 
-    return Container(
-      key: widget.aiHelperKey,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outline, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.outline, width: 1.2),
-                ),
-                child: Icon(Icons.tune_rounded, color: cs.onPrimary, size: 22),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '長輩互動與對話偏好',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow('互動稱呼長輩', appellation),
-          _buildInfoRow('陪伴語氣風格', tone > 60 ? '活潑熱情 (85%)' : tone < 40 ? '沉穩客觀' : '溫和適中'),
-          _buildInfoRow('對話回覆篇幅', verbosity > 60 ? '詳細會聊天 (70%)' : verbosity < 40 ? '簡潔扼要' : '適度互動'),
-          _buildInfoRow('記憶與話題偏好', interests),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
+    return _fadeIn(
+      FamCard(
+        key: widget.aiHelperKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const FamSecHead(title: '長輩互動與對話偏好'),
+            const SizedBox(height: 10),
+            _buildInfoRow('互動稱呼長輩', appellation.toString(), first: true),
+            _buildInfoRow('陪伴語氣風格', tone > 60 ? '活潑熱情 (85%)' : tone < 40 ? '沉穩客觀' : '溫和適中'),
+            _buildInfoRow('對話回覆篇幅', verbosity > 60 ? '詳細會聊天 (70%)' : verbosity < 40 ? '簡潔扼要' : '適度互動'),
+            _buildInfoRow('記憶與話題偏好', interests.toString()),
+            const SizedBox(height: 12),
+            FamButton(
+              label: '調整互動對話設定',
+              kind: FamButtonKind.tonal,
+              height: 46,
               onPressed: _navigateToElderEdit,
-              icon: Icon(Icons.tune_rounded, size: 18, color: cs.onPrimary),
-              label: Text(
-                '調整互動對話設定',
-                style: GoogleFonts.notoSansTc(fontSize: 14, fontWeight: FontWeight.bold, color: cs.onPrimary),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: cs.primary,
-                foregroundColor: cs.onPrimary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                elevation: 1,
-                shadowColor: cs.primary.withValues(alpha: 0.35),
-              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ).animate().fadeIn(delay: 150.ms, duration: 350.ms);
+      150,
+    );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _buildInfoRow(String label, String value, {bool first = false}) {
+    final c = _c;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+    // 標籤與內容都在 Expanded 內（2:3），放大字級與長內容都可收縮（鐵律 #14）。
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        border: first ? null : Border(top: BorderSide(color: c.line)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
+          Expanded(
+            flex: 2,
             child: Text(
               label,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: cs.onSurfaceVariant,
-              ),
+              style: famText(c.text2, 14, weight: FontWeight.w600, height: 1.4),
             ),
           ),
+          const SizedBox(width: 10),
           Expanded(
+            flex: 3,
             child: Text(
               value,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: cs.onSurface,
-              ),
-              maxLines: 2,
+              style: famText(c.text, 14.5, weight: FontWeight.w700, height: 1.4),
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -1831,274 +1149,75 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     );
   }
 
-  // ─── 5. 設定項目群組 ───
+  // ─── 5. 設定項目（`.setrow` + `UbanSwitch`） ───
 
-  Widget _buildSettingsGroup(String groupTitle, List<Widget> items) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outline, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            groupTitle,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: cs.onSurface,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...items,
-        ],
-      ),
-    ).animate().fadeIn(delay: 200.ms, duration: 350.ms);
-  }
-
-  Widget _buildSwitchItem(
-    IconData icon,
+  Widget _switchRow(
     String title,
     String description,
     bool value,
     ValueChanged<bool> onChanged,
-    Color activeColor,
   ) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: activeColor.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-              border: Border.all(color: cs.outline, width: 1.2),
-            ),
-            child: Icon(icon, color: activeColor, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  description,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeTrackColor: activeColor.withValues(alpha: 0.4),
-            activeThumbColor: activeColor,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionItem(
-    IconData icon,
-    String title,
-    String description,
-    VoidCallback onTap,
-    Color themeColor, {
-    String? trailingBadge,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: themeColor.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-                border: Border.all(color: cs.outline, width: 1.2),
-              ),
-              child: Icon(icon, color: themeColor, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    description,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 12,
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (trailingBadge != null) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: cs.outline, width: 1.2),
-                ),
-                child: Text(
-                  trailingBadge,
-                  style: GoogleFonts.notoSansTc(fontSize: 11, fontWeight: FontWeight.bold, color: cs.onPrimary),
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
-            Icon(Icons.arrow_forward_ios_rounded, color: cs.outline, size: 16),
-          ],
-        ),
-      ),
+    return FamSetRow(
+      title: title,
+      subtitle: description,
+      trailing: UbanSwitch(value: value, onChanged: onChanged),
     );
   }
 
   // ─── 6. 未選擇長輩引導卡片 ───
 
   Widget _buildNoElderSelectedCard() {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = _c;
 
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outline, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: (isDark ? Colors.black : cs.outline).withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return FamCard(
+      padding: const EdgeInsets.all(22),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(Icons.person_outline, size: 48, color: cs.outline),
-          const SizedBox(height: 14),
           Text(
             '尚未選擇要關照的長輩',
-            style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.w700, color: cs.onSurface),
+            textAlign: TextAlign.center,
+            style: famText(c.text, 18, weight: FontWeight.w900),
           ),
           const SizedBox(height: 6),
           Text(
             '請在上方切換長輩，或點擊下方按鈕配對新的長輩端設備',
-            style: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
             textAlign: TextAlign.center,
+            style: famText(c.text2, 14, height: 1.5),
           ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CaregiverPairingScreen(
-                      familyId: widget.userId,
-                      familyName: _caregiverName,
-                    ),
+          const SizedBox(height: 18),
+          FamButton(
+            label: '配對新長輩裝置',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CaregiverPairingScreen(
+                    familyId: widget.userId,
+                    familyName: _caregiverName,
                   ),
-                ).then((_) {
-                  if (widget.onElderUpdated != null) {
-                    widget.onElderUpdated!();
-                  }
-                });
-              },
-              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-              label: const Text('配對新長輩裝置'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: cs.primary,
-                foregroundColor: cs.onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 1,
-                shadowColor: cs.primary.withValues(alpha: 0.35),
-              ),
-            ),
+              ).then((_) {
+                if (widget.onElderUpdated != null) {
+                  widget.onElderUpdated!();
+                }
+              });
+            },
           ),
         ],
       ),
     );
   }
 
-  // ─── 7. 系統資訊卡片 ───
+  // ─── 7. 系統資訊 ───
 
   Widget _buildSystemInfoCard() {
-    final cs = Theme.of(context).colorScheme;
+    final c = _c;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outline, width: 1.5),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Uban 智慧伴老照護系統',
-            style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.outline, fontWeight: FontWeight.w600),
-          ),
-          Text(
-            'v2.4.0 (Build 2026.08)',
-            style: GoogleFonts.inter(fontSize: 12, color: cs.outline),
-          ),
-        ],
-      ),
+    return Text(
+      'Uban 智慧伴老照護系統・v2.4.0 (Build 2026.08)',
+      textAlign: TextAlign.center,
+      style: famText(c.text3, 12, tabular: true, height: 1.5),
     );
   }
 }

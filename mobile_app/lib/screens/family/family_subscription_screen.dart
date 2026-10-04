@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
+import 'widgets/fam_data_ui.dart';
+import 'widgets/fam_ui.dart';
 
+/// 家屬端訂閱方案頁（`.prohero` + `.plan`）。
+///
+/// 2026-10 起外觀改家屬新設計；方案、價格、功能清單與讀取訂閱／記錄的 API 與改版前相同。
+/// 「立即升級」目前仍是空操作（購買流程在 `SubscriptionTestScreen`／RevenueCat，下一批處理）。
 class FamilySubscriptionScreen extends StatefulWidget {
   const FamilySubscriptionScreen({super.key});
 
@@ -21,9 +28,9 @@ class _FamilySubscriptionScreenState extends State<FamilySubscriptionScreen> {
   int? _userId;
 
   static const _tierMeta = {
-    'free':    {'display': '一般會員',  'price': 0,   'period': '',       'color': 0xFF9E9E9E, 'features': ['最多 2 台監視設備', '基礎 AI 對話', '標準電台頻道', '3 天活動紀錄']},
-    'gold':    {'display': '黃金會員',  'price': 199, 'period': '/ 月',    'color': 0xFFFF9800, 'features': ['最多 3 台監視設備', '無限 AI 對話', '完整的劇本編輯器', 'AI 深度月報', '優先處理權']},
-    'diamond': {'display': '鑽石會員',  'price': 499, 'period': '/ 月',    'color': 0xFF3F51B5, 'features': ['最多 5 台監視設備', '多達 3 台設備管理', '家屬端帳號無上限', '終身回憶錄雲端備份', '24/7 緊急救助連線']},
+    'free':    {'display': '一般會員',  'price': 0,   'period': '',       'features': ['最多 2 台監視設備', '基礎 AI 對話', '標準電台頻道', '3 天活動紀錄']},
+    'gold':    {'display': '黃金會員',  'price': 199, 'period': '/ 月',    'features': ['最多 3 台監視設備', '無限 AI 對話', '完整的劇本編輯器', 'AI 深度月報', '優先處理權']},
+    'diamond': {'display': '鑽石會員',  'price': 499, 'period': '/ 月',    'features': ['最多 5 台監視設備', '多達 3 台設備管理', '家屬端帳號無上限', '終身回憶錄雲端備份', '24/7 緊急救助連線']},
   };
 
   @override
@@ -45,6 +52,7 @@ class _FamilySubscriptionScreenState extends State<FamilySubscriptionScreen> {
 
         final tierData = results[0];
         if (tierData['status'] == 'success' || tierData['tier_level'] != null) {
+          if (!mounted) return;
           setState(() {
             _currentTier = (tierData['tier_level'] ?? 'free').toString();
             _devicesMax = (tierData['devices_max'] ?? 2) as int;
@@ -54,6 +62,7 @@ class _FamilySubscriptionScreenState extends State<FamilySubscriptionScreen> {
         final recordsData = results[1];
         if (recordsData['status'] == 'success' || recordsData['records'] != null) {
           final list = (recordsData['records'] as List<dynamic>?) ?? [];
+          if (!mounted) return;
           setState(() {
             _records = list.map((r) => Map<String, dynamic>.from(r as Map)).toList();
           });
@@ -62,146 +71,130 @@ class _FamilySubscriptionScreenState extends State<FamilySubscriptionScreen> {
     } catch (e) {
       debugPrint('⚠️ [Subscription] 載入訂閱資料失敗: $e');
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
+
   @override
   Widget build(BuildContext context) {
+    // 2026-10：push 出來的家屬頁要自己掛家屬主題；Builder 讓下方 context 位於主題之內。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
+    final c = _c;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          '訂閱方案',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
+      backgroundColor: c.bg,
+      appBar: famSubBar(context, title: '訂閱方案'),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── 目前層級 header ──
+                  // ── 目前層級 `.prohero` ──
                   _buildCurrentTierBanner(),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 22),
                   Text(
                     '選擇最適合您家人的方案',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
+                    style: famText(c.text, 20, weight: FontWeight.w900, height: 1.3),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     '解鎖 AI 深度洞察，給予長輩最周全的陪伴',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
+                    style: famText(c.text2, 14, height: 1.5),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 14),
                   // ── 方案卡片 ──
                   ..._buildPlanCards(),
-                  const SizedBox(height: 32),
                   // ── 歷史記錄 ──
                   if (_records.isNotEmpty) ...[
-                    Text(
-                      '訂閱記錄',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ..._records.map((r) => _buildRecordRow(r)),
+                    const SizedBox(height: 10),
+                    _buildRecords(),
                   ],
-                  const SizedBox(height: 32),
                 ],
               ),
             ),
     );
   }
 
-  // ── 目前在會員層級橫幅 ──
+  Map<String, Object> get _currentMeta =>
+      _tierMeta[_currentTier] ?? _tierMeta['free']!;
+
+  // ── 目前在會員層級橫幅（`.prohero`：flat brandContainer，不用漸層） ──
   Widget _buildCurrentTierBanner() {
-    final meta = _tierMeta[_currentTier]!;
-    final color = Color(meta["color"] as int);
+    final c = _c;
+    final meta = _currentMeta;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color.withValues(alpha: 0.9), color.withValues(alpha: 0.7)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        color: c.brandContainer,
+        borderRadius: BorderRadius.circular(28),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '目前方案',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              color: Colors.white70,
-            ),
-          ),
+          Text('目前方案', style: famText(c.text2, 13, weight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(
-            meta["display"] as String,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+            meta['display'] as String,
+            style: famText(c.brandStrong, 24, weight: FontWeight.w900, height: 1.3),
           ),
           const SizedBox(height: 8),
           Text(
             '最多 $_devicesMax 台監視設備',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 14,
-              color: Colors.white,
-            ),
+            style: famText(c.text2, 14.5, height: 1.6),
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2);
+    ).animate().fadeIn(duration: 400.ms);
   }
 
   // ── 三個方案卡片 ──
   List<Widget> _buildPlanCards() {
-    return _tierMeta.entries.map((entry) {
+    final out = <Widget>[];
+    for (final entry in _tierMeta.entries) {
       final key = entry.key;
       final meta = entry.value;
       final isCurrent = key == _currentTier;
       final isPopular = key == 'gold';
+      final price = meta['price'] as int;
 
-      return _buildPlanCard(
-        tierKey: key,
-        title: meta["display"] as String,
-        price: meta["price"] as int == 0 ? '免費' : 'NT\$ ${meta["price"]}',
-        period: meta["period"] as String,
-        subtitle: _tierSubtitle(key),
-        color: Color(meta["color"] as int),
-        features: (meta["features"] as List<String>),
-        isPopular: isPopular,
-        isCurrent: isCurrent,
+      out.add(const SizedBox(height: 10));
+      out.add(
+        FamPlanCard(
+          title: meta['display'] as String,
+          price: price == 0 ? '免費' : 'NT\$ $price',
+          period: (meta['period'] as String).replaceAll('/ 月', '／月'),
+          subtitle: _tierSubtitle(key),
+          features: (meta['features'] as List<String>),
+          selected: isCurrent,
+          badge: isCurrent ? '目前方案' : (isPopular ? '熱門推薦' : null),
+          badgeTone: isCurrent ? FamTone.brand : FamTone.info,
+          action: FamButton(
+            label: isCurrent ? '當前方案' : '立即升級',
+            kind: isCurrent ? FamButtonKind.outline : FamButtonKind.filled,
+            onPressed: isCurrent
+                ? null
+                : () {
+                    // TODO: 整合 RevenueCat Purchases SDK 進行購買流程
+                  },
+          ),
+        ).animate().fadeIn(duration: 400.ms),
       );
-    }).toList();
+    }
+    return out;
   }
 
   String _tierSubtitle(String tierKey) {
@@ -217,210 +210,53 @@ class _FamilySubscriptionScreenState extends State<FamilySubscriptionScreen> {
     }
   }
 
-  Widget _buildPlanCard({
-    required String tierKey,
-    required String title,
-    required String price,
-    String period = '',
-    required String subtitle,
-    required Color color,
-    required List<String> features,
-    bool isPopular = false,
-    bool isCurrent = false,
-  }) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isPopular ? color : Colors.grey.withValues(alpha: 0.2),
-          width: isPopular ? 2 : 1,
-        ),
-        boxShadow: [
-          if (isPopular)
-            BoxShadow(
-              color: color.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-        ],
-      ),
-      child: Stack(
+  Widget _buildRecords() {
+    return FamCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (isPopular)
-            Positioned(
-              right: 0,
-              top: 0,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: const BorderRadius.only(
-                    topRight: Radius.circular(22),
-                    bottomLeft: Radius.circular(22),
-                  ),
-                ),
-                child: Text(
-                  '熱門推薦',
-                  style: GoogleFonts.notoSansTc(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      price,
-                      style: GoogleFonts.inter(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    if (period.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4, left: 4),
-                        child: Text(
-                          period,
-                          style: GoogleFonts.notoSansTc(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const Divider(height: 32),
-                ...features.map(
-                  (f) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Icon(Icons.check_circle, color: color, size: 18),
-                        const SizedBox(width: 12),
-                        // ★ 2026-08-10 第二十輪（需求 2）：方案特色文案長度不一，
-                        //   未包 Expanded 時長文案會整條往右溢位。
-                        Expanded(
-                          child: Text(
-                            f,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: isCurrent
-                        ? null
-                        : () {
-                            // TODO: 整合 RevenueCat Purchases SDK 進行購買流程
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isCurrent ? Colors.grey[100] : color,
-                      foregroundColor: isCurrent ? Colors.grey : Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      side: isCurrent
-                          ? BorderSide(color: Colors.grey.shade300)
-                          : null,
-                    ),
-                    child: Text(
-                      isCurrent ? '當前方案' : '立即升級',
-                      style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const FamSecHead(title: '訂閱記錄'),
+          const SizedBox(height: 6),
+          for (var i = 0; i < _records.length; i++)
+            _buildRecordRow(_records[i], first: i == 0),
         ],
       ),
-    ).animate().fadeIn(duration: 500.ms).slideX(begin: 0.1);
+    );
   }
 
   // ── 一筆歷史記錄列 ──
-  Widget _buildRecordRow(Map<String, dynamic> record) {
+  Widget _buildRecordRow(Map<String, dynamic> record, {bool first = false}) {
+    final c = _c;
     final tier = record['tier_level'] ?? 'free';
     final start = record['start_date'] ?? '';
     final end = record['end_date'] ?? '';
     final meta = _tierMeta[tier is String ? tier : 'free'] ?? _tierMeta['free']!;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
+        border: first ? null : Border(top: BorderSide(color: c.line)),
       ),
       child: Row(
         children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: Color(meta["color"] as int),
-              shape: BoxShape.circle,
-            ),
-          ),
+          FamDot(color: tier == 'free' ? c.text3 : c.brand, size: 10),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  meta["display"] as String,
-                  style: GoogleFonts.notoSansTc(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
+                  meta['display'] as String,
+                  style: famText(c.text, 15, weight: FontWeight.w700),
                 ),
                 if (start.toString().isNotEmpty)
                   Text(
                     '${start.toString()} ~ ${end.toString()}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    style: famText(c.text2, 12.5, tabular: true, height: 1.4),
                   ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: Colors.grey[400]),
         ],
       ),
     );

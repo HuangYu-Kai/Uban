@@ -1,10 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
+import 'widgets/fam_data_ui.dart';
+import 'widgets/fam_interaction_ui.dart';
+import 'widgets/fam_ui.dart';
+import 'widgets/gps_ui.dart';
 
 /// 📊 健康趨勢中心（第四十九輪：接上真實資料，拿掉 `_generateMockData()`）
 ///
@@ -18,6 +24,9 @@ import '../../services/api_service.dart';
 ///
 /// 載入中／有資料／沒有資料／請求失敗 四種狀態在畫面上必須長得不一樣，
 /// 見 `_SectionStatus`。
+///
+/// 2026-10 起外觀改家屬新設計：`UbanSegmented` 切換步數／體重／身高、`FamFilterChip` 切換
+/// 週／月／半年／年、`fl_chart` 配色走 [UbanColors]。資料與 API 呼叫與改版前完全相同。
 class HealthTrendsScreen extends StatefulWidget {
   final String elderName;
   final int? elderId;
@@ -39,6 +48,15 @@ enum _SectionStatus { loading, hasData, empty, error }
 class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
   TimeRange _selectedTimeRange = TimeRange.month;
   int? _familyId;
+
+  // 0 步數／1 體重／2 身高（純畫面選取，不影響載入）。
+  int _metric = 0;
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
+  // 開 sheet／日期選擇器／SnackBar 用它，才吃得到家屬色票；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   _SectionStatus _stepsStatus = _SectionStatus.loading;
   List<Map<String, dynamic>> _stepsSeries = []; // [{date: DateTime, steps: int?}]
@@ -191,41 +209,46 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     _loadAll();
   }
 
+  // ── build ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // 2026-10：push 出來的家屬頁要自己掛家屬主題；Builder 讓下方 context 位於主題之內。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
+    final c = _c;
+    // ★ 第五十輪：本畫面原本沒有返回鍵，一旦用 Navigator.push 導覽進來就是死路；
+    // famSubBar 內建返回鈕（預設 maybePop）。
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        // ★ 第五十輪：本畫面原本 automaticallyImplyLeading: false 且沒有自訂
-        // leading，一旦用 Navigator.push 導覽進來就沒有返回鍵，是死路。
-        // 比照 emotion_timeline_screen.dart 補上明確的返回按鈕。
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          '健康趨勢',
-          style: GoogleFonts.notoSansTc(
-            color: const Color(0xFF1E293B),
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        centerTitle: true,
-      ),
+      backgroundColor: c.bg,
+      appBar: famSubBar(context, title: '健康趨勢'),
       body: RefreshIndicator(
         onRefresh: _loadAll,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              UbanSegmented(
+                small: true,
+                labels: const ['步數', '體重', '身高'],
+                index: _metric,
+                onChanged: (i) {
+                  HapticFeedback.lightImpact();
+                  setState(() => _metric = i);
+                },
+              ),
+              const SizedBox(height: 12),
               _buildTimeRangeSelector(),
-              _buildStepsSection(),
-              _buildBodyMetricsSection(),
+              const SizedBox(height: 12),
+              if (_metric == 0) ..._buildStepsSection() else ..._buildBodySection(),
+              const SizedBox(height: 12),
               _buildUnavailableVitalsSection(),
-              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -233,130 +256,224 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     );
   }
 
+  /// 週／月／半年／年（`.fchip`）。
   Widget _buildTimeRangeSelector() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        children: TimeRange.values.map((range) {
-          final isSelected = range == _selectedTimeRange;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => _changeTimeRange(range),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _getTimeRangeLabel(range),
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: isSelected ? Colors.white : const Color(0xFF64748B),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+    return FamFilterRow(
+      children: [
+        for (final range in TimeRange.values)
+          FamFilterChip(
+            label: _getTimeRangeLabel(range),
+            selected: range == _selectedTimeRange,
+            onTap: () => _changeTimeRange(range),
+          ),
+      ],
+    );
   }
 
-  // ── 卡片外殼（載入中／錯誤／空狀態共用） ──────────────────────────────
-  Widget _cardShell({required String title, Widget? trailing, required Widget child}) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+  // ── 卡片外殼與狀態元件 ────────────────────────────────────────────────
+  Widget _cardShell({
+    required String title,
+    required Color swatch,
+    String? unit,
+    required Widget child,
+  }) {
+    return FamCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
-                  title,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-              ),
-              if (trailing != null) trailing,
-            ],
-          ),
-          const SizedBox(height: 16),
+          // 標題與單位同列，標題可收縮（第 14 條）。
+          GpsChartHead(title: title, unit: unit, swatch: swatch),
+          const SizedBox(height: 14),
           child,
         ],
       ),
     );
   }
 
-  Widget _loadingBox() => const SizedBox(
+  Widget _loadingBox() => const FamStateBlock(
         height: 160,
-        child: Center(child: CircularProgressIndicator()),
+        child: CircularProgressIndicator(),
       );
 
-  Widget _emptyBox(String message) => SizedBox(
+  Widget _emptyBox(String message) => FamStateBlock(
         height: 160,
-        child: Center(
-          child: Text(
-            message,
-            style: GoogleFonts.notoSansTc(color: const Color(0xFF64748B), fontSize: 14),
-          ),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: famText(_c.text2, 14, height: 1.5),
         ),
       );
 
-  /// 請求失敗的狀態必須長得跟「沒有資料」不一樣——紅色系＋可重試按鈕。
-  Widget _errorBox(String message) => SizedBox(
+  /// 請求失敗的狀態必須長得跟「沒有資料」不一樣——danger 色文字＋可重試按鈕。
+  Widget _errorBox(String message) => FamStateBlock(
         height: 160,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 28),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.notoSansTc(color: const Color(0xFFEF4444), fontSize: 13),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: famText(_c.danger, 14, weight: FontWeight.w700, height: 1.5),
+            ),
+            const SizedBox(height: 10),
+            FamButton(
+              label: '重試',
+              kind: FamButtonKind.tonal,
+              expand: false,
+              height: 44,
+              onPressed: _loadAll,
+            ),
+          ],
+        ),
+      );
+
+  Widget _sumRow(List<Widget> cells) {
+    // 格子用 Expanded 平分；IntrinsicHeight 讓三格等高（標籤可能一行或兩行）。
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: i < cells.length ? cells[i] : const SizedBox.shrink()),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── 圖表共用 ────────────────────────────────────────────────────────
+  static String _axisLabel(double v) {
+    if (v.abs() >= 10000) return '${(v / 1000).toStringAsFixed(0)}k';
+    if (v.abs() >= 1000) return '${(v / 1000).toStringAsFixed(1)}k';
+    return v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+  }
+
+  static String _thousands(num v) {
+    final s = v.round().toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+      b.write(s[i]);
+    }
+    return b.toString();
+  }
+
+  LineChartBarData _lineBar(List<FlSpot> spots, Color color) {
+    final c = _c;
+    return LineChartBarData(
+      spots: spots,
+      isCurved: false,
+      color: color,
+      barWidth: 3,
+      dotData: FlDotData(
+        show: spots.length <= 60,
+        getDotPainter: (s, p, b, i) => FlDotCirclePainter(
+          radius: 3,
+          color: color,
+          strokeWidth: 2,
+          strokeColor: c.surface,
+        ),
+      ),
+      belowBarData: BarAreaData(show: true, color: color.withValues(alpha: 0.10)),
+    );
+  }
+
+  /// 折線圖外框：[dates] 與資料點的 x（索引）一一對應；[refY] 有值時畫 warm 虛線。
+  Widget _lineChart({
+    required List<LineChartBarData> bars,
+    required List<DateTime> dates,
+    required double minY,
+    required double maxY,
+    required String Function(double) tipText,
+    required double leftReserved,
+    double? refY,
+  }) {
+    final c = _c;
+    final n = dates.length;
+    final labelEvery = (n / 5).ceil().clamp(1, n == 0 ? 1 : n);
+    return SizedBox(
+      height: 220,
+      child: LineChart(
+        LineChartData(
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (v) => FlLine(color: c.line, strokeWidth: 1),
+          ),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: leftReserved,
+                getTitlesWidget: (value, meta) => Text(
+                  _axisLabel(value),
+                  style: famText(c.text3, 11, tabular: true),
+                ),
               ),
-              const SizedBox(height: 10),
-              TextButton.icon(
-                onPressed: _loadAll,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: Text('重試', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                interval: labelEvery.toDouble(),
+                getTitlesWidget: (value, meta) {
+                  final idx = value.toInt();
+                  if (idx < 0 || idx >= n) return const SizedBox();
+                  final d = dates[idx];
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '${d.month}/${d.day}',
+                      style: famText(c.text3, 11, tabular: true),
+                    ),
+                  );
+                },
               ),
+            ),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: false),
+          minX: 0,
+          maxX: n <= 1 ? 1 : (n - 1).toDouble(),
+          minY: minY,
+          maxY: maxY,
+          lineBarsData: bars,
+          extraLinesData: ExtraLinesData(
+            horizontalLines: [
+              if (refY != null)
+                HorizontalLine(
+                  y: refY,
+                  color: c.text3,
+                  strokeWidth: 1.5,
+                  dashArray: const [6, 4],
+                ),
             ],
           ),
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              // 提示泡泡：text 底＋surface 字，淺深色都有足夠對比。
+              getTooltipColor: (spot) => c.text,
+              fitInsideHorizontally: true,
+              getTooltipItems: (spots) => spots.map((s) {
+                final idx = s.x.toInt();
+                final d = idx >= 0 && idx < n ? dates[idx] : null;
+                return LineTooltipItem(
+                  '${tipText(s.y)}${d != null ? '\n${d.month}/${d.day}' : ''}',
+                  famText(c.surface, 12, weight: FontWeight.w700),
+                );
+              }).toList(),
+            ),
+          ),
         ),
-      );
+      ),
+    );
+  }
 
   // ── 步數 ────────────────────────────────────────────────────────────
-  Widget _buildStepsSection() {
+  List<Widget> _buildStepsSection() {
+    final c = _c;
     Widget content;
     switch (_stepsStatus) {
       case _SectionStatus.loading:
@@ -372,12 +489,28 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
         content = _buildStepsChart();
         break;
     }
-    return _cardShell(title: '步數趨勢', child: content)
-        .animate()
-        .fadeIn(delay: 100.ms, duration: 400.ms);
+    final values = _stepsSeries
+        .map((e) => e['steps'] as int?)
+        .whereType<int>()
+        .toList();
+    return [
+      _cardShell(title: '步數趨勢', swatch: c.info, unit: '步', child: content),
+      if (_stepsStatus == _SectionStatus.hasData && values.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _sumRow([
+          GpsSumCell(
+              label: '${_getTimeRangeLabel(_selectedTimeRange)}平均',
+              value: _thousands(values.fold<int>(0, (a, b) => a + b) / values.length),
+              unit: '步'),
+          GpsSumCell(label: '最多一天', value: _thousands(values.reduce(math.max)), unit: '步'),
+          GpsSumCell(label: '有紀錄', value: '${values.length}', unit: '天'),
+        ]),
+      ],
+    ];
   }
 
   Widget _buildStepsChart() {
+    final c = _c;
     final n = _stepsSeries.length;
     final maxSteps = _stepsSeries
         .map((e) => (e['steps'] as int?) ?? 0)
@@ -392,96 +525,62 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
       final steps = _stepsSeries[i]['steps'] as int?;
       if (steps == null) {
         if (current.isNotEmpty) {
-          segments.add(_stepsLineData(current));
+          segments.add(_lineBar(current, c.info));
           current = [];
         }
       } else {
         current.add(FlSpot(i.toDouble(), steps.toDouble()));
       }
     }
-    if (current.isNotEmpty) segments.add(_stepsLineData(current));
+    if (current.isNotEmpty) segments.add(_lineBar(current, c.info));
 
-    final labelEvery = (n / 6).ceil().clamp(1, n == 0 ? 1 : n);
+    // 虛線＝這段期間（有紀錄的日子）的平均步數；系統沒有「步數目標」資料，不假造目標值。
+    final recorded = _stepsSeries.map((e) => e['steps'] as int?).whereType<int>().toList();
+    final avg = recorded.isEmpty ? null : recorded.fold<int>(0, (a, b) => a + b) / recorded.length;
 
-    return SizedBox(
-      height: 220,
-      child: LineChart(
-        LineChartData(
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            getDrawingHorizontalLine: (v) => const FlLine(color: Color(0xFFE2E8F0), strokeWidth: 1),
-          ),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 44,
-                getTitlesWidget: (value, meta) => Text(
-                  value.toInt().toString(),
-                  style: GoogleFonts.notoSansTc(fontSize: 10, color: const Color(0xFF64748B)),
-                ),
-              ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 28,
-                interval: labelEvery.toDouble(),
-                getTitlesWidget: (value, meta) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= n) return const SizedBox();
-                  final d = _stepsSeries[idx]['date'] as DateTime;
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      '${d.month}/${d.day}',
-                      style: GoogleFonts.notoSansTc(fontSize: 10, color: const Color(0xFF64748B)),
-                    ),
-                  );
-                },
-              ),
-            ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          borderData: FlBorderData(show: false),
-          minX: 0,
-          maxX: n <= 1 ? 1 : (n - 1).toDouble(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _lineChart(
+          bars: segments,
+          dates: [for (final e in _stepsSeries) e['date'] as DateTime],
           minY: 0,
           maxY: maxY,
-          lineBarsData: segments,
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (spot) => Colors.white,
-              getTooltipItems: (spots) => spots.map((s) {
-                final idx = s.x.toInt();
-                final d = idx >= 0 && idx < n ? _stepsSeries[idx]['date'] as DateTime : null;
-                return LineTooltipItem(
-                  '${s.y.toInt()} 步${d != null ? '\n${d.month}/${d.day}' : ''}',
-                  GoogleFonts.notoSansTc(color: const Color(0xFF10B981), fontWeight: FontWeight.w700, fontSize: 12),
-                );
-              }).toList(),
-            ),
-          ),
+          tipText: (y) => '${y.toInt()} 步',
+          leftReserved: 40,
+          refY: avg,
         ),
-      ),
-    );
-  }
-
-  LineChartBarData _stepsLineData(List<FlSpot> spots) {
-    return LineChartBarData(
-      spots: spots,
-      isCurved: false,
-      color: const Color(0xFF10B981),
-      barWidth: 3,
-      dotData: FlDotData(show: spots.length <= 60),
-      belowBarData: BarAreaData(show: true, color: const Color(0xFF10B981).withValues(alpha: 0.1)),
+        if (avg != null) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) const SizedBox(width: 2),
+                Container(width: 5, height: 2, color: c.text3),
+              ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '虛線：這段期間平均 ${_thousands(avg)} 步',
+                  style: famText(c.text2, 12.5),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 
   // ── 體重／身高 ──────────────────────────────────────────────────────
-  Widget _buildBodyMetricsSection() {
+  List<Widget> _buildBodySection() {
+    final c = _c;
+    final isWeight = _metric == 1;
+    final key = isWeight ? 'weight_kg' : 'height_cm';
+    final title = isWeight ? '體重趨勢' : '身高紀錄';
+    final unit = isWeight ? 'kg' : 'cm';
+    final color = isWeight ? c.brandFill : c.info;
+
     Widget content;
     switch (_bodyStatus) {
       case _SectionStatus.loading:
@@ -491,165 +590,95 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
         content = _errorBox(_bodyErrorMsg);
         break;
       case _SectionStatus.empty:
-        content = _emptyBox('還沒有體重／身高紀錄，點右上角新增一筆');
+        content = _emptyBox('還沒有體重／身高紀錄，點下方「新增紀錄」記一筆');
         break;
       case _SectionStatus.hasData:
-        content = _buildBodyMetricsContent();
+        content = _buildBodyMetricsContent(key, unit, color);
         break;
     }
-    return _cardShell(
-      title: '體重／身高（家屬手動紀錄）',
-      trailing: TextButton.icon(
-        onPressed: _openAddBodyMetricsSheet,
-        icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-        label: Text('新增紀錄', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700, fontSize: 13)),
+
+    final points = _bodySeries.where((e) => e[key] != null).toList();
+    final values = points.map((e) => e[key] as double).toList();
+    String fmt(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+
+    return [
+      _cardShell(
+        title: '$title（家屬手動紀錄）',
+        swatch: color,
+        unit: unit,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            content,
+            const SizedBox(height: 14),
+            FamButton(
+              label: '新增紀錄',
+              kind: FamButtonKind.tonal,
+              height: 46,
+              onPressed: _openAddBodyMetricsSheet,
+            ),
+          ],
+        ),
       ),
-      child: content,
-    ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
+      if (_bodyStatus == _SectionStatus.hasData && values.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _sumRow([
+          GpsSumCell(label: '最新', value: fmt(values.last), unit: unit),
+          GpsSumCell(label: '最高', value: fmt(values.reduce(math.max)), unit: unit),
+          GpsSumCell(label: '最低', value: fmt(values.reduce(math.min)), unit: unit),
+        ]),
+      ],
+    ];
   }
 
-  Widget _buildBodyMetricsContent() {
-    final weightPoints = _bodySeries.where((e) => e['weight_kg'] != null).toList();
-    final latestHeight = _bodySeries.lastWhere(
-      (e) => e['height_cm'] != null,
-      orElse: () => const {},
-    );
+  Widget _buildBodyMetricsContent(String key, String unit, Color color) {
+    final c = _c;
+    final points = _bodySeries.where((e) => e[key] != null).toList();
+    final label = key == 'weight_kg' ? '體重' : '身高';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (weightPoints.length >= 2)
-          SizedBox(height: 180, child: _buildWeightChart(weightPoints))
-        else if (weightPoints.length == 1)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '最新體重：${weightPoints.first['weight_kg']} kg（${_fmtDate(weightPoints.first['date'])}）\n再多記錄一筆才畫得出趨勢',
-              style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFF475569), height: 1.6),
-            ),
-          )
-        else
-          Text(
-            '目前沒有體重紀錄',
-            style: GoogleFonts.notoSansTc(fontSize: 13, color: const Color(0xFF64748B)),
-          ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.height_rounded, size: 18, color: Color(0xFF8B5CF6)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  latestHeight.isEmpty
-                      ? '身高：尚無紀錄'
-                      : '身高：${latestHeight['height_cm']} cm（${_fmtDate(latestHeight['date'])} 記錄）',
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
-                ),
-              ),
-            ],
-          ),
+    if (points.length >= 2) {
+      final values = points.map((e) => e[key] as double).toList();
+      final minV = values.reduce(math.min);
+      final maxV = values.reduce(math.max);
+      final pad = ((maxV - minV) * 0.2).clamp(1.0, 10.0);
+      final spots = List.generate(points.length, (i) => FlSpot(i.toDouble(), values[i]));
+      return _lineChart(
+        bars: [_lineBar(spots, color)],
+        dates: [for (final e in points) e['date'] as DateTime],
+        minY: (minV - pad).clamp(0, double.infinity),
+        maxY: maxV + pad,
+        tipText: (y) => '${y.toStringAsFixed(1)} $unit',
+        leftReserved: 36,
+      );
+    }
+    if (points.length == 1) {
+      return FamStateBlock(
+        height: 120,
+        child: Text(
+          '最新$label：${points.first[key]} $unit（${_fmtDate(points.first['date'])}）\n再多記錄一筆才畫得出趨勢',
+          textAlign: TextAlign.center,
+          style: famText(c.text2, 14, height: 1.6),
         ),
-      ],
+      );
+    }
+    return FamStateBlock(
+      height: 120,
+      child: Text(
+        '目前沒有$label紀錄',
+        textAlign: TextAlign.center,
+        style: famText(c.text2, 14, height: 1.5),
+      ),
     );
   }
 
   String _fmtDate(DateTime? d) => d == null ? '' : '${d.year}/${d.month}/${d.day}';
 
-  Widget _buildWeightChart(List<Map<String, dynamic>> points) {
-    final values = points.map((e) => e['weight_kg'] as double).toList();
-    final minV = values.reduce((a, b) => a < b ? a : b);
-    final maxV = values.reduce((a, b) => a > b ? a : b);
-    final pad = ((maxV - minV) * 0.2).clamp(1.0, 10.0);
-
-    final spots = List.generate(
-      points.length,
-      (i) => FlSpot(i.toDouble(), points[i]['weight_kg'] as double),
-    );
-
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          getDrawingHorizontalLine: (v) => const FlLine(color: Color(0xFFE2E8F0), strokeWidth: 1),
-        ),
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 40,
-              getTitlesWidget: (value, meta) => Text(
-                value.toStringAsFixed(0),
-                style: GoogleFonts.notoSansTc(fontSize: 10, color: const Color(0xFF64748B)),
-              ),
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              getTitlesWidget: (value, meta) {
-                final idx = value.toInt();
-                if (idx < 0 || idx >= points.length) return const SizedBox();
-                final d = points[idx]['date'] as DateTime;
-                return Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    '${d.month}/${d.day}',
-                    style: GoogleFonts.notoSansTc(fontSize: 10, color: const Color(0xFF64748B)),
-                  ),
-                );
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        borderData: FlBorderData(show: false),
-        minX: 0,
-        maxX: points.length <= 1 ? 1 : (points.length - 1).toDouble(),
-        minY: (minV - pad).clamp(0, double.infinity),
-        maxY: maxV + pad,
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: false,
-            color: const Color(0xFF8B5CF6),
-            barWidth: 3,
-            dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(show: true, color: const Color(0xFF8B5CF6).withValues(alpha: 0.1)),
-          ),
-        ],
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (spot) => Colors.white,
-            getTooltipItems: (spots) => spots.map((s) {
-              final idx = s.x.toInt();
-              final d = idx >= 0 && idx < points.length ? points[idx]['date'] as DateTime : null;
-              return LineTooltipItem(
-                '${s.y.toStringAsFixed(1)} kg${d != null ? '\n${d.month}/${d.day}' : ''}',
-                GoogleFonts.notoSansTc(color: const Color(0xFF8B5CF6), fontWeight: FontWeight.w700, fontSize: 12),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _openAddBodyMetricsSheet() async {
     if (widget.elderId == null) return;
     final familyId = _familyId;
     if (familyId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('找不到您的家屬帳號，請重新登入後再試', style: GoogleFonts.notoSansTc())),
+      ScaffoldMessenger.of(_themeCtx).showSnackBar(
+        famSnackBar(_themeCtx, '找不到您的家屬帳號，請重新登入後再試', error: true),
       );
       return;
     }
@@ -687,193 +716,135 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     bool submitting = submittingInit;
     String? errorText = errorInit;
 
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (sheetContext) {
-        return StatefulBuilder(builder: (sheetContext, setSheetState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
-              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+    // showUbanSheet 走 showModalBottomSheet，會沿用傳入 context 的 Theme（家屬主題）。
+    await showUbanSheet<void>(_themeCtx, (sheetContext) {
+      return StatefulBuilder(builder: (sheetContext, setSheetState) {
+        final c = UbanColors.of(sheetContext);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            famDialogTitle(c, '新增體重／身高紀錄'),
+            const SizedBox(height: 4),
+            Text('至少填寫一項，家屬手動記錄的數值',
+                style: famText(c.text2, 13, height: 1.5)),
+            const SizedBox(height: 16),
+            UbanTextField(
+              label: '體重 (kg)',
+              controller: weightCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('新增體重／身高紀錄',
-                    style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF1E293B))),
-                const SizedBox(height: 4),
-                Text('至少填寫一項，家屬手動記錄的數值',
-                    style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B))),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: weightCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: '體重 (kg)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: heightCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: '身高 (cm)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: sheetContext,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) {
-                      setSheetState(() => selectedDate = picked);
-                    }
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: '量測日期',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(_fmtDate(selectedDate)),
-                  ),
-                ),
-                if (errorText != null) ...[
-                  const SizedBox(height: 10),
-                  Text(errorText!, style: GoogleFonts.notoSansTc(color: const Color(0xFFEF4444), fontSize: 13)),
-                ],
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3B82F6),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: submitting
-                        ? null
-                        : () async {
-                            final w = double.tryParse(weightCtrl.text.trim());
-                            final h = double.tryParse(heightCtrl.text.trim());
-                            if (w == null && h == null) {
-                              setSheetState(() => errorText = '請至少填寫體重或身高其中一項');
-                              return;
-                            }
-                            setSheetState(() {
-                              submitting = true;
-                              errorText = null;
-                            });
-                            // 裝置本地日期字串，不能用伺服器時間——後端刻意要求
-                            // 呼叫端自己算好這個值，理由見 family_insight_api.dart。
-                            final metricDate =
-                                '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
-                            final resp = await ApiService.submitBodyMetrics(
-                              elderId: widget.elderId.toString(),
-                              familyId: familyId,
-                              metricDate: metricDate,
-                              weightKg: w,
-                              heightCm: h,
-                            );
-                            if (resp['status'] == 'success') {
-                              if (sheetContext.mounted) Navigator.pop(sheetContext);
-                              await _loadAll();
-                            } else {
-                              setSheetState(() {
-                                submitting = false;
-                                errorText = (resp['message'] ?? resp['error'] ?? '儲存失敗，請重試').toString();
-                              });
-                            }
-                          },
-                    child: submitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : Text('儲存', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700, color: Colors.white)),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            UbanTextField(
+              label: '身高 (cm)',
+              controller: heightCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
-          );
-        });
-      },
-    );
+            const SizedBox(height: 12),
+            Text('量測日期',
+                style: famText(c.text2, 15, weight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: sheetContext,
+                  initialDate: selectedDate,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now(),
+                );
+                if (picked != null) {
+                  setSheetState(() => selectedDate = picked);
+                }
+              },
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 52),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                alignment: Alignment.centerLeft,
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: c.line, width: 1.5),
+                ),
+                child: Text(_fmtDate(selectedDate),
+                    style: famText(c.text, 16, weight: FontWeight.w600, tabular: true)),
+              ),
+            ),
+            if (errorText != null) ...[
+              const SizedBox(height: 10),
+              FamNote(text: errorText!, tone: FamTone.danger),
+            ],
+            const SizedBox(height: 20),
+            FamButton(
+              label: '儲存',
+              loading: submitting,
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      final w = double.tryParse(weightCtrl.text.trim());
+                      final h = double.tryParse(heightCtrl.text.trim());
+                      if (w == null && h == null) {
+                        setSheetState(() => errorText = '請至少填寫體重或身高其中一項');
+                        return;
+                      }
+                      setSheetState(() {
+                        submitting = true;
+                        errorText = null;
+                      });
+                      // 裝置本地日期字串，不能用伺服器時間——後端刻意要求
+                      // 呼叫端自己算好這個值，理由見 family_insight_api.dart。
+                      final metricDate =
+                          '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+                      final resp = await ApiService.submitBodyMetrics(
+                        elderId: widget.elderId.toString(),
+                        familyId: familyId,
+                        metricDate: metricDate,
+                        weightKg: w,
+                        heightCm: h,
+                      );
+                      if (resp['status'] == 'success') {
+                        if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        await _loadAll();
+                      } else {
+                        setSheetState(() {
+                          submitting = false;
+                          errorText = (resp['message'] ?? resp['error'] ?? '儲存失敗，請重試').toString();
+                        });
+                      }
+                    },
+            ),
+          ],
+        );
+      });
+    });
   }
 
   // ── 需要穿戴裝置才能偵測的指標：保留版位，固定顯示 -- ─────────────────
   Widget _buildUnavailableVitalsSection() {
-    final metrics = [
-      {'icon': Icons.favorite, 'label': '心率', 'unit': 'bpm', 'color': const Color(0xFFEF4444)},
-      {'icon': Icons.bloodtype, 'label': '血壓', 'unit': 'mmHg', 'color': const Color(0xFF3B82F6)},
-      {'icon': Icons.opacity, 'label': '血糖', 'unit': 'mg/dL', 'color': const Color(0xFFF59E0B)},
+    final c = _c;
+    const metrics = [
+      ('心率', 'bpm'),
+      ('血壓', 'mmHg'),
+      ('血糖', 'mg/dL'),
     ];
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
+    return FamCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '需穿戴裝置偵測的指標',
-            style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF1E293B)),
-          ),
-          const SizedBox(height: 4),
+          const FamSecHead(title: '需穿戴裝置偵測的指標'),
+          const SizedBox(height: 6),
           Text(
             '目前系統沒有連接任何穿戴裝置，以下數值暫時無法偵測，日後接上裝置就會自動顯示',
-            style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B), height: 1.5),
+            style: famText(c.text2, 13, height: 1.5),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: metrics.map((m) {
-              return Expanded(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(m['icon'] as IconData, size: 20, color: (m['color'] as Color).withValues(alpha: 0.5)),
-                      const SizedBox(height: 8),
-                      Text(
-                        '--',
-                        style: GoogleFonts.notoSansTc(fontSize: 22, fontWeight: FontWeight.w900, color: const Color(0xFF94A3B8)),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${m['label']} (${m['unit']})',
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.notoSansTc(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF94A3B8)),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
+          const SizedBox(height: 14),
+          _sumRow([
+            for (final m in metrics)
+              GpsSumCell(label: '${m.$1} (${m.$2})', value: '--'),
+          ]),
         ],
       ),
-    ).animate().fadeIn(delay: 300.ms, duration: 400.ms);
+    );
   }
 }

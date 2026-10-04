@@ -3,7 +3,11 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 
 import '../../services/bug_report_service.dart';
-import '../../theme/app_theme.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
+import 'widgets/fam_data_ui.dart';
+import 'widgets/fam_interaction_ui.dart';
+import 'widgets/fam_ui.dart';
 
 /// 家屬端「回報問題 / 意見反饋」畫面。
 ///
@@ -14,8 +18,8 @@ import '../../theme/app_theme.dart';
 /// 首頁／互動這種高頻畫面，也不值得為它新增一個頂層分頁，「資料」分頁本來
 /// 就是其他次級設定（訂閱、通知、裝置配對）的集散地。
 ///
-/// 刻意不用 `ElderScale`：家屬是一般使用者，沿用一般字級 [AppTextStyles]／
-/// [AppColors]，寫法比照同資料夾的 `family_add_friend_screen.dart`。
+/// 刻意不用 `ElderScale`：家屬是一般使用者。2026-10 起外觀改家屬新設計
+/// （`UbanTextField`、`FamButton`、[showFamDialog]／`UbanDialog`），邏輯與送出內容不變。
 ///
 /// 錯誤處理與白話文案交給 [BugReportService]（見該檔說明），本畫面只負責：
 /// - 送出前的長度／非空白驗證（`TextField.maxLength` 已擋住超長輸入，這裡
@@ -52,6 +56,11 @@ class _FamilyBugReportScreenState extends State<FamilyBugReportScreen> {
 
   late final String _deviceInfo;
   late final String _appVersion;
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   @override
   void initState() {
@@ -135,123 +144,90 @@ class _FamilyBugReportScreenState extends State<FamilyBugReportScreen> {
 
   Future<void> _showSuccessDialog(int reportId) async {
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
+    await showFamDialog<void>(
+      _themeCtx,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        icon: const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 40),
-        title: Text('回報已送出', style: AppTextStyles.heading, textAlign: TextAlign.center),
-        content: Text(
-          '回報編號 #$reportId\n感謝您協助我們改善服務，我們會盡快處理。',
-          style: AppTextStyles.body,
-          textAlign: TextAlign.center,
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext); // 關閉對話框
-              if (mounted) Navigator.pop(context); // 回到「資料」分頁
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      (dialogContext) {
+        final c = UbanColors.of(dialogContext);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(child: famDialogTitle(c, '回報已送出')),
+            const SizedBox(height: 10),
+            Text(
+              '回報編號 #$reportId\n感謝您協助我們改善服務，我們會盡快處理。',
+              textAlign: TextAlign.center,
+              style: famText(c.text2, 15, height: 1.6),
             ),
-            child: const Text('完成'),
-          ),
-        ],
-      ),
+            const SizedBox(height: 22),
+            FamButton(
+              label: '完成',
+              onPressed: () {
+                Navigator.pop(dialogContext); // 關閉對話框
+                if (mounted) Navigator.pop(context); // 回到「資料」分頁
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // 2026-10：push 出來的家屬頁要自己掛家屬主題；Builder 讓下方 context 位於主題之內。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
+    final c = _c;
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('回報問題', style: AppTextStyles.title),
-      ),
+      backgroundColor: c.bg,
+      appBar: famSubBar(context, title: '回報問題'),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 '遇到問題，或有想告訴我們的建議嗎？請填寫下方表單，我們會盡快處理。',
-                style: AppTextStyles.secondary,
+                style: famText(c.text2, 14.5, height: 1.6),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
               if (_errorMessage != null) ...[
-                _buildErrorBanner(_errorMessage!),
+                FamNote(text: _errorMessage!, tone: FamTone.danger),
                 const SizedBox(height: 16),
               ],
-              Text('標題', style: AppTextStyles.heading),
-              const SizedBox(height: 8),
-              TextField(
+              UbanTextField(
+                label: '標題',
                 controller: _titleController,
                 maxLength: 100,
-                maxLines: 1,
                 enabled: !_isSubmitting,
-                style: AppTextStyles.body,
-                decoration: InputDecoration(
-                  hintText: '簡短描述問題，例如：無法撥打視訊電話',
-                  hintStyle: AppTextStyles.secondary,
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: AppColors.border),
-                  ),
-                ),
+                hintText: '簡短描述問題，例如：無法撥打視訊電話',
               ),
               const SizedBox(height: 14),
-              Text('詳細內容', style: AppTextStyles.heading),
-              const SizedBox(height: 8),
-              TextField(
+              UbanTextField(
+                label: '詳細內容',
                 controller: _contentController,
                 maxLength: 2000,
                 minLines: 6,
                 maxLines: 12,
                 enabled: !_isSubmitting,
-                style: AppTextStyles.body,
-                decoration: InputDecoration(
-                  hintText: '請描述發生的狀況、操作步驟，以及您原本預期的結果',
-                  hintStyle: AppTextStyles.secondary,
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: AppColors.border),
-                  ),
-                ),
+                hintText: '請描述發生的狀況、操作步驟，以及您原本預期的結果',
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               _buildAttachedInfoRow(),
               const SizedBox(height: 24),
-              SizedBox(
+              FamButton(
+                label: _isSubmitting ? '送出中...' : '送出回報',
+                loading: _isSubmitting,
                 height: 52,
-                child: ElevatedButton.icon(
-                  onPressed: _canSubmit ? _submit : null,
-                  icon: _isSubmitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.send_rounded, size: 20),
-                  label: Text(_isSubmitting ? '送出中...' : '送出回報'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: AppColors.textHint,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
+                onPressed: _canSubmit ? _submit : null,
               ),
             ],
           ),
@@ -262,56 +238,12 @@ class _FamilyBugReportScreenState extends State<FamilyBugReportScreen> {
 
   /// 送出前先讓使用者知道會一併附上什麼——後端刻意不記錄任何未經使用者
   /// 輸入的個資，這裡也對稱地把「唯二會附加的資訊」攤開給使用者看。
-  /// Row 內是 Icon + Expanded(Text)，長字串（裝置資訊組出來的長度不固定）
-  /// 可收縮，符合鐵律 #14 / 護欄 G159。
+  /// 裝置資訊組出來的長度不固定：[FamNote] 文字自動換行、最多 3 行，
+  /// 符合鐵律 #14 / 護欄 G159。
   Widget _buildAttachedInfoRow() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.primaryDark),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '將一併傳送裝置資訊（$_deviceInfo）與 App 版本（$_appVersion），協助我們排查問題',
-              style: AppTextStyles.secondary,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 樣式比照 `family_add_friend_screen.dart::_buildErrorBanner`，維持家屬端
-  /// 錯誤提示的一致視覺語言。
-  Widget _buildErrorBanner(String message) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFCA5A5)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline_rounded, color: Color(0xFFDC2626), size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.secondary.copyWith(color: const Color(0xFFB91C1C)),
-            ),
-          ),
-        ],
-      ),
+    return FamNote(
+      text: '將一併傳送裝置資訊（$_deviceInfo）與 App 版本（$_appVersion），協助我們排查問題',
+      maxLines: 3,
     );
   }
 }
