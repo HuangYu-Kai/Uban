@@ -258,7 +258,7 @@ class FamChip extends StatelessWidget {
   }
 }
 
-enum FamButtonKind { filled, tonal, danger, ghost }
+enum FamButtonKind { filled, tonal, danger, ghost, outline }
 
 /// `.smallbtn`／`.btn`：膠囊按鈕（高 [height]）。
 class FamButton extends StatelessWidget {
@@ -297,6 +297,9 @@ class FamButton extends StatelessWidget {
       case FamButtonKind.ghost:
         bg = Colors.transparent;
         fg = c.brandStrong;
+      case FamButtonKind.outline:
+        bg = Colors.transparent;
+        fg = c.brandStrong;
     }
     final enabled = onPressed != null && !loading;
     final radius = BorderRadius.circular(999);
@@ -317,7 +320,13 @@ class FamButton extends StatelessWidget {
     final body = Container(
       constraints: BoxConstraints(minHeight: height),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-      decoration: BoxDecoration(color: bg, borderRadius: radius),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: radius,
+        border: kind == FamButtonKind.outline
+            ? Border.all(color: c.line, width: 1.5)
+            : null,
+      ),
       child: Row(
         mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -559,4 +568,82 @@ class FamAlarmSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+/// `.subbar .iconbtn`：42px 圓形 surface2 底的圖示鈕；[onTap] 為 null 時變淡（disabled）。
+class FamIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  const FamIconButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return Opacity(
+      opacity: onTap == null ? .35 : 1,
+      child: Tooltip(
+        message: tooltip,
+        child: PressableScale(
+          enabled: onTap != null,
+          onTap: onTap,
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(color: c.surface2, shape: BoxShape.circle),
+            child: Icon(icon, size: 22, color: c.text),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// `.subbar`：返回鈕＋標題（可收縮）＋右側元件。回傳 [AppBar] 以沿用狀態列安全區。
+///
+/// 標題字級固定 19／900；整條的文字縮放上限壓在 1.2，避免 360dp 寬時把標題擠沒。
+PreferredSizeWidget famSubBar(
+  BuildContext context, {
+  required String title,
+  VoidCallback? onBack,
+  List<Widget> trailing = const [],
+}) {
+  final c = UbanColors.of(context);
+  return AppBar(
+    automaticallyImplyLeading: false,
+    backgroundColor: c.bg,
+    toolbarHeight: 64,
+    titleSpacing: 12,
+    title: MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        textScaler: MediaQuery.textScalerOf(context)
+            .clamp(minScaleFactor: 1, maxScaleFactor: 1.2),
+      ),
+      child: Row(
+        children: [
+          FamIconButton(
+            icon: Icons.chevron_left_rounded,
+            tooltip: '返回',
+            onTap: onBack ?? () => Navigator.of(context).maybePop(),
+          ),
+          const SizedBox(width: 8),
+          // 標題同列有多個按鈕：必須可收縮（鐵律 #14）。
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: famText(c.text, 19, weight: FontWeight.w900),
+            ),
+          ),
+          for (final w in trailing) ...[const SizedBox(width: 8), w],
+        ],
+      ),
+    ),
+  );
 }

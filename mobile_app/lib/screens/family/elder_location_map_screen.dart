@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,7 +11,10 @@ import '../../services/api/location_api.dart';
 import '../../services/location_device_status.dart';
 import '../../services/location_trail_processor.dart';
 import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
 import 'elder_places_screen.dart';
+import 'widgets/fam_ui.dart';
+import 'widgets/gps_ui.dart';
 
 /// 家屬端：長輩戶外 GPS 定位 + 指定日期完整移動軌跡。
 ///
@@ -69,6 +71,12 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   int _loadSeq = 0;
   Timer? _pollTimer;
   final MapController _mapController = MapController();
+
+  // 家屬主題之下的 context：State 自己的 context 在 FamilyThemeScope 之上，
+  // 由它開出來的 sheet／日期選擇器會吃到 App 預設主題；每次 build 都在 _buildScreen 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   bool get _isToday {
     final now = DateTime.now();
@@ -220,7 +228,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   /// 新增地點（長按地圖或由停留點建立）；成功後重載地點。
   Future<void> _createPlaceAt(LatLng position, {bool presetHome = false}) async {
     final saved = await showPlaceEditorDialog(
-      context,
+      _themeCtx,
       elderId: widget.elderId,
       userId: widget.userId,
       position: position,
@@ -231,7 +239,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
 
   Future<void> _editPlace(ElderPlace place) async {
     final saved = await showPlaceEditorDialog(
-      context,
+      _themeCtx,
       elderId: widget.elderId,
       userId: widget.userId,
       existing: place,
@@ -294,7 +302,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
-      context: context,
+      context: _themeCtx,
       initialDate: _selectedDate,
       firstDate: _earliestDate,
       lastDate: DateTime.now(),
@@ -326,44 +334,27 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   }
 
   Widget _buildScreen(BuildContext context) {
-    final dateLabel = '${_selectedDate.month}/${_selectedDate.day}';
+    _themed = context;
+    final c = UbanColors.of(context);
+    // 日期膠囊：今天顯示「今天」，其他天顯示 月/日；上限判斷（_atEarliestDate／_isToday）不變。
+    final dateLabel = _isToday ? '今天' : '${_selectedDate.month}/${_selectedDate.day}';
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '${widget.elderName} 的移動軌跡',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        // 窄螢幕（360dp）空間有限：標題靠左貼齊、按鈕一律 compact，標題由 Text 自行省略。
-        titleSpacing: 0,
-        actions: [
-          IconButton(
-            visualDensity: VisualDensity.compact,
+      backgroundColor: c.bg,
+      // `.subbar`：標題可收縮，右側「常去地點」鈕與日期膠囊固定。
+      appBar: famSubBar(
+        context,
+        title: '移動軌跡',
+        trailing: [
+          FamIconButton(
+            icon: Icons.bookmark_border_rounded,
             tooltip: '常去地點',
-            onPressed: _openPlaces,
-            icon: const Icon(Icons.bookmark_border_rounded),
+            onTap: _openPlaces,
           ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: '前一天',
-            onPressed: _atEarliestDate ? null : () => _shiftDate(-1),
-            icon: const Icon(Icons.chevron_left_rounded),
-          ),
-          TextButton.icon(
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-            ),
-            onPressed: _pickDate,
-            icon: const Icon(Icons.calendar_today_rounded, size: 18),
-            label: Text(dateLabel, style: GoogleFonts.notoSansTc()),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: '後一天',
-            onPressed: _isToday ? null : () => _shiftDate(1),
-            icon: const Icon(Icons.chevron_right_rounded),
+          GpsDatePill(
+            label: dateLabel,
+            onPrev: _atEarliestDate ? null : () => _shiftDate(-1),
+            onPick: _pickDate,
+            onNext: _isToday ? null : () => _shiftDate(1),
           ),
         ],
       ),
@@ -497,8 +488,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     }
   }
 
-  /// 停留群集標記：琥珀色膠囊（時鐘 + 總停留時間 + 多次停留的 ×N）。
+  /// 停留群集標記：暖色膠囊（總停留時間 + 多次停留的 ×N；已命名地點前面加名稱）。
   Marker _buildClusterMarker(StayCluster cluster) {
+    final c = _c;
     final durationLabel = _formatDurationShort(cluster.totalDuration) +
         (cluster.count > 1 ? ' ×${cluster.count}' : '');
     // 已命名的地點：膠囊前面加上名稱（最多 4 字），例如「公園 35 分」。
@@ -506,10 +498,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     final prefix = placeName == null ? '' : _truncateName(placeName, 4);
     final label = prefix.isEmpty ? durationLabel : '$prefix $durationLabel';
     // 依字數估算寬度，避免文字被截斷（時間部分每字以 8 估算；名稱是中文字較寬，
-    // 每字以 13 估算；再加圖示與內距）。
+    // 每字以 13 估算；再加內距）。
     final nameWidth = prefix.isEmpty ? 0 : 13 * prefix.runes.length + 4;
-    final width =
-        (30 + 8 * durationLabel.length + nameWidth).clamp(56, 180).toDouble();
+    final width = (24 + 8 * durationLabel.length + nameWidth).clamp(56, 180).toDouble();
     return Marker(
       point: cluster.center,
       width: width,
@@ -518,31 +509,20 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       child: GestureDetector(
         onTap: () => _showClusterSheet(cluster),
         child: Container(
+          alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFFF59E0B),
+            color: c.warm,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white, width: 2),
+            border: Border.all(color: c.surface, width: 2),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.access_time_rounded, size: 16, color: Colors.white),
-              const SizedBox(width: 3),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
+          // 地圖標記的字不跟系統字級放大（固定尺寸的膠囊），以 ellipsis 保底。
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textScaler: TextScaler.noScaling,
+            style: famText(c.surface, 12, weight: FontWeight.w900),
           ),
         ),
       ),
@@ -555,7 +535,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     return runes.length <= max ? name : String.fromCharCodes(runes.take(max));
   }
 
-  /// 停留點底部面板：停留資訊 + 命名／設為家／編輯地點。
+  /// 停留點底部面板（`#sh-place` 外觀）：停留資訊 + 命名／設為家／編輯地點。
   ///
   /// 單次停留與多次停留共用（取代原本單次停留的 SnackBar）；每一次停留都列出時段。
   void _showClusterSheet(StayCluster cluster) {
@@ -567,125 +547,83 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       final where = place != null ? '在${place.name}' : '此處';
       title = '$where停留 ${cluster.count} 次，共 ${_formatDuration(cluster.totalDuration)}';
     }
-    final Color iconColor = place == null
-        ? const Color(0xFFF59E0B)
-        : (place.isHome ? const Color(0xFF22C55E) : const Color(0xFF6366F1));
-    final IconData icon = place == null
-        ? Icons.access_time_rounded
-        : (place.isHome ? Icons.home_rounded : Icons.place_rounded);
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, size: 20, color: iconColor),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final s in cluster.stays)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${_hhmm(s.start)}–${_hhmm(s.end)}  停留 ${_formatDuration(s.duration)}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.notoSansTc(fontSize: 14),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (place != null)
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _editPlace(place);
-                    },
-                    icon: const Icon(Icons.edit_rounded, size: 18),
-                    label: Text(
-                      '編輯「${place.name}」',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(),
-                    ),
-                  ),
-                )
-              else ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _createPlaceAt(cluster.center);
-                    },
-                    icon: const Icon(Icons.place_rounded, size: 18),
-                    label: Text(
-                      '命名這個地點',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _createPlaceAt(cluster.center, presetHome: true);
-                    },
-                    icon: const Icon(Icons.home_rounded, size: 18),
-                    label: Text(
-                      '設為家',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.notoSansTc(),
-                    ),
+    showUbanSheet<void>(
+      _themeCtx,
+      (ctx) {
+        final c = UbanColors.of(ctx);
+        final Color dot = place == null
+            ? c.warm
+            : (place.isHome ? c.brandFill : c.info);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                FamDot(color: dot),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: famText(c.text, 18, weight: FontWeight.w900),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            for (final s in cluster.stays)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  '${_hhmm(s.start)}–${_hhmm(s.end)}  停留 ${_formatDuration(s.duration)}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: famText(c.text, 14.5, tabular: true),
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (place != null)
+              FamButton(
+                label: '編輯「${place.name}」',
+                kind: FamButtonKind.tonal,
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _editPlace(place);
+                },
+              )
+            else ...[
+              FamButton(
+                label: '命名這個地點',
+                kind: FamButtonKind.tonal,
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _createPlaceAt(cluster.center);
+                },
+              ),
+              const SizedBox(height: 8),
+              FamButton(
+                label: '設為家',
+                kind: FamButtonKind.outline,
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _createPlaceAt(cluster.center, presetHome: true);
+                },
+              ),
             ],
-          ),
-        ),
-      ),
+          ],
+        );
+      },
     );
   }
 
-  /// 常去地點名稱標籤：白底圓角膠囊（圖示 + 名稱），錨在地點圓心正上方。
+  /// 常去地點名稱標籤：surface 底圓角膠囊（色點 + 名稱），錨在地點圓心正上方。
   Marker _buildPlaceLabelMarker(ElderPlace place) {
-    final color = place.isHome ? const Color(0xFF22C55E) : const Color(0xFF6366F1);
-    // 依字數估算寬度（中文字每字以 12 估算，加上圖示與內距），限制在 60～160。
-    final width = (30 + 12 * place.name.runes.length).clamp(60, 160).toDouble();
+    final c = _c;
+    final color = place.isHome ? c.brandFill : c.info;
+    // 依字數估算寬度（中文字每字以 12 估算，加上色點與內距），限制在 60～160。
+    final width = (28 + 12 * place.name.runes.length).clamp(60, 160).toDouble();
     return Marker(
       point: place.position,
       width: width,
@@ -694,30 +632,25 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       child: GestureDetector(
         onTap: () => _editPlace(place),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: c.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: color.withValues(alpha: 0.5)),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3),
-            ],
+            boxShadow: c.shadows.card,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                place.isHome ? Icons.home_rounded : Icons.place_rounded,
-                size: 14,
-                color: color,
-              ),
-              const SizedBox(width: 3),
+              FamDot(color: color, size: 8),
+              const SizedBox(width: 5),
               Flexible(
                 child: Text(
                   place.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(fontSize: 12),
+                  textScaler: TextScaler.noScaling,
+                  style: famText(c.text, 12, weight: FontWeight.w700),
                 ),
               ),
             ],
@@ -728,6 +661,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   }
 
   Widget _buildMap() {
+    final c = _c;
     final currentLatLng = _currentLatLng;
 
     final String? deviceWarning = _deviceWarningText();
@@ -762,6 +696,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
             initialZoom: 16,
             // 有 2 個以上不同的點時框住整段軌跡
             initialCameraFit: canFit ? _trailFit(boundsPts) : null,
+            backgroundColor: c.mapLand,
             // 長按地圖任一點：在該處新增常去地點
             onLongPress: (tapPos, latLng) => _createPlaceAt(latLng),
           ),
@@ -770,7 +705,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
               urlTemplate: MapTiles.urlTemplate,
               userAgentPackageName: MapTiles.userAgentPackageName,
             ),
-            // 常去地點範圍（以公尺為單位的圓）：畫在軌跡之下；家用綠色、其他用靛色
+            // 常去地點範圍（以公尺為單位的圓）：畫在軌跡之下；家＝brandFill、其他＝info
             if (_places.isNotEmpty)
               CircleLayer(
                 circles: [
@@ -779,14 +714,14 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                       point: p.position,
                       radius: p.radiusM.toDouble(),
                       useRadiusInMeter: true,
-                      color: p.isHome ? const Color(0x2622C55E) : const Color(0x1A6366F1),
-                      borderColor:
-                          p.isHome ? const Color(0xFF22C55E) : const Color(0xFF6366F1),
+                      color: (p.isHome ? c.brandFill : c.info)
+                          .withValues(alpha: p.isHome ? .15 : .10),
+                      borderColor: p.isHome ? c.brandFill : c.info,
                       borderStrokeWidth: 1.5,
                     ),
                 ],
               ),
-            // 斷訊缺口畫在軌跡底層：淡色虛線，不代表真的走過這條直線
+            // 斷訊缺口畫在軌跡底層：text3 虛線，不代表真的走過這條直線
             if (_trail.gaps.isNotEmpty)
               PolylineLayer(
                 polylines: [
@@ -794,12 +729,12 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                     Polyline(
                       points: [g.from, g.to],
                       strokeWidth: 3,
-                      color: const Color(0xFF94A3B8),
+                      color: c.text3,
                       pattern: StrokePattern.dashed(segments: const [8, 8]),
                     ),
                 ],
               ),
-            // 每段軌跡：白色外框 + 由淺到深漸層（淺 = 較早、深 = 較晚）
+            // 每段軌跡：白色外框 + brand→brandStrong 漸層（淺 = 較早、深 = 較晚）
             PolylineLayer(
               polylines: [
                 for (final seg in _trail.segments)
@@ -809,7 +744,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                       strokeWidth: 5,
                       borderStrokeWidth: 2,
                       borderColor: Colors.white,
-                      gradientColors: const [Color(0xFF93C5FD), Color(0xFF1D4ED8)],
+                      gradientColors: [c.brand, c.brandStrong],
                     ),
               ],
             ),
@@ -852,7 +787,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                     height: 16,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF22C55E),
+                        color: c.brandFill,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 3),
                       ),
@@ -876,7 +811,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
                     height: 44,
                     child: Icon(
                       Icons.location_on,
-                      color: _isStale ? Colors.grey : const Color(0xFFEF4444),
+                      color: _isStale ? c.text3 : c.danger,
                       size: 44,
                     ),
                   ),
@@ -887,7 +822,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
               padding: EdgeInsets.only(bottom: showBanner ? 100 : 0),
               child: RichAttributionWidget(
                 alignment: AttributionAlignment.bottomLeft,
-                popupBackgroundColor: Colors.white,
+                popupBackgroundColor: c.surface,
                 attributions: [
                   for (final a in MapTiles.attributions)
                     TextSourceAttribution(
@@ -903,41 +838,38 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
         // 長輩手機定位沒開：醒目警示卡放在最上方，家屬一進來就看到原因。
         if (deviceWarning != null)
           Positioned(
-            left: 16,
-            right: 16,
+            left: 12,
+            right: 12,
             top: 12,
-            child: _buildDeviceWarningCard(deviceWarning),
+            child: GpsMapWarn(text: deviceWarning),
           ),
         Positioned(
-          right: 16,
+          right: 12,
           bottom: 110,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (kDebugMode) ...[
-                FloatingActionButton.small(
-                  heroTag: 'elder_map_debug_raw',
+                GpsGlassButton(
                   tooltip: '顯示原始點（除錯）',
-                  backgroundColor: _showRaw ? Colors.orange : null,
-                  onPressed: () => setState(() => _showRaw = !_showRaw),
-                  child: const Icon(Icons.scatter_plot_rounded),
+                  active: _showRaw,
+                  onTap: () => setState(() => _showRaw = !_showRaw),
+                  icon: Icons.scatter_plot_rounded,
                 ),
-                if (currentLatLng != null || canFit) const SizedBox(height: 8),
+                if (currentLatLng != null || canFit) const SizedBox(height: 10),
               ],
               if (currentLatLng != null)
-                FloatingActionButton.small(
-                  heroTag: 'elder_map_my_location',
+                GpsGlassButton(
                   tooltip: '回到目前位置',
-                  onPressed: _moveToCurrent,
-                  child: const Icon(Icons.my_location_rounded),
+                  onTap: _moveToCurrent,
+                  icon: Icons.my_location_rounded,
                 ),
-              if (currentLatLng != null && canFit) const SizedBox(height: 8),
+              if (currentLatLng != null && canFit) const SizedBox(height: 10),
               if (canFit)
-                FloatingActionButton.small(
-                  heroTag: 'elder_map_fit_trail',
+                GpsGlassButton(
                   tooltip: '顯示整段軌跡',
-                  onPressed: _fitWholeTrail,
-                  child: const Icon(Icons.zoom_out_map_rounded),
+                  onTap: _fitWholeTrail,
+                  icon: Icons.zoom_out_map_rounded,
                 ),
             ],
           ),
@@ -945,9 +877,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
         // 兩行都不會顯示時不畫空白外框（例如查看過去日期且當日無軌跡）
         if (showBanner)
           Positioned(
-            left: 16,
-            right: 16,
-            bottom: 16,
+            left: 12,
+            right: 12,
+            bottom: 18,
             child: _buildStatusBanner(),
           ),
       ],
@@ -960,49 +892,6 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     if (base == null) return null;
     final ago = LocationDeviceStatus.reportedAgoText(_deviceStatusAt);
     return ago.isEmpty ? base : '$base$ago';
-  }
-
-  /// 警示卡：圖示 + 可收縮的多行文字（內容為動態字串，鐵律 #14）。
-  Widget _buildDeviceWarningCard(String text) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8),
-        ],
-      ),
-      child: Material(
-        color: const Color(0xFFFEF3C7),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFFB45309), size: 24),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  text,
-                  maxLines: 5,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF7C2D12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   String _summaryText() {
@@ -1058,117 +947,32 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
       }
     }
     final bool hasTimeline = _trail.events.isNotEmpty;
-    // 外層只負責陰影與圓角；白底與水波紋交給 Material + InkWell，
-    // 否則水波紋會被 Container 的底色蓋住。
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8),
-        ],
-      ),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: hasTimeline ? _showTimelineSheet : null,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (showLastUpdate)
-                  Row(
-                    children: [
-                      Icon(
-                        _isStale ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
-                        color: _isStale ? Colors.orange : Colors.green,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _isStale ? '$text（已過期，可能不是即時位置）' : text,
-                          style: GoogleFonts.notoSansTc(fontSize: 13, fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                if (showLastUpdate && !_trail.isEmpty) const SizedBox(height: 4),
-                if (!_trail.isEmpty)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _summaryText(),
-                          style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.grey[600]),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // 提示可點開「今日行程」
-                      if (hasTimeline)
-                        Icon(Icons.expand_less_rounded, size: 22, color: Colors.grey[600]),
-                    ],
-                  ),
-                if (_rawOn) ...[
-                  if (showLastUpdate || !_trail.isEmpty) const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _rawDebugText(),
-                          style: GoogleFonts.notoSansTc(fontSize: 11, color: Colors.orange[800]),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+    // 主要一行：有「最後更新」就顯示它，摘要退到第二行；過去日期只有摘要。
+    final String? summary = _trail.isEmpty ? null : _summaryText();
+    final String title = showLastUpdate
+        ? (_isStale ? '$text（已過期，可能不是即時位置）' : text)
+        : (summary ?? text);
+    return GpsMapStatusBar(
+      title: title,
+      subtitle: showLastUpdate ? summary : null,
+      debugLine: _rawOn ? _rawDebugText() : null,
+      stale: showLastUpdate && _isStale,
+      onTap: hasTimeline ? _showTimelineSheet : null,
     );
   }
 
   // ───────────────────────── 行程時間軸 ─────────────────────────
 
-  static const Color _depColor = Color(0xFF22C55E);
-  static const Color _moveColor = Color(0xFF3B82F6);
-  static const Color _stayColor = Color(0xFFF59E0B);
-  static const Color _gapColor = Color(0xFF94A3B8);
-
-  IconData _eventIcon(TrailEventType t) {
+  GpsEventKind _eventKind(TrailEventType t) {
     switch (t) {
       case TrailEventType.depart:
-        return Icons.flag_rounded;
+        return GpsEventKind.depart;
       case TrailEventType.move:
-        return Icons.directions_walk_rounded;
+        return GpsEventKind.move;
       case TrailEventType.stay:
-        return Icons.access_time_rounded;
+        return GpsEventKind.stay;
       case TrailEventType.gap:
-        return Icons.signal_cellular_connected_no_internet_0_bar_rounded;
-    }
-  }
-
-  Color _eventColor(TrailEventType t) {
-    switch (t) {
-      case TrailEventType.depart:
-        return _depColor;
-      case TrailEventType.move:
-        return _moveColor;
-      case TrailEventType.stay:
-        return _stayColor;
-      case TrailEventType.gap:
-        return _gapColor;
+        return GpsEventKind.gap;
     }
   }
 
@@ -1204,124 +1008,101 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     final summary = _summaryText();
 
     showModalBottomSheet<void>(
-      context: context,
+      // 用家屬主題之下的 context，sheet 才吃得到家屬色票。
+      context: _themeCtx,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
+      elevation: 0,
+      barrierColor: _c.scrim,
+      builder: (sheetContext) {
+        final c = UbanColors.of(sheetContext);
+        return DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) => Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius: BorderRadius.circular(32),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              child: Column(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    margin: const EdgeInsets.only(top: 12, bottom: 14),
+                    decoration: BoxDecoration(
+                      color: c.surface3,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
+                        FamSecHead(title: title),
+                        const SizedBox(height: 2),
+                        Text(
+                          summary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: famText(c.text2, 12.5),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            summary,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.notoSansTc(
-                                fontSize: 12, color: Colors.grey[600]),
-                          ),
-                        ),
-                      ],
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: events.length,
+                      itemBuilder: (context, i) {
+                        final e = events[i];
+                        final isOngoing = ongoing != null &&
+                            i == events.length - 1 &&
+                            identical(e.stay, ongoing);
+                        return _buildTimelineRow(
+                          sheetContext,
+                          e,
+                          isOngoing,
+                          isFirst: i == 0,
+                          isLast: i == events.length - 1,
+                        );
+                      },
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  padding: const EdgeInsets.only(bottom: 16),
-                  itemCount: events.length,
-                  itemBuilder: (context, i) {
-                    final e = events[i];
-                    final isOngoing =
-                        ongoing != null && i == events.length - 1 && identical(e.stay, ongoing);
-                    return _buildTimelineRow(sheetContext, e, isOngoing);
-                  },
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildTimelineRow(BuildContext sheetContext, TrailEvent e, bool ongoing) {
-    final color = _eventColor(e.type);
-    return InkWell(
+  Widget _buildTimelineRow(
+    BuildContext sheetContext,
+    TrailEvent e,
+    bool ongoing, {
+    bool isFirst = false,
+    bool isLast = false,
+  }) {
+    return GpsTimelineRow(
+      kind: _eventKind(e.type),
+      time: _eventTime(e),
+      description: _eventDescription(e, ongoing: ongoing),
+      ongoing: ongoing,
+      isFirst: isFirst,
+      isLast: isLast,
       onTap: () {
         Navigator.pop(sheetContext);
         // 等底部面板收起後再動鏡頭，避免與轉場動畫同時進行。
         WidgetsBinding.instance.addPostFrameCallback((_) => _focusEvent(e));
       },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 96,
-              child: Text(
-                _eventTime(e),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(
-                    fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey[700]),
-              ),
-            ),
-            Icon(_eventIcon(e.type), size: 20, color: color),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _eventDescription(e, ongoing: ongoing),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 14,
-                  fontWeight: ongoing ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1346,32 +1127,9 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
     }
   }
 
+  /// `.mapempty`：分享關閉／讀取失敗／尚無資料的整頁狀態（仍可下拉重新整理）。
   Widget _buildMessage({required IconData icon, required String title, required String message}) {
-    return ListView(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(32, 120, 32, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 56, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey[700]),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return GpsMapEmpty(icon: icon, title: title, message: message, topPadding: 40);
   }
 }
 

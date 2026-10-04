@@ -1,10 +1,13 @@
 // lib/screens/family/elder_places_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/elder_place.dart';
 import '../../services/api/location_api.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
+import 'widgets/fam_ui.dart';
+import 'widgets/gps_ui.dart';
 
 /// 半徑可選值（公尺）；既有地點的半徑若不在其中，編輯時會補進選項。
 const List<int> _kRadiusChoices = [100, 150, 300, 500];
@@ -40,16 +43,18 @@ Future<bool> showPlaceEditorDialog(
   bool presetHome = false,
 }) async {
   if (existing == null && position == null) return false;
-  final saved = await showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => _PlaceEditorDialog(
+  // 新外觀（`#sh-place`）：以底部面板呈現；回傳值、不可點外面關閉的行為與舊對話框相同。
+  // [context] 請傳家屬主題之下的 context，面板才會吃到家屬色票。
+  final saved = await showUbanSheet<bool>(
+    context,
+    (_) => _PlaceEditorDialog(
       elderId: elderId,
       userId: userId,
       existing: existing,
       position: position,
       presetHome: presetHome,
     ),
+    isDismissible: false,
   );
   return saved == true;
 }
@@ -79,6 +84,7 @@ class _PlaceEditorDialogState extends State<_PlaceEditorDialog> {
   late bool _isHome;
   bool _saving = false;
   String? _nameError;
+  String? _saveError;
 
   @override
   void initState() {
@@ -114,6 +120,7 @@ class _PlaceEditorDialogState extends State<_PlaceEditorDialog> {
     }
     setState(() {
       _nameError = null;
+      _saveError = null;
       _saving = true;
     });
 
@@ -144,14 +151,14 @@ class _PlaceEditorDialogState extends State<_PlaceEditorDialog> {
 
     if (!mounted) return;
     if (result == null) {
-      setState(() => _saving = false);
+      // 面板的遮罩會蓋住底下的 SnackBar，所以同時在面板內顯示錯誤文字。
+      setState(() {
+        _saving = false;
+        _saveError = '儲存失敗，請稍後再試';
+      });
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text('儲存失敗，請稍後再試', style: GoogleFonts.notoSansTc()),
-          ),
-        );
+        ..showSnackBar(const SnackBar(content: Text('儲存失敗，請稍後再試')));
       return;
     }
     Navigator.of(context).pop(true);
@@ -159,90 +166,131 @@ class _PlaceEditorDialogState extends State<_PlaceEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     final isEdit = widget.existing != null;
-    return AlertDialog(
-      title: Text(
-        isEdit ? '編輯地點' : '新增常去地點',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          isEdit ? '編輯地點' : '新增常去地點',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: famText(c.text, 20, weight: FontWeight.w900),
+        ),
+        const SizedBox(height: 12),
+        UbanTextField(
+          controller: _nameCtrl,
+          label: '名稱',
+          hintText: '例如：家、公園、市場',
+          enabled: !_saving,
+          maxLength: 32,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onChanged: (_) {
+            if (_nameError != null) setState(() => _nameError = null);
+          },
+          errorText: _nameError,
+        ),
+        const SizedBox(height: 14),
+        Text('範圍半徑',
+            style: famText(c.text2, 15, weight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        // 用 Wrap 讓窄螢幕／大字級自動換行，避免 RenderFlex 溢位。
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            TextField(
-              controller: _nameCtrl,
-              enabled: !_saving,
-              maxLength: 32,
-              autofocus: true,
-              textInputAction: TextInputAction.done,
-              onChanged: (_) {
-                if (_nameError != null) setState(() => _nameError = null);
-              },
-              decoration: InputDecoration(
-                labelText: '地點名稱',
-                hintText: '例如：家、公園、市場',
-                errorText: _nameError,
+            for (final r in _radiusOptions) _radiusPill(c, r),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // `.action`：surface2 底的「設為家」開關列。
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: c.surface2,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('設為家',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: famText(c.text, 15.5, weight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '每位長輩只有一個家，設定後原本的家會取消',
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: famText(c.text2, 12.5, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              UbanSwitch(
+                value: _isHome,
+                onChanged: _saving ? null : (v) => setState(() => _isHome = v),
+              ),
+            ],
+          ),
+        ),
+        if (_saveError != null) ...[
+          const SizedBox(height: 10),
+          Text(_saveError!, style: famText(c.danger, 14, weight: FontWeight.w700)),
+        ],
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: FamButton(
+                label: '取消',
+                kind: FamButtonKind.outline,
+                onPressed: _saving ? null : () => Navigator.of(context).pop(false),
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              '範圍半徑',
-              style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[700]),
-            ),
-            const SizedBox(height: 8),
-            // 用 Wrap 讓窄螢幕自動換行，避免 RenderFlex 溢位。
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final r in _radiusOptions)
-                  ChoiceChip(
-                    label: Text('$r 公尺', style: GoogleFonts.notoSansTc(fontSize: 13)),
-                    selected: _radiusM == r,
-                    onSelected: _saving ? null : (_) => setState(() => _radiusM = r),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                '設為家',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(fontSize: 15),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FamButton(
+                label: '儲存',
+                onPressed: _saving ? null : _save,
+                loading: _saving,
               ),
-              subtitle: Text(
-                '每位長輩只有一個家，設定後原本的家會取消',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(fontSize: 12),
-              ),
-              value: _isHome,
-              onChanged: _saving ? null : (v) => setState(() => _isHome = v),
             ),
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
-          child: Text('取消', style: GoogleFonts.notoSansTc()),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : Text('儲存', style: GoogleFonts.notoSansTc()),
-        ),
       ],
+    );
+  }
+
+  Widget _radiusPill(UbanColors c, int r) {
+    final selected = _radiusM == r;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _saving ? null : () => setState(() => _radiusM = r),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? c.brandContainer : c.surface2,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            '$r 公尺',
+            style: famText(selected ? c.brandStrong : c.text2, 14.5,
+                weight: FontWeight.w700, tabular: true),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -274,6 +322,12 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
   _PlacesState _state = _PlacesState.loading;
   List<ElderPlace> _places = const [];
   bool _changed = false;
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
+  // 用它開 sheet／對話框／時間選擇器，才會吃到家屬色票；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   // 安心提醒設定（`settings` 為後端欄位原樣；null 表示尚未載入或讀取失敗）。
   Map<String, dynamic>? _alertSettings;
@@ -376,7 +430,7 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
 
   Future<void> _pickTime(String key, String fallback) async {
     final picked = await showTimePicker(
-      context: context,
+      context: _themeCtx,
       initialTime: _parseTime(_alertTime(key, fallback)),
       builder: (ctx, child) => MediaQuery(
         data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
@@ -398,12 +452,12 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
   void _snack(String msg) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(msg, style: GoogleFonts.notoSansTc())));
+      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _edit(ElderPlace p) async {
     final saved = await showPlaceEditorDialog(
-      context,
+      _themeCtx,
       elderId: widget.elderId,
       userId: widget.userId,
       existing: p,
@@ -430,31 +484,48 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
   }
 
   Future<void> _delete(ElderPlace p) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          '刪除「${p.name}」？',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          '刪除後，這個地點不會再出現在地圖與行程中。',
-          style: GoogleFonts.notoSansTc(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('取消', style: GoogleFonts.notoSansTc()),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('刪除', style: GoogleFonts.notoSansTc()),
-          ),
-        ],
-      ),
+    final ok = await showUbanDialog<bool>(
+      _themeCtx,
+      (ctx) {
+        final c = UbanColors.of(ctx);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '刪除「${p.name}」？',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: famText(c.text, 20, weight: FontWeight.w900, height: 1.3),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '刪除後，這個地點不會再出現在地圖與行程中。',
+              style: famText(c.text2, 14.5, height: 1.6),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: FamButton(
+                    label: '取消',
+                    kind: FamButtonKind.outline,
+                    onPressed: () => Navigator.pop(ctx, false),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FamButton(
+                    label: '刪除',
+                    kind: FamButtonKind.danger,
+                    onPressed: () => Navigator.pop(ctx, true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
     if (ok != true || !mounted) return;
     final done = await LocationApi.deletePlace(
@@ -473,20 +544,22 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-10：push 出來的家屬頁要自己掛家屬主題。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) Navigator.of(context).pop(_changed);
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            '常去地點',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
-          ),
-        ),
+        backgroundColor: _c.bg,
+        appBar: famSubBar(context, title: '常去地點'),
         body: RefreshIndicator(
           onRefresh: () => _load(showSpinner: false),
           child: _buildBody(),
@@ -505,59 +578,64 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
           ],
         );
       case _PlacesState.error:
-        return _buildMessage(
+        return const GpsMapEmpty(
           icon: Icons.link_off_rounded,
           title: '無法讀取常去地點',
           message: '請確認網路連線，下拉即可重新整理',
         );
       case _PlacesState.ready:
         // 地點清單（或空狀態說明）下方接「安心提醒」設定，整頁同一條 ListView。
+        final c = _c;
         return ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           children: [
             if (_places.isEmpty)
-              _buildMessageBlock(
-                icon: Icons.bookmark_border_rounded,
-                title: '還沒有常去地點',
-                message: '在地圖上點停留點或長按地圖，就能命名常去的地點；'
-                    '設定「家」之後可以看到外出次數，長輩端也會出現「帶我回家」按鈕。',
-                topPadding: 40,
+              const Padding(
+                padding: EdgeInsets.fromLTRB(12, 24, 12, 24),
+                child: GpsEmptyBlock(
+                  icon: Icons.bookmark_border_rounded,
+                  title: '還沒有常去地點',
+                  message: '在地圖上點停留點或長按地圖，就能命名常去的地點；'
+                      '設定「家」之後可以看到外出次數，長輩端也會出現「帶我回家」按鈕。',
+                ),
               )
-            else
-              for (var i = 0; i < _places.length; i++) ...[
-                if (i > 0) const Divider(height: 1),
-                _buildTile(_places[i]),
-              ],
-            const SizedBox(height: 16),
-            const Divider(height: 1),
+            else ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 0, 2, 12),
+                child: Text(
+                  '設好「家」之後，地圖會標出地點名稱，安心提醒才能判斷晚歸和遠離家。',
+                  style: famText(c.text2, 14, height: 1.6),
+                ),
+              ),
+              FamCard(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _places.length; i++)
+                      _buildTile(_places[i], first: i == 0),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
             ..._buildAlertSection(),
           ],
         );
     }
   }
 
-  Widget _buildTile(ElderPlace p) {
-    final color = p.isHome ? const Color(0xFF22C55E) : const Color(0xFF6366F1);
-    return ListTile(
-      leading: Icon(
-        p.isHome ? Icons.home_rounded : Icons.place_rounded,
-        color: color,
-      ),
-      title: Text(
-        p.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        '半徑 ${p.radiusM} 公尺',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[600]),
-      ),
+  Widget _buildTile(ElderPlace p, {required bool first}) {
+    final c = _c;
+    return GpsPlaceRow(
+      name: p.name,
+      subtitle: '半徑 ${p.radiusM} 公尺',
+      isHome: p.isHome,
+      first: first,
+      onTap: () => _edit(p),
       trailing: PopupMenuButton<_PlaceMenu>(
         tooltip: '更多',
+        padding: EdgeInsets.zero,
         onSelected: (m) {
           switch (m) {
             case _PlaceMenu.edit:
@@ -571,61 +649,23 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
         itemBuilder: (context) => [
           PopupMenuItem(
             value: _PlaceMenu.edit,
-            child: Text('編輯', style: GoogleFonts.notoSansTc()),
+            child: Text('編輯', style: famText(c.text, 15)),
           ),
           if (!p.isHome)
             PopupMenuItem(
               value: _PlaceMenu.setHome,
-              child: Text('設為家', style: GoogleFonts.notoSansTc()),
+              child: Text('設為家', style: famText(c.text, 15)),
             ),
           PopupMenuItem(
             value: _PlaceMenu.delete,
-            child: Text('刪除', style: GoogleFonts.notoSansTc(color: Colors.red)),
+            child: Text('刪除', style: famText(c.danger, 15)),
           ),
         ],
-      ),
-      onTap: () => _edit(p),
-    );
-  }
-
-  Widget _buildMessage({
-    required IconData icon,
-    required String title,
-    required String message,
-  }) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        _buildMessageBlock(icon: icon, title: title, message: message),
-      ],
-    );
-  }
-
-  Widget _buildMessageBlock({
-    required IconData icon,
-    required String title,
-    required String message,
-    double topPadding = 120,
-  }) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(32, topPadding, 32, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 56, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: GoogleFonts.notoSansTc(fontSize: 14, color: Colors.grey[700]),
-            textAlign: TextAlign.center,
-          ),
-        ],
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(Icons.more_horiz_rounded, color: c.text2),
+        ),
       ),
     );
   }
@@ -633,47 +673,27 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
   // ───────────────────────── 安心提醒設定 ─────────────────────────
 
   List<Widget> _buildAlertSection() {
-    final header = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Row(
-        children: [
-          const Icon(Icons.notifications_active_outlined, size: 20, color: Color(0xFF6366F1)),
-          const SizedBox(width: 8),
-          // Row 內的標題包 Expanded，窄螢幕或大字級時才不會 RenderFlex 溢位。
-          Expanded(
-            child: Text(
-              '安心提醒',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.notoSansTc(fontSize: 17, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
+    final c = _c;
+    const header = FamSectionLabel('安心提醒');
 
     if (_alertSettings == null) {
       return [
         header,
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        const SizedBox(height: 8),
+        FamCard(
           child: Text(
             '暫時無法讀取提醒設定，下拉即可重新整理',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[600]),
+            style: famText(c.text2, 14, height: 1.5),
           ),
         ),
       ];
     }
 
-    final caption = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    final footnote = Padding(
+      padding: const EdgeInsets.fromLTRB(2, 12, 2, 0),
       child: Text(
         '符合條件時會通知您；長輩關閉位置分享時一律不提醒。',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.notoSansTc(fontSize: 12, color: Colors.grey[600]),
+        style: famText(c.text3, 12.5, height: 1.5),
       ),
     );
 
@@ -687,114 +707,103 @@ class _ElderPlacesScreenState extends State<ElderPlacesScreen> {
 
     return [
       header,
-      caption,
-      SwitchListTile(
-        title: _alertTitle('晚歸提醒'),
-        subtitle: _hasHome
-            ? _alertSubtitle([
-                _tapText(lateTime, () => _pickTime('late_return_time', _kDefaultLateReturnTime)),
-                _plainText('後還不在家時通知我'),
-              ])
-            : _plainText('先設定「家」才能使用'),
-        value: _alertBool('late_return_enabled'),
-        onChanged: _hasHome ? (v) => _changeAlert({'late_return_enabled': v}) : null,
-      ),
-      SwitchListTile(
-        title: _alertTitle('失聯提醒'),
-        subtitle: _alertSubtitle([
-          _tapText(noUpdateStart, () => _pickTime('no_update_start', _kDefaultNoUpdateStart)),
-          _plainText('–'),
-          _tapText(noUpdateEnd, () => _pickTime('no_update_end', _kDefaultNoUpdateEnd)),
-          _plainText('之間超過'),
-          _menuText<int>(
-            label: '$noUpdateHours',
-            options: [for (var h = _kMinNoUpdateHours; h <= _kMaxNoUpdateHours; h++) h],
-            optionLabel: (h) => '$h 小時',
-            onSelected: (h) {
-              if (h != noUpdateHours) _changeAlert({'no_update_hours': h});
-            },
-          ),
-          _plainText('小時沒有位置時通知我'),
-        ]),
-        value: _alertBool('no_update_enabled'),
-        onChanged: (v) => _changeAlert({'no_update_enabled': v}),
-      ),
-      SwitchListTile(
-        title: _alertTitle('遠離家提醒'),
-        subtitle: _hasHome
-            ? _alertSubtitle([
-                _plainText('距離家超過'),
-                _menuText<int>(
-                  label: '$farKm',
-                  options: farOptions,
-                  optionLabel: (k) => '$k 公里',
-                  onSelected: (k) {
-                    if (k != farKm) _changeAlert({'far_km': k});
+      const SizedBox(height: 8),
+      FamCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+        child: Column(
+          children: [
+            GpsRuleRow(
+              first: true,
+              title: '晚歸提醒',
+              disabled: !_hasHome,
+              body: _hasHome
+                  ? [
+                      gpsInline(lateTime,
+                          onTap: () => _pickTime('late_return_time', _kDefaultLateReturnTime)),
+                      gpsPlain('後還不在家時通知我'),
+                    ]
+                  : [gpsPlain('先設定「家」才能使用')],
+              trailing: UbanSwitch(
+                value: _alertBool('late_return_enabled'),
+                onChanged: _hasHome ? (v) => _changeAlert({'late_return_enabled': v}) : null,
+              ),
+            ),
+            GpsRuleRow(
+              title: '失聯提醒',
+              body: [
+                gpsInline(noUpdateStart,
+                    onTap: () => _pickTime('no_update_start', _kDefaultNoUpdateStart)),
+                gpsPlain('–'),
+                gpsInline(noUpdateEnd,
+                    onTap: () => _pickTime('no_update_end', _kDefaultNoUpdateEnd)),
+                gpsPlain('之間超過'),
+                _menuInline<int>(
+                  label: '$noUpdateHours',
+                  options: [for (var h = _kMinNoUpdateHours; h <= _kMaxNoUpdateHours; h++) h],
+                  optionLabel: (h) => '$h 小時',
+                  onSelected: (h) {
+                    if (h != noUpdateHours) _changeAlert({'no_update_hours': h});
                   },
                 ),
-                _plainText('公里時通知我'),
-              ])
-            : _plainText('先設定「家」才能使用'),
-        value: _alertBool('far_enabled'),
-        onChanged: _hasHome ? (v) => _changeAlert({'far_enabled': v}) : null,
+                gpsPlain('小時沒有位置時通知我'),
+              ],
+              trailing: UbanSwitch(
+                value: _alertBool('no_update_enabled'),
+                onChanged: (v) => _changeAlert({'no_update_enabled': v}),
+              ),
+            ),
+            GpsRuleRow(
+              title: '遠離家提醒',
+              disabled: !_hasHome,
+              body: _hasHome
+                  ? [
+                      gpsPlain('距離家超過'),
+                      _menuInline<int>(
+                        label: '$farKm',
+                        options: farOptions,
+                        optionLabel: (k) => '$k 公里',
+                        onSelected: (k) {
+                          if (k != farKm) _changeAlert({'far_km': k});
+                        },
+                      ),
+                      gpsPlain('公里時通知我'),
+                    ]
+                  : [gpsPlain('先設定「家」才能使用')],
+              trailing: UbanSwitch(
+                value: _alertBool('far_enabled'),
+                onChanged: _hasHome ? (v) => _changeAlert({'far_enabled': v}) : null,
+              ),
+            ),
+          ],
+        ),
       ),
-      const SizedBox(height: 24),
+      footnote,
     ];
   }
 
-  Widget _alertTitle(String text) => Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.notoSansTc(fontSize: 15),
-      );
-
-  TextStyle get _alertSubtitleStyle =>
-      GoogleFonts.notoSansTc(fontSize: 13, color: Colors.grey[700]);
-
-  Widget _plainText(String text) => Text(text, style: _alertSubtitleStyle);
-
-  /// 副標題由多段文字／可點選時間組成，用 Wrap 讓窄螢幕自動換行而不溢位。
-  Widget _alertSubtitle(List<Widget> children) => Wrap(
-        spacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: children,
-      );
-
-  TextStyle get _alertLinkStyle => GoogleFonts.notoSansTc(
-        fontSize: 13,
-        fontWeight: FontWeight.bold,
-        color: const Color(0xFF6366F1),
-        decoration: TextDecoration.underline,
-      );
-
-  Widget _tapText(String label, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(label, style: _alertLinkStyle),
-        ),
-      );
-
-  Widget _menuText<T>({
+  /// 內嵌值（`.inl`）＋彈出選單。
+  InlineSpan _menuInline<T>({
     required String label,
     required List<T> options,
     required String Function(T) optionLabel,
     required ValueChanged<T> onSelected,
-  }) =>
-      PopupMenuButton<T>(
+  }) {
+    final c = _c;
+    return gpsInline(
+      label,
+      wrap: (chip) => PopupMenuButton<T>(
         tooltip: '選擇',
+        padding: EdgeInsets.zero,
         onSelected: onSelected,
         itemBuilder: (context) => [
           for (final o in options)
             PopupMenuItem<T>(
               value: o,
-              child: Text(optionLabel(o), style: GoogleFonts.notoSansTc()),
+              child: Text(optionLabel(o), style: famText(c.text, 15)),
             ),
         ],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(label, style: _alertLinkStyle),
-        ),
-      );
+        child: chip,
+      ),
+    );
+  }
 }

@@ -1,18 +1,21 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/api/location_api.dart';
+import '../../theme/family_theme.dart';
+import '../../widgets/ui/ui.dart';
 import 'elder_location_map_screen.dart';
 import 'elder_places_screen.dart';
+import 'widgets/fam_ui.dart';
+import 'widgets/gps_ui.dart';
 
 /// 📊 外出趨勢（移動軌跡延伸第三階段）
 ///
 /// 家屬端：長輩最近 7／30 天的每日移動距離、外出次數、在外時間。
 /// 資料來自 `LocationApi.getDaily`（`GET /location/daily/{elderId}`）；
-/// 版面與 `health_trends_screen.dart` 同一套（白底卡片、`fl_chart`）。
+/// 2026-10 起外觀改家屬新設計（海灣藍、`FamCard`、`UbanSegmented`、`fl_chart`）。
 ///
 /// 幾個要記得的規則：
 /// - **今天是「統計中」**：回傳的最後一筆是今天（還沒過完），長條用較淡的顏色，
@@ -57,9 +60,12 @@ class _DayStat {
 }
 
 class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
-  static const Color _distanceColor = Color(0xFF3B82F6);
-  static const Color _countColor = Color(0xFF10B981);
-  static const Color _timeColor = Color(0xFF8B5CF6);
+  // 目前這次 build 的家屬色票（_buildScreen 每次更新）；圖表三色：
+  // 距離＝info、次數＝brandFill、在外＝warm（見 family.css 的 --fam-chart-1..3）。
+  UbanColors _c = UbanColors.familyLight;
+  Color get _distanceColor => _c.info;
+  Color get _countColor => _c.brandFill;
+  Color get _timeColor => _c.warm;
 
   int _days = 7;
   _LoadState _state = _LoadState.loading;
@@ -77,7 +83,8 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
 
   Future<void> _load() async {
     final seq = ++_loadSeq;
-    if (mounted && _state != _LoadState.loading) setState(() => _state = _LoadState.loading);
+    if (mounted && _state != _LoadState.loading)
+      setState(() => _state = _LoadState.loading);
 
     final data = await LocationApi.getDaily(
       elderId: widget.elderId,
@@ -110,7 +117,8 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
           pointCount: (m['point_count'] as num?)?.toInt() ?? 0,
         ));
       }
-      final hasAnyPoint = series.any((d) => d.pointCount > 0 || d.distanceM > 0);
+      final hasAnyPoint =
+          series.any((d) => d.pointCount > 0 || d.distanceM > 0);
       setState(() {
         _hasHome = data['has_home'] == true;
         _series = series;
@@ -162,34 +170,32 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
   // ── build ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // 2026-10：push 出來的家屬頁要自己掛家屬主題。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          '外出趨勢',
-          style: GoogleFonts.notoSansTc(
-            color: const Color(0xFF1E293B),
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        centerTitle: true,
+      backgroundColor: _c.bg,
+      appBar: famSubBar(
+        context,
+        title: '外出趨勢',
+        onBack: () => Navigator.pop(context),
       ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildRangeSelector(),
+              const SizedBox(height: 12),
               ..._buildBody(),
-              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -206,7 +212,6 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
           _messageCard(
             child: _infoBox(
               icon: Icons.location_off_rounded,
-              color: const Color(0xFF64748B),
               message: '長輩已關閉位置分享',
             ),
           ),
@@ -218,7 +223,6 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
           _messageCard(
             child: _infoBox(
               icon: Icons.route_rounded,
-              color: const Color(0xFF64748B),
               message: '這段期間沒有定位資料',
             ),
           ),
@@ -226,98 +230,112 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
       case _LoadState.ready:
         return [
           _buildSummary(),
+          const SizedBox(height: 12),
           _buildDistanceSection(),
+          const SizedBox(height: 12),
           _buildCountSection(),
+          const SizedBox(height: 12),
           _buildTimeSection(),
         ];
     }
   }
 
-  // ── 7／30 天切換（與 health_trends 的時間範圍選擇同一風格） ──────────────
+  // ── 7／30 天切換（UbanSegmented small） ──────────────────────────────────
   Widget _buildRangeSelector() {
-    Widget item(int days, String label) {
-      final isSelected = _days == days;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => _changeDays(days),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : const Color(0xFF64748B),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(children: [item(7, '7 天'), item(30, '30 天')]),
+    return UbanSegmented(
+      small: true,
+      labels: const ['7 天', '30 天'],
+      index: _days == 7 ? 0 : 1,
+      onChanged: (i) => _changeDays(i == 0 ? 7 : 30),
     ).animate().fadeIn(duration: 300.ms);
   }
 
-  // ── 摘要列：平均值（排除今天，今天還沒過完） ─────────────────────────────
+  // ── 摘要：平均值（排除今天，今天還沒過完） ─────────────────────────────
   Widget _buildSummary() {
-    final done = _series.length > 1 ? _series.sublist(0, _series.length - 1) : const <_DayStat>[];
+    final c = _c;
+    final done = _series.length > 1
+        ? _series.sublist(0, _series.length - 1)
+        : const <_DayStat>[];
     final prefix = _days == 7 ? '本週' : '近 30 天';
 
     String text;
+    // `.sumgrid` 三格（沒有完整的一天時全部顯示「—」）。
+    final cells = <Widget>[];
     if (done.isEmpty) {
       text = '$prefix還沒有完整的一天可以統計';
+      cells.addAll(const [
+        GpsSumCell(label: '平均每天移動', value: '—'),
+        GpsSumCell(label: '平均每天外出', value: '—'),
+        GpsSumCell(label: '平均每天在外', value: '—'),
+      ]);
     } else {
-      final avgKm = done.fold<int>(0, (a, d) => a + d.distanceM) / done.length / 1000.0;
+      final avgKm =
+          done.fold<int>(0, (a, d) => a + d.distanceM) / done.length / 1000.0;
       if (_hasHome) {
-        final avgCount = done.fold<int>(0, (a, d) => a + (d.outingCount ?? 0)) / done.length;
-        text = '$prefix平均每天外出 ${avgCount.toStringAsFixed(1)} 次・移動 ${avgKm.toStringAsFixed(1)} 公里';
+        final avgCount =
+            done.fold<int>(0, (a, d) => a + (d.outingCount ?? 0)) / done.length;
+        final avgHours =
+            done.fold<int>(0, (a, d) => a + (d.outsideMinutes ?? 0)) /
+                done.length /
+                60.0;
+        text =
+            '$prefix平均每天外出 ${avgCount.toStringAsFixed(1)} 次・移動 ${avgKm.toStringAsFixed(1)} 公里';
+        cells.addAll([
+          GpsSumCell(
+              label: '平均每天移動', value: avgKm.toStringAsFixed(1), unit: '公里'),
+          GpsSumCell(
+              label: '平均每天外出', value: avgCount.toStringAsFixed(1), unit: '次'),
+          GpsSumCell(
+              label: '平均每天在外', value: _hoursNumber(avgHours), unit: '小時'),
+        ]);
       } else {
         // 沒有「家」算不出外出次數，只講距離，不要編造 0 次。
         text = '$prefix平均每天移動 ${avgKm.toStringAsFixed(1)} 公里';
+        cells.add(GpsSumCell(
+            label: '平均每天移動', value: avgKm.toStringAsFixed(1), unit: '公里'));
       }
     }
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFBFDBFE)),
-      ),
-      // 摘要文字長度會隨數字變動，包 Expanded 讓它在窄螢幕換行而不是溢位（鐵律 #14）。
-      child: Row(
-        children: [
-          const Icon(Icons.directions_walk_rounded, color: Color(0xFF3B82F6), size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF1E3A8A),
-                height: 1.4,
-              ),
-            ),
-          ),
+    // 摘要文字與格子都隨數字變動：格子用 Expanded 平分、文字自動換行（第 14 條）。
+    // IntrinsicHeight：三格等高（標籤可能一行或兩行），Row 才能用 stretch。
+    final grid = IntrinsicHeight(
+        child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < cells.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: cells[i]),
         ],
-      ),
+        // 沒有「家」時只有一格：補空位讓它維持三分之一寬，不要被拉成整排。
+        for (var i = cells.length; i < 3; i++) ...[
+          const SizedBox(width: 8),
+          const Expanded(child: SizedBox.shrink()),
+        ],
+      ],
+    ));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        grid,
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            '$text（不含今天，今天還在統計中）',
+            style: famText(c.text3, 12.5, height: 1.5),
+          ),
+        ),
+      ],
     ).animate().fadeIn(delay: 50.ms, duration: 400.ms);
+  }
+
+  /// 平均在外小時的數字部分（`1.5`、`2`）。
+  static String _hoursNumber(double hours) {
+    final rounded = (hours * 10).round() / 10.0;
+    return rounded == rounded.roundToDouble()
+        ? rounded.toInt().toString()
+        : rounded.toStringAsFixed(1);
   }
 
   // ── 三個區塊 ───────────────────────────────────────────────────────────
@@ -341,6 +359,7 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
     if (!_hasHome) {
       return _cardShell(
         title: '每日外出次數',
+        swatch: _countColor,
         child: _homeHint(),
       ).animate().fadeIn(delay: 150.ms, duration: 400.ms);
     }
@@ -363,9 +382,9 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
     if (!_hasHome) {
       return _cardShell(
         title: '每日在外時間',
+        swatch: _timeColor,
         child: _infoBox(
           icon: Icons.home_outlined,
-          color: const Color(0xFF64748B),
           message: '同樣要先設定「家」，才算得出在外時間',
           height: 100,
         ),
@@ -390,42 +409,37 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
   /// 小時數文字：`1.5 小時`；不到 1 分鐘顯示 `0 小時`。
   static String _formatHours(double hours) {
     final rounded = (hours * 10).round() / 10.0;
-    final s = rounded == rounded.roundToDouble() ? rounded.toInt().toString() : rounded.toStringAsFixed(1);
+    final s = rounded == rounded.roundToDouble()
+        ? rounded.toInt().toString()
+        : rounded.toStringAsFixed(1);
     return '$s 小時';
   }
 
   /// 沒設定「家」的引導卡：說明原因並帶使用者去設定。
   Widget _homeHint() {
+    final c = _c;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: c.surface2,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '設定「家」之後就能看到外出次數與在外時間',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF475569),
-              height: 1.5,
-            ),
+            style: famText(c.text2, 14, weight: FontWeight.w700, height: 1.5),
           ),
           const SizedBox(height: 12),
-          // 用 Wrap 讓按鈕在極窄螢幕也能換行，不會溢位。
-          Wrap(
-            children: [
-              FilledButton.icon(
-                onPressed: _openPlaces,
-                icon: const Icon(Icons.home_rounded, size: 18),
-                label: Text('設定常去地點', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
-              ),
-            ],
+          // 按鈕寬度隨文字、極窄螢幕自動收縮，不會溢位。
+          FamButton(
+            label: '設定常去地點',
+            kind: FamButtonKind.tonal,
+            expand: false,
+            height: 44,
+            onPressed: _openPlaces,
           ),
         ],
       ),
@@ -441,8 +455,10 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
     required bool integerOnly,
     required String Function(double) format,
   }) {
+    final c = _c;
     final n = values.length;
-    final axis = _niceAxis(values.fold<double>(0, math.max), emptyMax: emptyMax, integerOnly: integerOnly);
+    final axis = _niceAxis(values.fold<double>(0, math.max),
+        emptyMax: emptyMax, integerOnly: integerOnly);
     // 30 天時不能每根都標日期；以「今天」為基準每 5 天標一次，今天一定有標。
     final labelStep = n > 10 ? 5 : 1;
     final barWidth = n > 10 ? 6.0 : 18.0;
@@ -456,12 +472,13 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
             toY: values[i],
             width: barWidth,
             color: isToday ? color.withValues(alpha: 0.35) : color,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(barWidth > 10 ? 6 : 3)),
+            borderRadius: BorderRadius.vertical(
+                top: Radius.circular(barWidth > 10 ? 6 : 3)),
             // 底色長條：讓 0 的日子也有可點的區域（allowTouchBarBackDraw）。
             backDrawRodData: BackgroundBarChartRodData(
               show: true,
               toY: axis.maxY,
-              color: const Color(0xFFF1F5F9),
+              color: c.surface2,
             ),
           ),
         ],
@@ -483,7 +500,8 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
                 show: true,
                 drawVerticalLine: false,
                 horizontalInterval: axis.interval,
-                getDrawingHorizontalLine: (v) => const FlLine(color: Color(0xFFE2E8F0), strokeWidth: 1),
+                getDrawingHorizontalLine: (v) =>
+                    FlLine(color: c.line, strokeWidth: 1),
               ),
               borderData: FlBorderData(show: false),
               titlesData: FlTitlesData(
@@ -494,7 +512,7 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
                     interval: axis.interval,
                     getTitlesWidget: (value, meta) => Text(
                       _axisLabel(value),
-                      style: GoogleFonts.notoSansTc(fontSize: 10, color: const Color(0xFF64748B)),
+                      style: famText(c.text3, 11, tabular: true),
                     ),
                   ),
                 ),
@@ -504,21 +522,25 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
                     reservedSize: 28,
                     getTitlesWidget: (value, meta) {
                       final idx = value.toInt();
-                      if (idx < 0 || idx >= _series.length) return const SizedBox();
-                      if ((n - 1 - idx) % labelStep != 0) return const SizedBox();
+                      if (idx < 0 || idx >= _series.length)
+                        return const SizedBox();
+                      if ((n - 1 - idx) % labelStep != 0)
+                        return const SizedBox();
                       final d = _series[idx].date;
                       return Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           '${d.month}/${d.day}',
-                          style: GoogleFonts.notoSansTc(fontSize: 10, color: const Color(0xFF64748B)),
+                          style: famText(c.text3, 11, tabular: true),
                         ),
                       );
                     },
                   ),
                 ),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
               barTouchData: BarTouchData(
                 allowTouchBarBackDraw: true,
@@ -530,14 +552,15 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
                   _openDayMap(_series[idx].date);
                 },
                 touchTooltipData: BarTouchTooltipData(
-                  getTooltipColor: (group) => Colors.white,
+                  // 提示泡泡：text 底＋surface 字，淺深色都有足夠對比。
+                  getTooltipColor: (group) => c.text,
                   fitInsideHorizontally: true,
                   getTooltipItem: (group, groupIndex, rod, rodIndex) {
                     final d = _series[groupIndex].date;
                     final suffix = _isLast(groupIndex) ? '（今天，統計中）' : '';
                     return BarTooltipItem(
                       '${d.month}/${d.day}$suffix\n${format(values[groupIndex])}',
-                      GoogleFonts.notoSansTc(color: color, fontWeight: FontWeight.w700, fontSize: 12),
+                      famText(c.surface, 12, weight: FontWeight.w700),
                     );
                   },
                 ),
@@ -564,7 +587,14 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
     final raw = top / 4;
     final mag = math.pow(10, (math.log(raw) / math.ln10).floor()).toDouble();
     final norm = raw / mag;
-    var step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+    var step = (norm <= 1
+            ? 1
+            : norm <= 2
+                ? 2
+                : norm <= 5
+                    ? 5
+                    : 10) *
+        mag;
     if (integerOnly) step = math.max(1.0, step.ceilToDouble());
     var maxY = step * (top / step).ceil();
     // 最高的長條不要頂到圖的邊緣。
@@ -572,111 +602,42 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
     return (maxY: maxY, interval: step);
   }
 
-  // ── 卡片外殼與狀態元件（沿用 health_trends 的樣式） ─────────────────────
+  // ── 卡片外殼與狀態元件（FamCard 風格：圓角 24、無描邊、淡陰影） ─────────
+  /// [swatch] 預設取 [legendColor]；沒有圖例（引導卡）時要自己給色塊顏色。
   Widget _cardShell({
     required String title,
     String? unit,
     required Widget child,
     Color? legendColor,
+    Color? swatch,
   }) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return FamCard(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              // 標題與單位同列，標題可收縮（鐵律 #14）。
-              Flexible(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-              ),
-              if (unit != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '（$unit）',
-                  style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
-                ),
-              ],
-            ],
+          // 標題與單位同列，標題可收縮（第 14 條）。
+          GpsChartHead(
+            title: title,
+            unit: unit,
+            swatch: swatch ?? legendColor ?? _c.brandFill,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           child,
           if (legendColor != null) ...[
             const SizedBox(height: 10),
-            _legend(legendColor),
+            GpsLegend(color: legendColor),
           ],
         ],
       ),
-    );
-  }
-
-  /// 圖例：標明淡色長條是「今天（統計中）」，另提示點長條可看當天軌跡。
-  Widget _legend(Color color) {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 6,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '今天（統計中）',
-              style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF64748B)),
-            ),
-          ],
-        ),
-        Text(
-          '點長條看當天軌跡',
-          style: GoogleFonts.notoSansTc(fontSize: 12, color: const Color(0xFF94A3B8)),
-        ),
-      ],
     );
   }
 
   /// 載入中／錯誤／空狀態共用的整頁外殼（沒有標題）。
   Widget _messageCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    return FamCard(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: child,
+      child: SizedBox(width: double.infinity, child: child),
     );
   }
 
@@ -687,50 +648,54 @@ class _OutingTrendsScreenState extends State<OutingTrendsScreen> {
 
   Widget _infoBox({
     required IconData icon,
-    required Color color,
     required String message,
     double height = 160,
-  }) =>
-      SizedBox(
-        height: height,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.notoSansTc(color: color, fontSize: 14),
-              ),
-            ],
-          ),
+  }) {
+    final c = _c;
+    return SizedBox(
+      height: height,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: c.text3, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: famText(c.text2, 14, height: 1.5),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
-  /// 請求失敗的狀態必須長得跟「沒有資料」不一樣——紅色系＋可重試按鈕。
-  Widget _errorBox(String message) => SizedBox(
-        height: 160,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 28),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.notoSansTc(color: const Color(0xFFEF4444), fontSize: 13),
-              ),
-              const SizedBox(height: 10),
-              TextButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: Text('重試', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
+  /// 請求失敗的狀態必須長得跟「沒有資料」不一樣——danger 色文字＋可重試按鈕。
+  Widget _errorBox(String message) {
+    final c = _c;
+    return SizedBox(
+      height: 160,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: famText(c.danger, 14, weight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            FamButton(
+              label: '重試',
+              kind: FamButtonKind.tonal,
+              expand: false,
+              height: 44,
+              onPressed: _load,
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }
