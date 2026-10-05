@@ -475,6 +475,23 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-06 🧹 UI 改版後實機回報 19 項修正（`ui` 分支）
+
+- **字型**：`assets/fonts/` 的 NotoSansTC／Inter 原檔其實全是改名的標楷體（DFKai-SB，微軟授權字型），已換成 Google Fonts 正版靜態檔 400–900。
+- **AI 逾時**：後端 `/ai/chat_stream` 原本在 event loop 上同步跑 DB 與 Ollama，會連帶卡住 Socket.IO；已改走執行緒池，Ollama 加逾時，家屬 AI 秘書設 20 秒預算。App 端串流等待 15→40 秒，語音助理不再顯示原始例外。
+- 其餘：農民曆選日期閃退（補 `flutter_localizations`）、「怎麼用？」與語音鈕在聊天頁隱藏且捲動滑出、新手導覽真正挖洞並可重播回首頁、我的頁與身分選擇頁可看條款（字級放大）、首頁／我的打卡數同源、新聞分段、天氣小圖置中、基本資料頁自動定位、配對頁深色模式字色、電話分頁空狀態可出示配對碼、小豬品種改後端隨機指派（後台可調機率與個別覆寫）、家屬端心情卡與 AI 偏好卡改真資料、長輩可自訂目標、家屬首頁今日打卡進度卡。
+
+#### ⚠️ 已知問題（未處理）
+
+- **通話兩端互相接不到（由其他組員處理，本輪未動任何通話程式碼）**：router log 有 socket 活動但兩端都收不到來電。已逐段比對 `34e0ebc5`／`327de4b2`／`3fdb6dec`／`525f984b`，沒有刪到任何信令、監聽或按鈕閉包。可能原因由高到低：
+  1. 後端 `/ai/chat_stream` 卡住 event loop、Socket 轉發延遲（本輪已修，部署後請重測）。
+  2. 接收端靜默丟棄：手機 log grep `🩺 [CallDiag] CALL-IN dropped:`（same-role／expired／onCallRequest=NULL）。
+  3. 後端找不到轉發目標：伺服器 log grep `[Call Request] 轉發決策：Socket N 個`，N=0 代表對方沒 join（看 `🩺 [CallDiag] JOIN`）。
+- `test/screens/elder_tabs/elder_home_tab_news_visibility_test.dart` 有 3 則量測失敗（529/532/862 對上限 526/801），是「帶我回家」入口讓首頁變高之後就有的，與本輪無關。
+- 家屬端 `ai_suggestion_card.dart` 在 API 無資料時仍會顯示 `AiSuggestionService` 的 mock 建議，待決定空狀態文案。
+- 深色模式下仍寫死淺色底的輸入框：`elder_pairing_display_screen.dart:585`、`family_scripts_view.dart:401`、`family_elder_chat_screen.dart:226`、`redesigned_family_agent_view.dart:636`、`pet_stats_sheet.dart:136`。
+- 家屬端今日打卡卡片是下拉重整＋60 秒輪詢，不是即時（`Signaling().onReminderSync` 是單一回呼，已被長輩畫面佔用）。
+
 ### 2026-10-03 📵 定位權限沒開時，長輩與家屬都看得到原因
 
 - **問題**：長輩手機把定位功能關掉、或沒給 Uban 位置權限時，`ElderLocationService` 只是靜默不啟動串流，家屬地圖只看到「尚無定位資料／長輩裝置尚未回報位置，請稍候再試」，會一直等；長輩自己也不知道開關雖然是「開」、位置卻傳不出去。
