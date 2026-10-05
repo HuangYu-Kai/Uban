@@ -204,7 +204,10 @@ void main() {
   });
 
   // G204 最壞情境：已設定「家」（帶我回家）＋真實任務卡（有下一件、未全部完成）。
-  // 「帶我回家」併在問候列右側，今日頭條標題仍須落在第一屏（可視底線＝螢幕高－114）。
+  // 「帶我回家」是獨立的大入口（問候列之後、今天卡之前），屬安全功能，使用者指定要最顯眼，
+  // 因此最壞情境下由它優先佔第一屏（可視底線＝螢幕高－114）；今日頭條因而可能被擠到折線下，
+  // 改以「有算進清單、可捲動到」為準（首頁本就是可捲動列表）。真正不可破的是：任何尺寸都
+  // 不得出現 RenderFlex 溢位（鐵律 #14），且新聞清單仍須封頂三則。
   group('G204 最壞情境：帶我回家＋有下一件的任務卡', () {
     const home = ElderPlace(
         id: 1, name: '家', latitude: 25, longitude: 121, radiusM: 100, isHome: true);
@@ -226,20 +229,19 @@ void main() {
         await tester.pump(const Duration(milliseconds: 900));
 
         expect(tester.takeException(), isNull);
-        expect(find.bySemanticsLabel('帶我回家'), findsOneWidget);
-        expect(find.text('打卡'), findsOneWidget, reason: '有下一件的任務卡');
         final visibleBottom = size.height - 114;
-        final header = tester.getRect(find.text('今日頭條'));
-        // ignore: avoid_print
-        print('[最壞情境 ${size.width.toInt()}x${size.height.toInt()}] '
-            '標題 bottom=${header.bottom.toStringAsFixed(1)} 底線=$visibleBottom');
-        expect(header.bottom, lessThanOrEqualTo(visibleBottom));
+        // 安全功能優先：帶我回家大入口本身最壞情境下仍須落在第一屏。
+        expect(find.bySemanticsLabel('帶我回家'), findsOneWidget);
+        expect(tester.getRect(find.bySemanticsLabel('帶我回家')).bottom,
+            lessThanOrEqualTo(visibleBottom),
+            reason: '帶我回家是安全入口，最壞情境下仍須在第一屏');
+        expect(find.text('打卡'), findsOneWidget, reason: '有下一件的任務卡');
+        // 今日頭條：被大入口擠到折線下可接受，確認仍有算進清單、可捲動到即可。
+        expect(find.text('今日頭條'), findsOneWidget);
         if (size.height >= 700) {
           expect(find.text('TEST_NEWS_ITEM_2'), findsOneWidget);
           expect(find.text('TEST_NEWS_ITEM_3'), findsOneWidget);
-          expect(find.text('TEST_NEWS_ITEM_4'), findsNothing);
-          expect(tester.getRect(find.text('TEST_NEWS_ITEM_3')).bottom,
-              lessThanOrEqualTo(visibleBottom));
+          expect(find.text('TEST_NEWS_ITEM_4'), findsNothing, reason: '新聞清單封頂三則');
         }
         semantics.dispose();
       });

@@ -10,6 +10,7 @@ import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../models/chinese_converter.dart';
 import '../../models/elder_place.dart';
+import '../../services/api/location_api.dart';
 import '../../services/api_service.dart';
 import '../../services/elder_home_place_service.dart';
 import '../../services/friend_service.dart';
@@ -124,7 +125,8 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   // 額外安排最多一次自動重試（見 [_loadNextDoseData] 尾端），而不是只改文案。
   int _nextDoseLoadAttempt = 0;
 
-  /// 「帶我回家」的目的地；null 代表尚未設定家（按鈕隱藏）。
+  /// 「帶我回家」的目的地；null 代表尚未設定家——入口卡仍顯示（見
+  /// [_buildGoHomeEntry]），只是呈現停用提示樣態，不隱藏整張卡。
   ElderPlace? _homePlace;
 
   @override
@@ -187,6 +189,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final home = _homePlace;
     if (home == null) return;
     HapticFeedback.mediumImpact();
+    // 通知配對家屬「正在導航回家」：fire-and-forget，不等待、不讓通知失敗
+    // 擋住長輩開導航（下一行 openNavigation 不依賴它的結果）。
+    unawaited(_notifyFamilyHeadingHome());
     final ok = await ElderHomePlaceService.openNavigation(home);
     if (ok || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -205,6 +210,18 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         margin: const EdgeInsets.all(20),
       ),
     );
+  }
+
+  /// 通知配對家屬「長輩正在導航回家」。elder_id 解析邏輯與 [_loadHomePlace]
+  /// 相同（優先用 `widget.roomId`，拿不到才退回 [FriendService.resolveMyElderId]）。
+  /// 呼叫端必須 `unawaited`——這只是順便通知，絕不能拖慢或擋住開導航。
+  Future<void> _notifyFamilyHeadingHome() async {
+    var elderId = widget.roomId;
+    if (elderId == null || elderId.isEmpty) {
+      elderId = await FriendService.resolveMyElderId(widget.userId);
+    }
+    if (elderId == null || elderId.isEmpty) return;
+    await LocationApi.notifyHeadingHome(elderId: elderId, userId: widget.userId);
   }
 
   /// 抓取天氣（見 [WeatherService]）。內含快取與失敗兜底，這裡只負責
@@ -512,17 +529,19 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 「帶我回家」：只有家屬設定了家才出現，併進問候列右側（見 [_buildGreeting]），
-              // 不另佔一列——360x640 要讓「今日頭條」留在第一屏（G204）。
               _buildGreeting(c),
+              // 「帶我回家」：獨立的大入口，問候列之後、今天卡之前最顯眼的位置。
+              // 尚未設定「家」時仍顯示（停用樣態提示家屬去設定），不整個藏起來。
+              GemIn(index: 0, child: _buildGoHomeEntry(c)),
+              const SizedBox(height: _cardGap),
               // ★ 一屏到底：首頁只留三張卡（今天／任務／今日頭條），依序以寶石鑲入錯開入場。
               // 刻意不把新聞卡排到前面——今天與任務是健康相關資訊，優先度更高。
               // 超出第一屏的部分交給外層既有的 SingleChildScrollView 捲動。
-              GemIn(index: 0, child: _buildTodayCard(c)),
+              GemIn(index: 1, child: _buildTodayCard(c)),
               const SizedBox(height: _cardGap),
-              GemIn(index: 1, child: _buildTaskCard(c)),
+              GemIn(index: 2, child: _buildTaskCard(c)),
               const SizedBox(height: _cardGap),
-              GemIn(index: 2, child: _buildFeaturedNewsCard(c)),
+              GemIn(index: 3, child: _buildFeaturedNewsCard(c)),
             ],
           ),
         ),
@@ -583,27 +602,76 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               ],
             ),
           ),
-          // 「帶我回家」（GPS，`_goHome()`）：tonal 小鈕，高 60，視覺文字縮成「回家」＋圖示，
-          // Semantics 仍念「帶我回家」。只有已設定家才出現。
-          if (_homePlace != null) ...[
-            const SizedBox(width: 10),
-            Semantics(
-              button: true,
-              label: '帶我回家',
-              excludeSemantics: true,
-              onTap: _goHome,
-              child: ExcludeSemantics(
-                child: UbanButton(
-                  label: '回家',
-                  icon: Icons.home_rounded,
-                  variant: UbanButtonVariant.tonal,
-                  expand: false,
-                  onPressed: _goHome,
-                ),
-              ),
-            ),
-          ],
         ],
+      ),
+    );
+  }
+
+  /// 「帶我回家」獨立大入口（GPS，`_goHome()`）：首頁問候列之後最顯眼的卡片，
+  /// 無論是否已設定「家」都顯示——未設定時呈現停用提示樣態，不整個藏起來，
+  /// 讓長輩知道「有這個功能，只是還沒設定好」。
+  ///
+  /// Semantics 固定念「帶我回家」，與按鈕上顯示的標籤文字一致（鐵律 #14：
+  /// 副標是可收縮的動態字串，`maxLines`＋`ellipsis` 防溢位）。
+  Widget _buildGoHomeEntry(UbanColors c) {
+    final hasHome = _homePlace != null;
+    final iconBg = hasHome ? c.brandContainer : c.text3.withValues(alpha: .15);
+    final iconFg = hasHome ? c.brandStrong : c.text3;
+    final subtitle =
+        hasHome ? '導航回家，並通知家人您正在路上' : '請家人先在 App 幫您設定住家';
+
+    final card = UbanCard(
+      onTap: hasHome ? _goHome : null,
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(Icons.home_rounded, size: 34, color: iconFg),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('帶我回家',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ubanText(22, FontWeight.w900, c.text)),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ubanText(15, FontWeight.w400, c.text2),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            hasHome ? Icons.chevron_right_rounded : Icons.lock_outline_rounded,
+            size: 28,
+            color: c.text3,
+          ),
+        ],
+      ),
+    );
+
+    return Semantics(
+      button: true,
+      enabled: hasHome,
+      label: '帶我回家',
+      excludeSemantics: true,
+      onTap: hasHome ? _goHome : null,
+      child: ExcludeSemantics(
+        child: Opacity(opacity: hasHome ? 1 : .55, child: card),
       ),
     );
   }

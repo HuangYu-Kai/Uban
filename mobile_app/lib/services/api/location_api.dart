@@ -335,6 +335,22 @@ class LocationApi {
     return null;
   }
 
+  /// 長輩按下首頁「帶我回家」開始導航時，通知配對家屬（一般優先級資訊通知，
+  /// 不是安心警報）。Fire-and-forget：呼叫端不等待、不依賴回傳結果就能繼續
+  /// 開導航——家屬那端收不到通知不該擋住長輩導航回家。失敗只記 log 吞掉。
+  static Future<void> notifyHeadingHome({
+    required String elderId,
+    required int userId,
+  }) async {
+    try {
+      await ApiClient.post('/location/heading-home/$elderId', {
+        'user_id': userId,
+      });
+    } catch (e) {
+      debugPrint('⚠️ LocationApi.notifyHeadingHome error: $e');
+    }
+  }
+
   /// 從 `{status, data: {place}}` 取出 [ElderPlace]；格式不符回傳 `null`。
   static ElderPlace? _parsePlace(Map<String, dynamic>? result) {
     if (result == null || result['status'] != 'success') return null;
