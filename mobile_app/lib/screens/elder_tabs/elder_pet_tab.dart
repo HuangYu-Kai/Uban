@@ -142,7 +142,7 @@ class _ElderPetTabState extends State<ElderPetTab> {
   PetFoodUnlockSource? _unlockSource;
 
   // ── 🎨 舞台（寶可夢 GO 夥伴舞台）狀態 ─────────────────────
-  // 新功能：品種（粉紅豬／黑豬）本機持久化，見 PetBreedStore。
+  // 品種（粉紅豬／黑豬）由後端指派；PetBreedStore 只當離線快取（先讀它，後端回應後覆寫）。
   PetBreed _breed = PetBreed.pink;
   // 天氣三級，只用既有 WeatherService.getWeather（含快取），不新增 API。
   PetWeather _weather = PetWeather.sunny;
@@ -350,10 +350,12 @@ class _ElderPetTabState extends State<ElderPetTab> {
     final eid = _myFriendElderId;
     if (eid == null) return false;
     try {
-      return await PetLeaderboardService.uploadMyState(
+      final r = await PetLeaderboardService.syncMyState(
         elderId: eid,
         weightGrams: weightGrams,
       );
+      _applyServerBreed(r.breed);
+      return r.ok;
     } catch (e) {
       debugPrint('⚠️ [ElderProfileTab] 寵物體重同步到排行榜例外: $e');
       return false;
@@ -371,6 +373,15 @@ class _ElderPetTabState extends State<ElderPetTab> {
     _loadMyFriendElderId();
     _loadBreed();
     _loadWeather();
+  }
+
+  /// 套用後端指派的品種並寫回離線快取；null／未知值一律忽略（沿用現有顯示）。
+  void _applyServerBreed(String? id) {
+    if (id == null) return;
+    final b = PetBreed.fromId(id);
+    if (b.id != id) return; // fromId 對未知值會退回粉紅，這裡不當作伺服器指派
+    unawaited(PetBreedStore.save(b));
+    if (mounted && b != _breed) setState(() => _breed = b);
   }
 
   Future<void> _loadBreed() async {
@@ -811,12 +822,6 @@ class _ElderPetTabState extends State<ElderPetTab> {
     }
   }
 
-  void _setBreed(PetBreed b) {
-    if (b == _breed) return;
-    setState(() => _breed = b);
-    unawaited(PetBreedStore.save(b));
-  }
-
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
@@ -850,18 +855,13 @@ class _ElderPetTabState extends State<ElderPetTab> {
                     PetCornerActions(userId: widget.userId, musicOnly: true),
               ),
               const SizedBox(height: 14),
-              PetStatCard(
-                growth: growthState,
-                breed: _breed,
-                onBreedChanged: _setBreed,
-              ),
+              PetStatCard(growth: growthState),
               const SizedBox(height: 14),
               UbanCard(
                 child: PetLeaderboardCard(
                   boardStyle: true,
                   myElderId: _myFriendElderId,
                   refreshTick: _leaderboardTick,
-                  myBreedId: _breed.id,
                   headerTrailing: const PetSeasonChip(),
                 ),
               ),

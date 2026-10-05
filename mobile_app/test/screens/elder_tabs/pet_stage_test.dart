@@ -447,21 +447,18 @@ void main() {
       isCrownUnlocked: false,
     );
 
-    testWidgets('數值卡：第 N 階、體重、進度條、品種切換', (tester) async {
+    testWidgets('數值卡：第 N 階、體重、進度條，且不再有品種切換', (tester) async {
       phone(tester);
-      PetBreed? picked;
       await tester.pumpWidget(_host(
-        PetStatCard(
-            growth: growth, breed: PetBreed.pink, onBreedChanged: (b) => picked = b),
+        const PetStatCard(growth: growth),
         textScale: 1.3,
       ));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('第 2 階'), findsOneWidget);
       expect(find.textContaining('39.82'), findsOneWidget);
-      await tester.tap(find.text('黑豬'));
-      await tester.pumpAndSettle();
-      expect(picked, PetBreed.black);
+      expect(find.byKey(const ValueKey('pet-breed-segmented')), findsNothing);
+      expect(find.text('黑豬'), findsNothing);
     });
 
     testWidgets('排行榜卡 .board 外觀：標題與賽季膠囊同列放不下會換行', (tester) async {

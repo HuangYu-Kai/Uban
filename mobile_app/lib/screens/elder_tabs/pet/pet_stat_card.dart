@@ -2,21 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../../widgets/ui/ui.dart';
 import '../../pet_companion_studio/models/pet_growth_state.dart';
-import 'pet_ear_anchors.dart';
 
 /// 舞台下方的數值卡（設計稿 `.statcard`）：第 N 階、體重、進度條。
 /// 只用 [PetGrowthState] 既有的階段／體重／階段進度，不發明新數值。
-/// 另外附品種切換（新功能，存在本機 `pet_breed`）。
 class PetStatCard extends StatelessWidget {
   final PetGrowthState growth;
-  final PetBreed breed;
-  final ValueChanged<PetBreed> onBreedChanged;
 
   const PetStatCard({
     super.key,
     required this.growth,
-    required this.breed,
-    required this.onBreedChanged,
   });
 
   @override
@@ -90,14 +84,6 @@ class PetStatCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(hint, style: ubanText(15, FontWeight.w400, c.text2)),
-          const SizedBox(height: 12),
-          UbanSegmented(
-            key: const ValueKey('pet-breed-segmented'),
-            labels: [for (final b in PetBreed.values) b.label],
-            index: breed.index,
-            small: true,
-            onChanged: (i) => onBreedChanged(PetBreed.values[i]),
-          ),
         ],
       ),
     );

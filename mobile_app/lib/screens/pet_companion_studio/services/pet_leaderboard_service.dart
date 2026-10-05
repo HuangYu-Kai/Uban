@@ -46,6 +46,17 @@ class PetLeaderboardService {
     required String elderId,
     required int weightGrams,
   }) async {
+    final r = await syncMyState(elderId: elderId, weightGrams: weightGrams);
+    return r.ok;
+  }
+
+  /// 同 [uploadMyState]，另外帶回後端指派的小豬品種（`pink`／`black`）。
+  /// 品種由系統在小豬第一次建立時隨機指派、開發者可覆寫，App 不能自行切換。
+  /// 失敗或後端舊版沒回 `breed` 時 `breed` 為 null（呼叫端沿用本機快取）。
+  static Future<({bool ok, String? breed})> syncMyState({
+    required String elderId,
+    required int weightGrams,
+  }) async {
     try {
       final response = await http
           .post(
@@ -58,10 +69,16 @@ class PetLeaderboardService {
           )
           .timeout(_timeout);
       final data = _decode(response);
-      return response.statusCode == 200 && data['status'] == 'success';
+      final ok = response.statusCode == 200 && data['status'] == 'success';
+      String? breed;
+      final payload = data['data'];
+      if (ok && payload is Map && payload['breed'] is String) {
+        breed = payload['breed'] as String;
+      }
+      return (ok: ok, breed: breed);
     } catch (e) {
       debugPrint('⚠️ [PetLeaderboardService] uploadMyState error: $e');
-      return false;
+      return (ok: false, breed: null);
     }
   }
 

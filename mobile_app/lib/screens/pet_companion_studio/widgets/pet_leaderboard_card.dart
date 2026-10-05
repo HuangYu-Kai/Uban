@@ -36,17 +36,12 @@ class PetLeaderboardCard extends StatefulWidget {
   /// [boardStyle] 標題列右側（例如「第 3 季・還有 12 天」）。
   final Widget? headerTrailing;
 
-  /// [boardStyle] 自己那列顯示的小豬品種（`pink`／`black`）。後端沒有存別人
-  /// 的品種，其他人一律畫粉紅豬，只有「階段」是依體重算出來的。
-  final String myBreedId;
-
   const PetLeaderboardCard({
     super.key,
     required this.myElderId,
     this.refreshTick = 0,
     this.boardStyle = false,
     this.headerTrailing,
-    this.myBreedId = 'pink',
   });
 
   @override
@@ -323,7 +318,8 @@ class _PetLeaderboardCardState extends State<PetLeaderboardCard> {
         ? rawName
         : '長輩 ${entry['elder_id'] ?? ''}';
     final int stage = PetGrowthStage.fromWeight(weight).index + 1;
-    final String breed = isMe ? widget.myBreedId : 'pink';
+    // 每位的品種由後端回傳（entry['breed']）；缺漏或未知值退回粉紅豬。
+    final String breed = entry['breed'] == 'black' ? 'black' : 'pink';
 
     final (Color rankBg, Color rankFg) = switch (rank) {
       1 => (const Color(0xFFF5C542), const Color(0xFF5A4300)),

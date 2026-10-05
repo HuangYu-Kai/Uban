@@ -4,8 +4,9 @@ import 'pet_ear_anchors.dart';
 
 /// 小豬品種（粉紅豬／黑豬）的本機持久化。
 ///
-/// 新功能：只存在這台裝置的 SharedPreferences（key `pet_breed`），
-/// 不上傳後端，所以好友排行榜上別人的小豬一律畫粉紅豬。
+/// 小豬品種由後端指派（隨機，開發者可覆寫），App 不能自行切換。
+/// 這裡只是離線快取（SharedPreferences key `pet_breed`）：先讀它讓畫面
+/// 立刻有品種，拿到後端回應後再用伺服器值覆寫。
 class PetBreedStore {
   PetBreedStore._();
 
