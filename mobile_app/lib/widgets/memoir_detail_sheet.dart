@@ -1,15 +1,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../models/memoir_story.dart';
 import '../services/memoir_service.dart';
+import '../theme/app_theme.dart';
+import '../theme/family_theme.dart';
+import '../screens/family/widgets/fam_data_ui.dart';
+import '../screens/family/widgets/fam_ui.dart';
 
 /// 長輩人生故事膠囊詳細視窗 (MemoirDetailSheet)
 ///
 /// 提供懷舊繪本式排版、長輩原聲語音播放模擬（具備聲波動畫）、
 /// 完整文字、以及子女「給長輩的悄悄話筆記」留言互動區。
+///
+/// 2026-10 外觀改版：換成家屬端新設計系統（海灣藍 ocean，見 theme/family_theme.dart
+/// 與 theme/app_theme.dart 的 UbanColors.familyLight/familyDark）。本輪**純 UI 換皮**：
+/// 收藏切換、分享、播放、關閉、所有 onTap/onPressed 閉包、Navigator、API、
+/// SharedPreferences、狀態欄位與方法簽章皆與改版前相同，只換顏色／字型／圓角／元件外觀。
 class MemoirDetailSheet extends StatefulWidget {
   final MemoirStory story;
   final String elderName;
@@ -54,6 +62,13 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
   int _currentSeconds = 0;
   final int _totalSeconds = 135; // 2:15 總時長
   Timer? _audioTimer;
+
+  // showModalBottomSheet 的路由不在呼叫端的 FamilyThemeScope 之下，
+  // build() 自己掛一層；State 方法（例如 SnackBar）要用這個捕捉到的
+  // context 才吃得到家屬色票，否則會落回 App 預設色票。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   @override
   void initState() {
@@ -124,10 +139,10 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❤️ 已送出給長輩的溫馨留言！'),
-          backgroundColor: Color(0xFF10B981),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: const Text('❤️ 已送出給長輩的溫馨留言！'),
+          backgroundColor: _c.brandFill,
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -143,8 +158,15 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // push 出去的家屬元件不在主殼的 Theme 之下，這裡自己包一層才吃得到家屬海灣藍色票。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildSheet),
+    );
+  }
+
+  Widget _buildSheet(BuildContext context) {
+    _themed = context;
+    final c = _c;
     final size = MediaQuery.of(context).size;
 
     return Container(
@@ -152,19 +174,9 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
         maxHeight: size.height * 0.9,
       ),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A222D) : const Color(0xFFFAF8F5),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border.all(
-          color: cs.outline.withValues(alpha: isDark ? 0.3 : 0.8),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
+        color: c.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: c.shadows.card,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -175,7 +187,7 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
             width: 44,
             height: 5,
             decoration: BoxDecoration(
-              color: cs.outline.withValues(alpha: 0.3),
+              color: c.line,
               borderRadius: BorderRadius.circular(10),
             ),
           ),
@@ -185,48 +197,31 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: cs.tertiary.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: cs.outline, width: 1.2),
-                  ),
-                  child: Text(
-                    _currentStory.tag,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                ),
+                FamChip(label: _currentStory.tag, tone: FamTone.brand),
                 const SizedBox(width: 8),
                 Text(
                   DateFormat('yyyy年MM月dd日').format(_currentStory.recordedDate),
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 12,
-                    color: cs.onSurfaceVariant,
-                  ),
+                  style: famText(c.text2, 12),
                 ),
                 const Spacer(),
                 IconButton(
                   icon: Icon(
                     _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                    color: _isFavorite ? const Color(0xFFEF4444) : cs.onSurfaceVariant,
+                    color: _isFavorite ? c.warm : c.text2,
                     size: 24,
                   ),
                   tooltip: _isFavorite ? '已珍藏' : '加入珍藏',
                   onPressed: _toggleFavorite,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 24),
-                  onPressed: () => Navigator.pop(context),
+                FamIconButton(
+                  icon: Icons.close_rounded,
+                  tooltip: '關閉',
+                  onTap: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: c.line),
 
           // 滾動內容區
           Expanded(
@@ -240,12 +235,8 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF222D3D) : const Color(0xFFFFF7ED),
+                      color: c.brandContainer,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFFF97316).withValues(alpha: 0.4),
-                        width: 1.2,
-                      ),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,10 +252,10 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                               width: 60,
                               height: 60,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF97316).withValues(alpha: 0.2),
+                                color: c.brandContainer,
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(Icons.auto_stories_rounded, color: Color(0xFFF97316)),
+                              child: Icon(Icons.auto_stories_rounded, color: c.brandStrong),
                             ),
                           ),
                         ),
@@ -278,11 +269,7 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                                   const Text('🐷 ', style: TextStyle(fontSize: 14)),
                                   Text(
                                     '小豬溫暖引導提問：',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: const Color(0xFFF97316),
-                                    ),
+                                    style: famText(c.brandStrong, 12, weight: FontWeight.bold),
                                   ),
                                 ],
                               ),
@@ -291,12 +278,7 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                                 _currentStory.promptQuestion.isNotEmpty
                                     ? '「${_currentStory.promptQuestion}」'
                                     : '「阿公，今天跟小豬分享您的故事好不好？」',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurface,
-                                  height: 1.4,
-                                ),
+                                style: famText(c.text, 13, weight: FontWeight.w600, height: 1.4),
                               ),
                             ],
                           ),
@@ -310,12 +292,7 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                   // 故事標題
                   Text(
                     _currentStory.title,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: cs.onSurface,
-                      height: 1.3,
-                    ),
+                    style: famText(c.text, 22, weight: FontWeight.w900, height: 1.3),
                   ),
 
                   const SizedBox(height: 14),
@@ -324,12 +301,8 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF131B24) : const Color(0xFFEFF6FF),
+                      color: c.brandSoft,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xFF3B82F6).withValues(alpha: 0.4),
-                        width: 1.2,
-                      ),
                     ),
                     child: Row(
                       children: [
@@ -338,13 +311,13 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                           borderRadius: BorderRadius.circular(24),
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF3B82F6),
+                            decoration: BoxDecoration(
+                              color: c.brandFill,
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               _isPlayingAudio ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                              color: Colors.white,
+                              color: c.onBrand,
                               size: 26,
                             ),
                           ),
@@ -358,11 +331,7 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                                 children: [
                                   Text(
                                     '${widget.elderName}的口述原聲錄音',
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: cs.onSurface,
-                                    ),
+                                    style: famText(c.text, 13, weight: FontWeight.bold),
                                   ),
                                   const SizedBox(width: 6),
                                   if (_isPlayingAudio)
@@ -372,10 +341,10 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                                         width: 3,
                                         height: 10.0 + (i % 2 == 0 ? 6.0 : 0.0),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF3B82F6),
+                                          color: c.brandFill,
                                           borderRadius: BorderRadius.circular(2),
                                         ),
-                                      ).animate(onPlay: (c) => c.repeat(reverse: true))
+                                      ).animate(onPlay: (ctl) => ctl.repeat(reverse: true))
                                        .scaleY(begin: 0.4, end: 1.2, duration: 400.ms + (i * 100).ms)),
                                     ),
                                 ],
@@ -386,19 +355,15 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                                 children: [
                                   Text(
                                     _formatTime(_currentSeconds),
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 11,
-                                      color: const Color(0xFF3B82F6),
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: famText(c.brandStrong, 11, weight: FontWeight.bold, tabular: true),
                                   ),
                                   Expanded(
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 8),
                                       child: LinearProgressIndicator(
                                         value: _currentSeconds / _totalSeconds,
-                                        backgroundColor: cs.outline.withValues(alpha: 0.2),
-                                        valueColor: const AlwaysStoppedAnimation(Color(0xFF3B82F6)),
+                                        backgroundColor: c.surface3,
+                                        valueColor: AlwaysStoppedAnimation(c.brandFill),
                                         minHeight: 4,
                                         borderRadius: BorderRadius.circular(4),
                                       ),
@@ -406,10 +371,7 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                                   ),
                                   Text(
                                     _formatTime(_totalSeconds),
-                                    style: GoogleFonts.notoSansTc(
-                                      fontSize: 11,
-                                      color: cs.onSurfaceVariant,
-                                    ),
+                                    style: famText(c.text3, 11, tabular: true),
                                   ),
                                 ],
                               ),
@@ -426,28 +388,13 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E2836) : Colors.white,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: cs.outline.withValues(alpha: isDark ? 0.3 : 0.6),
-                        width: 1.2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: cs.outline.withValues(alpha: 0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
+                      boxShadow: c.shadows.card,
                     ),
                     child: Text(
                       _currentStory.fullStory,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        height: 1.8,
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: famText(c.text, 16, weight: FontWeight.w500, height: 1.8),
                     ),
                   ),
 
@@ -456,14 +403,14 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                   // ── 子女悄悄話筆記區 ──
                   Row(
                     children: [
-                      const Icon(Icons.favorite_rounded, color: Color(0xFFEF4444), size: 18),
+                      Icon(Icons.favorite_rounded, color: c.danger, size: 18),
                       const SizedBox(width: 6),
-                      Text(
-                        '家人給${widget.elderName}的悄悄話 (${_currentStory.familyNotes.length})',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: cs.onSurface,
+                      Expanded(
+                        child: Text(
+                          '家人給${widget.elderName}的悄悄話 (${_currentStory.familyNotes.length})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: famText(c.text, 15, weight: FontWeight.w800),
                         ),
                       ),
                     ],
@@ -471,27 +418,16 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                   const SizedBox(height: 10),
 
                   if (_currentStory.familyNotes.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainer.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cs.outlineVariant),
-                      ),
-                      child: Text(
-                        '尚無家人留下筆記，身為子女在下方留下第一則溫馨鼓勵吧！',
-                        style: GoogleFonts.notoSansTc(fontSize: 12, color: cs.onSurfaceVariant),
-                      ),
+                    const FamNote(
+                      text: '尚無家人留下筆記，身為子女在下方留下第一則溫馨鼓勵吧！',
                     )
                   else
                     ..._currentStory.familyNotes.map((note) => Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF243042) : const Color(0xFFF3F4F6),
+                        color: c.surface2,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cs.outlineVariant),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,31 +435,25 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                '${note.author} (${note.relation})',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: cs.onSurface,
+                              Expanded(
+                                child: Text(
+                                  '${note.author} (${note.relation})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: famText(c.text, 13, weight: FontWeight.bold),
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Text(
                                 DateFormat('MM/dd HH:mm').format(note.createdAt),
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 11,
-                                  color: cs.onSurfaceVariant,
-                                ),
+                                style: famText(c.text3, 11, tabular: true),
                               ),
                             ],
                           ),
                           const SizedBox(height: 4),
                           Text(
                             note.note,
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 13,
-                              color: cs.onSurfaceVariant,
-                              height: 1.4,
-                            ),
+                            style: famText(c.text2, 13, height: 1.4),
                           ),
                         ],
                       ),
@@ -537,23 +467,24 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                       Expanded(
                         child: TextField(
                           controller: _noteController,
+                          style: famText(c.text, 14),
                           decoration: InputDecoration(
                             hintText: '寫下給${widget.elderName}的溫馨叮嚀...',
-                            hintStyle: GoogleFonts.notoSansTc(fontSize: 13, color: cs.onSurfaceVariant),
+                            hintStyle: famText(c.text3, 13),
                             filled: true,
-                            fillColor: isDark ? const Color(0xFF131B24) : Colors.white,
+                            fillColor: c.surface2,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide(color: cs.outlineVariant),
+                              borderSide: BorderSide(color: c.line),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide(color: cs.outlineVariant),
+                              borderSide: BorderSide(color: c.line),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide(color: cs.primary, width: 1.5),
+                              borderSide: BorderSide(color: c.brandFill, width: 1.5),
                             ),
                           ),
                         ),
@@ -562,8 +493,8 @@ class _MemoirDetailSheetState extends State<MemoirDetailSheet> {
                       ElevatedButton(
                         onPressed: _submitFamilyNote,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: cs.primary,
-                          foregroundColor: cs.onPrimary,
+                          backgroundColor: c.brandFill,
+                          foregroundColor: c.onBrand,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
