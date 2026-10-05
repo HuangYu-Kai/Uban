@@ -230,11 +230,26 @@ void showFamilyPairingDialog(BuildContext context, [int? explicitElderId]) {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          QrImageView(
-                            data: code,
-                            version: QrVersions.auto,
-                            size: 140.0,
-                            backgroundColor: Colors.white,
+                          // QR 必須包在固定尺寸的白框裡：AlertDialog 會對內容做
+                          // intrinsic 高度測量，而 qr_flutter 的 QrImageView 不支援
+                          // intrinsic 尺寸，裸放會在 performLayout 的
+                          // getMaxIntrinsicHeight 直接拋例外，release 下整張卡變空白
+                          // （自主長輩補綁家人時的「配對碼跳不出來」就是這個）。
+                          // 固定框擋住往下測量，與加好友／長輩配對頁三處寫法一致。
+                          Container(
+                            width: 160,
+                            height: 160,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: QrImageView(
+                              data: code,
+                              version: QrVersions.auto,
+                              size: 140.0,
+                              backgroundColor: Colors.white,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Text(
