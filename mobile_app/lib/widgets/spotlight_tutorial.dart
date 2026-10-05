@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'elder_floating_chrome.dart';
+
 import '../theme/app_theme.dart';
 import '../theme/uban_motion.dart';
 import 'elder_overlay_button.dart';
@@ -248,6 +250,7 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView>
   @override
   void initState() {
     super.initState();
+    adjustTutorialActiveDepth(1);
     _hx = _SpringValue(this, 0);
     _hy = _SpringValue(this, 0);
     _hw = _SpringValue(this, 0);
@@ -275,6 +278,7 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView>
 
   @override
   void dispose() {
+    adjustTutorialActiveDepth(-1);
     _hx.dispose();
     _hy.dispose();
     _hw.dispose();
@@ -579,7 +583,7 @@ class _TutorialCard extends StatelessWidget {
 }
 
 /// 全螢幕 75% 黑遮罩 + 挖洞聚焦（圓角 20）＋ 3px 白框。
-/// 用 `Path.combine(PathOperation.difference, ...)` 直接從遮罩路徑中挖掉目標
+/// 用單一 evenOdd 路徑（外框矩形 + 洞口圓角矩形）從遮罩中挖掉目標
 /// 區域，挖空處完全透明、直接透出下方畫面內容。洞口數值來自四條彈簧。
 class _SpotlightPainter extends CustomPainter {
   final AnimationController x, y, w, h;
@@ -597,23 +601,25 @@ class _SpotlightPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final Paint overlayPaint = Paint()
       ..color = Colors.black.withValues(alpha: 0.75);
-    final Path outerPath = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final Rect fullRect = Rect.fromLTWH(0, 0, size.width, size.height);
 
     // 彈簧過衝時寬高可能短暫為負；與設計稿一致，寬度 ≤ 8 視為沒有洞。
     final double hw = w.value;
     final double hh = h.value;
     if (hw <= 8 || hh <= 8) {
-      canvas.drawPath(outerPath, overlayPaint);
+      canvas.drawRect(fullRect, overlayPaint);
       return;
     }
 
     final RRect holeRRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(x.value, y.value, hw, hh),
         const Radius.circular(_holeRadius));
-    final Path combined = Path.combine(
-        PathOperation.difference, outerPath, Path()..addRRect(holeRRect));
-    canvas.drawPath(combined, overlayPaint);
+    // 單一路徑 + evenOdd：外框矩形與洞口重疊處被視為「外」而不填色，洞內不蓋黑。
+    final Path overlayPath = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(fullRect)
+      ..addRRect(holeRRect);
+    canvas.drawPath(overlayPath, overlayPaint);
 
     // 白框：CSS border 畫在盒內，所以把筆畫往內縮半個線寬。
     final Paint ringPaint = Paint()

@@ -501,7 +501,7 @@ class _FriendsScreenState extends State<FriendsScreen>
       onRefresh: _loadFriendsData,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(18, 0, 18, elderNavClearance(context)),
+        padding: EdgeInsets.fromLTRB(18, 0, 18, elderNavClearanceWithPill(context)),
         children: [
           _buildAddFriendButton(),
           const SizedBox(height: 12),
@@ -696,7 +696,7 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   Widget _buildFriendList() {
     return ListView.separated(
-      padding: EdgeInsets.fromLTRB(18, 0, 18, elderNavClearance(context)),
+      padding: EdgeInsets.fromLTRB(18, 0, 18, elderNavClearanceWithPill(context)),
       itemCount: _familyList.length,
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (context, index) {

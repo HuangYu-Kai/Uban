@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
+import 'elder_floating_chrome.dart';
 import 'ui/uban_glass_nav_bar.dart';
 
 /// ★ 2026-09-22 第五十一輪（長5）：長輩端語音助理的**全域**入口。
@@ -219,7 +220,8 @@ class _GlobalAssistantButtonState extends State<GlobalAssistantButton> {
     return Positioned(
       left: left,
       top: top,
-      child: GestureDetector(
+      child: _wrapChromeVisibility(
+        child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _onTap,
         onPanStart: (_) {
@@ -275,6 +277,36 @@ class _GlobalAssistantButtonState extends State<GlobalAssistantButton> {
           ),
         ),
       ),
+      ),
+    );
+  }
+
+  /// 往下捲動／聊天分頁／新手導覽遮罩顯示中：滑向最近的邊並淡出、不可點。
+  /// （與「怎麼用？」膠囊共用 [elderFloatingChromeHidden] 等狀態，一起出入。）
+  Widget _wrapChromeVisibility({required Widget child}) {
+    return ListenableBuilder(
+      listenable: Listenable.merge(
+          [elderFloatingChromeHidden, elderChatTabActive, tutorialActiveDepth]),
+      builder: (context, _) {
+        final bool hidden = elderFloatingChromeHidden.value ||
+            elderChatTabActive.value ||
+            tutorialActiveDepth.value > 0;
+        return IgnorePointer(
+          ignoring: hidden,
+          child: AnimatedSlide(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOut,
+            offset: hidden
+                ? Offset(_dxFraction >= 0.5 ? 1.6 : -1.6, 0)
+                : Offset.zero,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 260),
+              opacity: hidden ? 0 : 1,
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }

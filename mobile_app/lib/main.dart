@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_core/firebase_core.dart';
@@ -2229,6 +2230,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       theme: buildAppTheme(context),
       darkTheme: buildAppDarkTheme(context), // ★ 2026-10-05 UI 改版：長輩端深色模式（家屬端走 FamilyThemeScope 自己的開關，不受此影響）
       themeMode: ThemeMode.system,
+      // 農民曆 showDatePicker(locale: zh_TW) 需要 MaterialLocalizations；不設全域 locale，沿用裝置語系。
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('zh', 'TW'), Locale('en')],
       // ★ 2026-09-22 第五十一輪（長5）：長輩端語音助理的全域浮動鈕。掛在
       //   `builder` 這一層（比 Navigator 更外面），所以連 `Navigator.push`
       //   出去的畫面——通話房、監控、新聞播放器、配對頁——也叫得出小嘎。

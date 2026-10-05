@@ -8,6 +8,7 @@ import '../identification_screen.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
+import '../../services/today_tasks_loader.dart';
 import '../../services/elder_location_service.dart';
 import 'elder_layout.dart';
 import '../../services/api/location_api.dart';
@@ -16,6 +17,8 @@ import '../../utils/reminder_schedule.dart';
 import '../../widgets/ui/ui.dart';
 import '../../services/elder_reminder_manager.dart';
 import '../../widgets/spotlight_tutorial.dart';
+import '../../data/privacy_policy_content.dart';
+import '../../widgets/policy_detail_dialog.dart';
 
 // 模組化子元件與彈窗
 import 'profile/models/pet_mood.dart'; // ⚠️ 只借用 PetHeartParticle，PetMood 列舉本身在小豬之家改版後已不再使用
@@ -42,6 +45,10 @@ class ElderProfileTab extends StatefulWidget {
   /// 連勝慶祝畫面的「去餵小豬」：由 `ElderHomeScreen` 傳入，轉成既有的 `_onNavTap(2)`。
   final VoidCallback? onGoFeedPig;
 
+  /// 「重新觀看新手導覽」：由 `ElderHomeScreen` 傳入（重設進度、切回首頁並重播）。
+  /// 為 null 時退回只重設進度並顯示 SnackBar。
+  final Future<void> Function()? onReplayTutorial;
+
   /// ⚠️ 僅供 widget test 注入假提醒（正式呼叫端恆為 null）。非 null 時不讀 SharedPreferences、
   /// 不打 API（提醒、好友 id、位置分享狀態、年齡地區都跳過），畫面直接用這份資料。
   @visibleForTesting
@@ -59,6 +66,7 @@ class ElderProfileTab extends StatefulWidget {
     this.familyPairingKey,
     this.aiAssistantKey,
     this.onGoFeedPig,
+    this.onReplayTutorial,
     this.debugInitialRemindersForTest,
     this.debugInitialCompletedIdsForTest,
   });
@@ -304,14 +312,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     }
 
     setState(() => _isLoadingReminders = true);
-    final prefs = await SharedPreferences.getInstance();
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-    final completedList = prefs.getStringList('completed_tasks_$today') ?? [];
-    _completedReminderIds =
-        completedList.map((e) => int.tryParse(e) ?? -1).toSet();
-
     try {
-      final list = await ApiService.getElderReminders(elderKey);
+      final data = await TodayTasksLoader.load(elderKey);
+      _completedReminderIds = data.completedIds;
+      final list = data.reminders;
       if (mounted) {
         // ★ 第四十六輪（E3）：API 回空清單時，過去會塞入 3 筆假提醒
         // （id 101/102/103：服藥／溫開水／散步），讓真的沒設提醒的長輩
@@ -530,7 +534,25 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     ).whenComplete(() => _taskSheetOpen = false);
   }
 
+  void _openPolicy() {
+    PolicyDetailDialog.show(
+      context,
+      title: PrivacyPolicyContent.title,
+      introText: PrivacyPolicyContent.introText,
+      headerIcon: Icons.privacy_tip_outlined,
+      primaryColor: UbanColors.of(context).brandStrong,
+      secondaryColor: UbanColors.of(context).brandFill,
+      sections: PrivacyPolicyContent.sections,
+      lastUpdated: '最後更新：${PrivacyPolicyContent.lastUpdated}',
+    );
+  }
+
   Future<void> _replayTutorial() async {
+    final replay = widget.onReplayTutorial;
+    if (replay != null) {
+      await replay();
+      return;
+    }
     await SpotlightTutorial.resetAllTutorials();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -550,7 +572,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         bottom: false,
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearance(context)),
+          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearanceWithPill(context)),
           child: Align(
             alignment: Alignment.topCenter,
             // 平板橫放時不要讓卡片拉成整排，限制最大寬度。
@@ -644,6 +666,15 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     title: '重新觀看新手導覽',
                     subtitle: '忘記功能怎麼用？點這裡',
                     onTap: _replayTutorial,
+                  ),
+                  gap,
+
+                  // 服務條款與隱私權政策
+                  UbanActionTile(
+                    icon: Icons.privacy_tip_outlined,
+                    title: '查看服務條款與隱私權政策',
+                    subtitle: '了解我們如何使用與保護您的資料',
+                    onTap: _openPolicy,
                   ),
                   gap,
 

@@ -22,6 +22,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../widgets/google_assistant_overlay.dart';
 import '../widgets/global_assistant_button.dart';
+import '../widgets/elder_floating_chrome.dart';
 import '../widgets/incoming_call_view.dart';
 // ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
 import '../services/local_call_notification.dart';
@@ -109,6 +110,55 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 教學」這個跨 session 的持久判斷，交給 SpotlightTutorial 內部的
   /// SharedPreferences 完成旗標。
   final Set<int> _tabTutorialAttempted = {};
+
+  // ★ 「怎麼用？」膠囊的捲動讓位（鏡像設計稿 ui.js 的 helppill.scrollaway）：
+  //   往下累積捲 >28px 且 pixels>60 → 滑出；往上累積 24px 或停止捲動 1.1s → 回來。
+  bool _helpPillHidden = false;
+  double _scrollDownAcc = 0;
+  double _scrollUpAcc = 0;
+  Timer? _helpPillReturnTimer;
+
+  void _setHelpPillHidden(bool hidden) {
+    if (_helpPillHidden == hidden) return;
+    setState(() => _helpPillHidden = hidden);
+    elderFloatingChromeHidden.value = hidden;
+  }
+
+  bool _onTabScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical || n.depth > 1) return false;
+    if (n is ScrollUpdateNotification) {
+      final d = n.scrollDelta ?? 0;
+      if (d > 0) {
+        _scrollDownAcc += d;
+        _scrollUpAcc = 0;
+        if (_scrollDownAcc > 28 && n.metrics.pixels > 60) {
+          _setHelpPillHidden(true);
+        }
+      } else if (d < 0) {
+        _scrollUpAcc += -d;
+        _scrollDownAcc = 0;
+        if (_scrollUpAcc > 24) _setHelpPillHidden(false);
+      }
+      _helpPillReturnTimer?.cancel();
+      _helpPillReturnTimer = Timer(const Duration(milliseconds: 1100), () {
+        if (!mounted) return;
+        _scrollDownAcc = 0;
+        _scrollUpAcc = 0;
+        _setHelpPillHidden(false);
+      });
+    }
+    return false;
+  }
+
+  /// 同步聊天分頁狀態給浮動鈕（build 內呼叫；變更延後到 frame 之後）。
+  void _syncChatChrome() {
+    final isChat = _selectedIndex == 3;
+    if (elderChatTabActive.value != isChat) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) elderChatTabActive.value = _selectedIndex == 3;
+      });
+    }
+  }
 
 
   Future<void> _requestPermissions() async {
@@ -931,6 +981,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   @override
   void dispose() {
+    _helpPillReturnTimer?.cancel();
+    scheduleMicrotask(() {
+      elderFloatingChromeHidden.value = false;
+      elderChatTabActive.value = false;
+    });
     _wakeWordWatchdogTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _wakeWordStt.stop();
@@ -1057,6 +1112,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 頁」——這正是為什麼判斷邏輯放在這裡（nav 的 onTap），而不是放進各分頁
   /// 自己的檔案。
   void _onNavTap(int index) {
+    _scrollDownAcc = 0;
+    _helpPillReturnTimer?.cancel();
+    if (_helpPillHidden) {
+      _helpPillHidden = false;
+      elderFloatingChromeHidden.value = false;
+    }
     setState(() => _selectedIndex = index);
     if (_tabTutorialAttempted.add(index)) {
       // 等下一影格畫出（IndexedStack 切換後的新 index 已經 paint）再嘗試，
@@ -1065,6 +1126,20 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         if (mounted) _maybeShowTabTutorial(index);
       });
     }
+  }
+
+  /// 「我的」→「重新觀看新手導覽」：重設進度、回首頁，再重新跑主介面教學。
+  Future<void> _replayMainTutorial() async {
+    await SpotlightTutorial.resetAllTutorials();
+    if (!mounted) return;
+    _tabTutorialAttempted.clear();
+    // 先標記首頁已嘗試，_onNavTap(0) 就不會另外排程首頁分頁教學，
+    // 避免與主介面教學連環彈出（其他分頁第一次切過去仍會各自播放）。
+    _tabTutorialAttempted.add(0);
+    _onNavTap(0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _maybeShowMainTutorial();
+    });
   }
 
   /// 主介面教學：介紹最下面五個標籤分別是什麼。
@@ -1262,6 +1337,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
+    _syncChatChrome();
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -1276,8 +1352,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         backgroundColor: UbanColors.of(context).bg,
         body: Stack(
         children: [
-          // 頁面內容切換
-          IndexedStack(
+          // 頁面內容切換（外包 NotificationListener：捲動時讓「怎麼用？」膠囊讓位）
+          NotificationListener<ScrollNotification>(
+            onNotification: _onTabScroll,
+            child: IndexedStack(
             index: _selectedIndex,
             children: [
               // 0 首頁
@@ -1322,8 +1400,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 familyPairingKey: _profileFamilyPairingKey,
                 aiAssistantKey: _profileAiAssistantKey,
                 onGoFeedPig: () => _onNavTap(2),
+                onReplayTutorial: _replayMainTutorial,
               ),
             ],
+          ),
           ),
           // 浮動導覽列（永遠顯示）
           Positioned(
@@ -1338,7 +1418,21 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
             bottom: UbanGlassNavBar.totalHeight +
                 MediaQuery.paddingOf(context).bottom +
                 14,
-            child: _buildHelpButton(),
+            child: IgnorePointer(
+              ignoring: _helpPillHidden || _selectedIndex == 3,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOut,
+                offset: (_helpPillHidden || _selectedIndex == 3)
+                    ? const Offset(0, 1.5)
+                    : Offset.zero,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 260),
+                  opacity: (_helpPillHidden || _selectedIndex == 3) ? 0 : 1,
+                  child: _buildHelpButton(),
+                ),
+              ),
+            ),
           ),
         ],
       ),

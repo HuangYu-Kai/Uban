@@ -14,7 +14,9 @@ import '../../services/api/location_api.dart';
 import '../../services/api_service.dart';
 import '../../services/elder_home_place_service.dart';
 import '../../services/friend_service.dart';
+import '../../services/elder_reminder_manager.dart';
 import '../../services/subscription_service.dart';
+import '../../services/today_tasks_loader.dart';
 import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/reminder_schedule.dart';
@@ -125,6 +127,21 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   // 額外安排最多一次自動重試（見 [_loadNextDoseData] 尾端），而不是只改文案。
   int _nextDoseLoadAttempt = 0;
 
+  /// 解析成功後快取的 elder_id（避免每次重讀都多打一次 profile API）。
+  String? _resolvedElderId;
+
+  void _onReminderManagerUpdate() {
+    if (mounted && widget.debugInitialRemindersForTest == null) {
+      _loadNextDoseData();
+    }
+  }
+
+  @override
+  void dispose() {
+    ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
+    super.dispose();
+  }
+
   /// 「帶我回家」的目的地；null 代表尚未設定家——入口卡仍顯示（見
   /// [_buildGoHomeEntry]），只是呈現停用提示樣態，不隱藏整張卡。
   ElderPlace? _homePlace;
@@ -151,6 +168,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       _isLoadingNextDose = false;
     } else {
       _loadNextDoseData();
+      ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
     }
     final debugHome = widget.debugInitialHomePlaceForTest;
     if (debugHome != null) {
@@ -238,33 +256,26 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// 載入「下一筆待辦提醒」卡片所需資料：長輩的排程提醒清單 + 今天已完成
   /// 的打卡紀錄。
   ///
-  /// ⚠️ 提醒清單一律用 `widget.roomId`（長輩端的 roomId 即
-  /// elder_profile.elder_id，見上方類別註解與 main.dart 的 elderIdUuid），
+  /// ⚠️ 提醒清單用 elder_profile.elder_id（`TodayTasksLoader.resolveElderId`：
+  /// 先 resolveMyElderId、退回 `widget.roomId`，與「我的」分頁一致），
   /// 不可用 `widget.userId`（DB 整數 PK）——兩者是不同的鍵，`elder_profile_tab.dart`
   /// 的 `_loadElderReminders` 對此有詳細說明（第四十三輪修復的鍵不匹配 bug）。
   Future<void> _loadNextDoseData() async {
     _nextDoseLoadAttempt++;
-    final elderId = widget.roomId;
-    if (elderId == null || elderId.isEmpty) {
-      // 拿不到 elderId 不是「今天沒有提醒」，是「還不知道長輩是誰」——同樣
-      // 不該顯示慶祝文案，比照下面 catch 分支處理（含自動重試，見尾端說明）。
-      if (mounted) {
-        setState(() {
-          _isLoadingNextDose = false;
-          _hasNextDoseLoadError = true;
-        });
-      }
-      _scheduleNextDoseRetry();
-      return;
-    }
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      final completedList = prefs.getStringList('completed_tasks_$today') ?? [];
-      final completedIds =
-          completedList.map((e) => int.tryParse(e) ?? -1).toSet();
-
-      final list = await ApiService.getElderReminders(elderId);
+      // 與「我的」分頁同一套 elder id 解析（resolveMyElderId → 退回 roomId）。
+      final elderId = _resolvedElderId ??
+          await TodayTasksLoader.resolveElderId(widget.userId,
+              roomId: widget.roomId);
+      if (elderId == null || elderId.isEmpty) {
+        // 拿不到 elderId 不是「今天沒有提醒」，是「還不知道長輩是誰」——同樣
+        // 不該顯示慶祝文案，比照下面 catch 分支處理（含自動重試，見尾端說明）。
+        throw StateError('elder id unresolved');
+      }
+      _resolvedElderId = elderId;
+      final data = await TodayTasksLoader.load(elderId);
+      final list = data.reminders;
+      final completedIds = data.completedIds;
       if (!mounted) return;
       setState(() {
         _reminders = List<Map<String, dynamic>>.from(list);
@@ -272,6 +283,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         _isLoadingNextDose = false;
         _hasNextDoseLoadError = false;
       });
+      _nextDoseLoadAttempt = 0;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -525,7 +537,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         bottom: false,
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearance(context)),
+          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearanceWithPill(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

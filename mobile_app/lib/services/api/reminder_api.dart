@@ -5,16 +5,21 @@ import 'api_client.dart';
 
 /// 遠端排程提醒 API
 class ReminderApi {
+  /// 讀取長輩的排程提醒。
+  ///
+  /// ⚠️ 失敗（網路錯誤、後端非 success）會**丟出例外**，不再回傳 `[]`——
+  /// 否則呼叫端無法分辨「真的沒有提醒」與「讀取失敗」（曾造成首頁 0/0、我的 1/1）。
+  /// 呼叫端必須自行 try/catch。
   static Future<List<dynamic>> getElderReminders(String elderId) async {
     try {
       final res = await ApiClient.get('/reminder/elder/$elderId');
       if (res != null && res['status'] == 'success' && res['data'] is List) {
         return res['data'];
       }
-      return [];
+      throw Exception('getElderReminders: unexpected response');
     } catch (e) {
       debugPrint('⚠️ getElderReminders error: $e');
-      return [];
+      rethrow;
     }
   }
 

@@ -51,7 +51,12 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
 
   Future<void> _loadReminders() async {
     setState(() => _isLoading = true);
-    final list = await ApiService.getElderReminders(widget.elderId);
+    List<dynamic> list = _reminders;
+    try {
+      list = await ApiService.getElderReminders(widget.elderId);
+    } catch (_) {
+      // 讀取失敗：維持原本清單（getElderReminders 現在失敗會丟例外）。
+    }
     if (mounted) {
       setState(() {
         _reminders = list;
