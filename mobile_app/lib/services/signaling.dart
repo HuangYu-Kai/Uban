@@ -441,6 +441,7 @@ class Signaling {
 
     // 響鈴監聽
     socket!.on('call-request', (data) {
+      debugPrint("🩺 [CallDiag] CALL-IN arrived room=${data['room']} from=${data['senderId']} callId=${data['callId']} senderRole=${data['role']} myRole=$_role");
       if (data['senderId'] == socket!.id) {
         debugPrint('📞 [Signaling] 忽略自己發出的 call-request (SenderId: ${data['senderId']})');
         return;
@@ -448,6 +449,7 @@ class Signaling {
       final String? senderRole = data['role']?.toString();
       if (senderRole != null && _role == senderRole) {
         debugPrint('📞 [Signaling] 忽略相同角色發出的 call-request (SenderRole: $senderRole)');
+        debugPrint('🩺 [CallDiag] CALL-IN dropped: same-role（兩端都是 $senderRole，相同角色互打會被忽略）');
         return;
       }
       
@@ -459,6 +461,7 @@ class Signaling {
       }
       if (_isExpiredCallPayload(data)) {
         debugPrint('⏰ [Signaling] Ignore expired call-request (callId=$callId)');
+        debugPrint("🩺 [CallDiag] CALL-IN dropped: expired（issuedAt=${data['issuedAt']} expiresAt=${data['expiresAt']} now=${DateTime.now().millisecondsSinceEpoch}；兩端時鐘差太多也會誤判過期）");
         if (callId.isNotEmpty) {
           _invalidCallIds.add(callId);
         }
@@ -485,11 +488,13 @@ class Signaling {
       debugPrint('📞 [Signaling] onCallRequest callback is ${onCallRequest != null ? "SET" : "NULL"}');
       _currentCallId = data['callId'];
       if (onCallRequest != null) {
+        debugPrint('🩺 [CallDiag] CALL-IN -> onCallRequest 已派發（callback SET）；到這一步接線正常，若畫面仍沒跳來電就是 UI 層');
         debugPrint('📞 [Signaling] 觸發 onCallRequest 回調...');
         // ★ issue 11：透傳後端解析出的來電者名稱，避免 UI 端用「目前選擇的長輩」誤判來電者
         final String? senderName = (data['senderName'] ?? data['callerName'])?.toString();
         onCallRequest!(data['room'], data['senderId'], data['callId'], senderName);
       } else {
+        debugPrint('🩺 [CallDiag] CALL-IN dropped: onCallRequest=NULL（當前畫面沒掛上來電回呼，接線問題）');
         debugPrint('⚠️ [Signaling] onCallRequest 回調未設置！來電將被忽略！');
       }
     });
@@ -953,6 +958,7 @@ class Signaling {
 
   void _emitJoin(String room, String role, String name, String mode, {dynamic userId, String? fcmToken}) async {
     debugPrint("📢 [Signaling] Emitting join: $room ($role) as $name (UID: $userId)");
+    debugPrint("🩺 [CallDiag] JOIN room=$room role=$role device=$name appState=${_isAppForeground ? 'fg' : 'bg'}");
     
     // ★ 先加入房間，不要被 FCM token 阻塞（避免卡住 join）
     socket!.emit('join', {
@@ -1096,6 +1102,7 @@ class Signaling {
       if (_deviceName != null) 'senderName': _deviceName,
       'isVideoCall': isVideoCall.toString(), // ★ 2026-08-02 第十四輪：送字串，避免後端 str(bool) 產生大寫 "False"
     });
+    debugPrint("🩺 [CallDiag] CALL-OUT room=$room role=$role callId=$effectiveCallId targetId=${targetId ?? '-'} video=$isVideoCall");
     return true;
   }
 
