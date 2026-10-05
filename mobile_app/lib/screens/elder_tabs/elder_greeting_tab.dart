@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/almanac_data_helper.dart';
+import '../../widgets/ui/ui.dart';
 import 'elder_layout.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 
@@ -573,15 +574,16 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         _isAiGenerating = false;
       });
       HapticFeedback.vibrate();
+      final c = UbanColors.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: const Color(0xFF6366F1),
+          backgroundColor: c.brandFill,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: Row(
             children: [
-              const Icon(Icons.auto_awesome_rounded, color: Colors.amber, size: 24),
+              Icon(Icons.auto_awesome_rounded, color: c.warm, size: 24),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -698,15 +700,16 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     try {
       final pngBytes = await _captureCardImage();
       if (pngBytes != null && mounted) {
+        final c = UbanColors.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: const Color(0xFF1E8E62),
+            backgroundColor: c.brandFill,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 28),
+                Icon(Icons.check_circle_rounded, color: c.onBrand, size: 28),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -726,30 +729,35 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   /// 編輯落款名稱
   void _editSenderName() {
+    final c = UbanColors.of(context);
     final controller = TextEditingController(text: _customSenderName);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(
           '✏️ 設定您的祝賀署名',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold, fontSize: 20),
+          style: GoogleFonts.notoSansTc(
+              fontWeight: FontWeight.bold, fontSize: 20, color: c.text),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('這會印在長輩圖右下角的專屬標章上：',
-                style: GoogleFonts.notoSansTc(color: Colors.grey[700], fontSize: 15)),
+                style: GoogleFonts.notoSansTc(color: c.text2, fontSize: 15)),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               maxLength: 10,
-              style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.bold),
+              style: GoogleFonts.notoSansTc(
+                  fontSize: 18, fontWeight: FontWeight.bold, color: c.text),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: Colors.grey[100],
+                fillColor: c.surface2,
                 hintText: '例：萬發阿公、秀枝阿嬤',
+                hintStyle: GoogleFonts.notoSansTc(color: c.text3),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -761,7 +769,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('取消', style: GoogleFonts.notoSansTc(fontSize: 16)),
+            child: Text('取消',
+                style: GoogleFonts.notoSansTc(fontSize: 16, color: c.text2)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -772,8 +781,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
               Navigator.pop(ctx);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E7D78),
-              foregroundColor: Colors.white,
+              backgroundColor: c.brandFill,
+              foregroundColor: c.onBrand,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
             child: Text('確定', style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -785,6 +794,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     final bool embedded = widget.embedded;
     final Widget content = Column(
           mainAxisSize: embedded ? MainAxisSize.min : MainAxisSize.max,
@@ -797,10 +807,10 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.25),
+                      color: c.brandContainer,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.wb_sunny_rounded, color: Colors.white, size: 28),
+                    child: Icon(Icons.wb_sunny_rounded, color: c.brandStrong, size: 28),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -812,7 +822,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                           style: GoogleFonts.notoSansTc(
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                            color: c.text,
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -821,7 +831,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                           style: GoogleFonts.notoSansTc(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.9),
+                            color: c.text2,
                           ),
                         ),
                       ],
@@ -831,15 +841,12 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
               ),
             ),
 
-            // 主內容視圖（宣紙溫暖大底盤）
+            // 主內容視圖
             _expandUnlessEmbedded(
               Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFAF7F2),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                  boxShadow: [
-                    BoxShadow(color: Color(0x1A000000), blurRadius: 16, offset: Offset(0, -3)),
-                  ],
+                decoration: BoxDecoration(
+                  color: c.bg,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 ),
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -859,10 +866,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             ),
           ],
         );
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF55B695),
-      ),
+    return ColoredBox(
+      color: c.bg,
       child: embedded ? content : SafeArea(bottom: false, child: content),
     );
   }
@@ -918,36 +923,20 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
+                      child: UbanButton(
+                        label: '保存到相簿',
+                        icon: Icons.download_rounded,
+                        variant: UbanButtonVariant.tonal,
                         onPressed: _saveToDevice,
-                        icon: const Icon(Icons.download_rounded, size: 22),
-                        label: Text(
-                          '保存到相簿',
-                          style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF2E7D78),
-                          side: const BorderSide(color: Color(0xFF2E7D78), width: 1.8),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton.icon(
+                      child: UbanButton(
+                        label: '換我的名字',
+                        icon: Icons.edit_note_rounded,
+                        variant: UbanButtonVariant.tonal,
                         onPressed: _editSenderName,
-                        icon: const Icon(Icons.edit_note_rounded, size: 22),
-                        label: Text(
-                          '換我的名字',
-                          style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF475569),
-                          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.8),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
                       ),
                     ),
                   ],
@@ -987,36 +976,20 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: UbanButton(
+                  label: '保存到相簿',
+                  icon: Icons.download_rounded,
+                  variant: UbanButtonVariant.tonal,
                   onPressed: _saveToDevice,
-                  icon: const Icon(Icons.download_rounded, size: 22),
-                  label: Text(
-                    '保存到相簿',
-                    style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF2E7D78),
-                    side: const BorderSide(color: Color(0xFF2E7D78), width: 1.8),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
+                child: UbanButton(
+                  label: '換我的名字',
+                  icon: Icons.edit_note_rounded,
+                  variant: UbanButtonVariant.tonal,
                   onPressed: _editSenderName,
-                  icon: const Icon(Icons.edit_note_rounded, size: 22),
-                  label: Text(
-                    '換我的名字',
-                    style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF475569),
-                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.8),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
                 ),
               ),
             ],
@@ -1039,10 +1012,11 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   /// 模式切換按鈕
   Widget _buildModeSelector() {
+    final c = UbanColors.of(context);
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFE2E8F0),
+        color: c.surface2,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1069,23 +1043,16 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     required GreetingCardMode mode,
     required bool isSelected,
   }) {
+    final c = UbanColors.of(context);
     return GestureDetector(
       onTap: () => _switchMode(mode),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? c.surface : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : null,
+          boxShadow: isSelected ? c.shadows.card : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1093,7 +1060,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             Icon(
               mode.icon,
               size: 20,
-              color: isSelected ? const Color(0xFF2E7D78) : const Color(0xFF64748B),
+              color: isSelected ? c.brandStrong : c.text2,
             ),
             const SizedBox(width: 6),
             Text(
@@ -1101,7 +1068,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
               style: GoogleFonts.notoSansTc(
                 fontSize: 16,
                 fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                color: isSelected ? const Color(0xFF1E293B) : const Color(0xFF64748B),
+                color: isSelected ? c.text : c.text2,
               ),
             ),
           ],
@@ -1112,6 +1079,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   /// 1:1 方形預覽卡片
   Widget _buildSquarePreviewCard({double? maxWidth}) {
+    final c = UbanColors.of(context);
     return Container(
       width: double.infinity,
       constraints: BoxConstraints(maxWidth: maxWidth ?? 480),
@@ -1120,17 +1088,11 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         child: Container(
           decoration: BoxDecoration(
             color: Colors.black,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: c.shadows.glass,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(24),
             child: _currentMode == GreetingCardMode.classic
                 ? _buildClassicSquareContent()
                 : _buildAiSquareContent(),
@@ -1413,23 +1375,12 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   /// 經典模式下的「範本快捷導航列」（當前主題卡 ＋ 挑選圖庫大按鈕 ＋ 常用快捷）
   Widget _buildClassicTemplateSelectorBar() {
+    final c = UbanColors.of(context);
     final currentTpl = _classicTemplates[_classicTemplateIndex];
     final quickPickIds = ['classic_lotus', 'classic_tea_table', 'classic_tea_mountain', 'classic_peony', 'festival_moon'];
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return UbanCard(
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1437,77 +1388,56 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 child: Image.asset(
                   currentTpl.bgAsset,
-                  width: 46,
-                  height: 46,
+                  width: 48,
+                  height: 48,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(width: 46, height: 46, color: const Color(0xFF0F766E)),
+                  errorBuilder: (_, __, ___) =>
+                      Container(width: 48, height: 48, color: c.brandContainer),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       '目前範本',
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
-                      ),
+                      style: ubanText(13, FontWeight.w600, c.text3),
                     ),
                     Text(
                       currentTpl.name,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: const Color(0xFF1E293B),
-                      ),
+                      style: ubanText(17, FontWeight.w900, c.text),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
+              const SizedBox(width: 10),
+              UbanButton(
+                label: '挑選圖庫',
+                icon: Icons.photo_library_rounded,
+                variant: UbanButtonVariant.tonal,
+                expand: false,
                 onPressed: _openGalleryModal,
-                icon: const Icon(Icons.photo_library_rounded, size: 20),
-                label: Text(
-                  '挑選圖庫 ❯',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F766E),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 2,
-                ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Divider(height: 1, thickness: 1, color: c.line),
           const SizedBox(height: 10),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
-          const SizedBox(height: 8),
 
-          // 常用快捷標籤：長輩不用每次都進圖庫，直接點直接換！
+          // 常用快捷縮圖：長輩不用每次都進圖庫，直接點直接換！（比照設計稿 .thumbs 選中外框）
           Row(
             children: [
               Text(
-                '常用：',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF94A3B8),
-                ),
+                '常用',
+                style: ubanText(14, FontWeight.w700, c.text3),
               ),
+              const SizedBox(width: 10),
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -1520,8 +1450,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                       final isSelected = _classicTemplateIndex == idx;
 
                       return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: GestureDetector(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: PressableScale(
                           onTap: () {
                             HapticFeedback.lightImpact();
                             setState(() {
@@ -1531,33 +1461,28 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                           },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
-                              color: isSelected ? const Color(0xFF0F766E) : const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(18),
                               border: Border.all(
-                                color: isSelected ? const Color(0xFF0F766E) : const Color(0xFFE2E8F0),
-                                width: isSelected ? 1.5 : 1.0,
+                                color: isSelected ? c.brand : Colors.transparent,
+                                width: 3,
                               ),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  t.icon,
-                                  size: 15,
-                                  color: isSelected ? Colors.white : const Color(0xFF475569),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Image.asset(
+                                t.bgAsset,
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: c.brandContainer,
+                                  child: Icon(t.icon, size: 22, color: c.brandStrong),
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  t.name.split('・').first,
-                                  style: GoogleFonts.notoSansTc(
-                                    fontSize: 13,
-                                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                                    color: isSelected ? Colors.white : const Color(0xFF334155),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -1585,6 +1510,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
+            final uc = UbanColors.of(ctx);
             final filteredTemplates = selectedCategory == 'all'
                 ? _classicTemplates
                 : _classicTemplates.where((t) => t.category == selectedCategory).toList();
@@ -1594,16 +1520,10 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
             return Container(
               height: screenHeight * 0.88,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 25,
-                    offset: Offset(0, -6),
-                  ),
-                ],
+              decoration: BoxDecoration(
+                color: uc.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: uc.shadows.glass,
               ),
               child: Column(
                 children: [
@@ -1615,10 +1535,10 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0F766E).withValues(alpha: 0.12),
+                            color: uc.brandContainer,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.photo_library_rounded, color: Color(0xFF0F766E), size: 24),
+                          child: Icon(Icons.photo_library_rounded, color: uc.brandStrong, size: 24),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -1627,19 +1547,15 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                             children: [
                               Text(
                                 '📖 精選長輩圖庫 (${_classicTemplates.length} 款)',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: const Color(0xFF1E293B),
-                                ),
+                                style: ubanText(20, FontWeight.w900, uc.text),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 '點選任一範本立即套用・節氣與節慶每週更新',
-                                style: GoogleFonts.notoSansTc(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFF64748B),
-                                ),
+                                style: ubanText(13, FontWeight.w600, uc.text2),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
@@ -1649,10 +1565,10 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                           icon: Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: Colors.grey[200],
+                              color: uc.surface2,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF475569)),
+                            child: Icon(Icons.close_rounded, size: 20, color: uc.text2),
                           ),
                           tooltip: '關閉返回',
                         ),
@@ -1677,17 +1593,17 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                           child: ChoiceChip(
                             label: Text(
                               cat.label,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 14,
-                                fontWeight: isCatSelected ? FontWeight.w900 : FontWeight.w700,
-                                color: isCatSelected ? Colors.white : const Color(0xFF334155),
+                              style: ubanText(
+                                14,
+                                isCatSelected ? FontWeight.w900 : FontWeight.w700,
+                                isCatSelected ? uc.onBrand : uc.text2,
                               ),
                             ),
                             selected: isCatSelected,
-                            selectedColor: const Color(0xFF0F766E),
-                            backgroundColor: const Color(0xFFF1F5F9),
+                            selectedColor: uc.brandFill,
+                            backgroundColor: uc.surface2,
                             side: BorderSide(
-                              color: isCatSelected ? const Color(0xFF0F766E) : const Color(0xFFCBD5E1),
+                              color: isCatSelected ? uc.brandFill : uc.line,
                               width: 1.2,
                             ),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1705,7 +1621,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+                  Divider(height: 1, thickness: 1, color: uc.line),
 
                   // 雙排 / 三排大網格瀏覽
                   Expanded(
@@ -1734,7 +1650,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                             Navigator.pop(sheetCtx);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                backgroundColor: const Color(0xFF0F766E),
+                                backgroundColor: uc.brandFill,
                                 behavior: SnackBarBehavior.floating,
                                 duration: const Duration(seconds: 2),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1748,21 +1664,13 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: uc.surface,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: isSelected ? const Color(0xFF10B981) : const Color(0xFFE2E8F0),
+                                color: isSelected ? uc.brand : uc.line,
                                 width: isSelected ? 3.0 : 1.2,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: isSelected
-                                      ? const Color(0xFF10B981).withValues(alpha: 0.25)
-                                      : Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: isSelected ? 12 : 6,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
+                              boxShadow: uc.shadows.card,
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(18),
@@ -1777,7 +1685,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                                           child: Image.asset(
                                             tpl.bgAsset,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0F766E)),
+                                            errorBuilder: (_, __, ___) => Container(color: uc.brandContainer),
                                           ),
                                         ),
                                         Positioned.fill(
@@ -1802,7 +1710,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                             decoration: BoxDecoration(
                                               color: tpl.isHolidaySpecial || tpl.isSolarTermSpecial
-                                                  ? const Color(0xFFDC2626)
+                                                  ? uc.danger
                                                   : Colors.black.withValues(alpha: 0.65),
                                               borderRadius: BorderRadius.circular(10),
                                             ),
@@ -1823,11 +1731,11 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                                             right: 8,
                                             child: Container(
                                               padding: const EdgeInsets.all(4),
-                                              decoration: const BoxDecoration(
-                                                color: Color(0xFF10B981),
+                                              decoration: BoxDecoration(
+                                                color: uc.brand,
                                                 shape: BoxShape.circle,
                                               ),
-                                              child: const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+                                              child: Icon(Icons.check_rounded, color: uc.onBrand, size: 18),
                                             ),
                                           ),
                                         // 底部大字小預覽
@@ -1855,16 +1763,16 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                                   // 下方文字說明
                                   Container(
                                     padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                                    color: Colors.white,
+                                    color: uc.surface,
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           tpl.name,
-                                          style: GoogleFonts.notoSansTc(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w900,
-                                            color: isSelected ? const Color(0xFF0F766E) : const Color(0xFF1E293B),
+                                          style: ubanText(
+                                            14,
+                                            FontWeight.w900,
+                                            isSelected ? uc.brandStrong : uc.text,
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -1896,42 +1804,22 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         // 換金句按鈕
         Expanded(
           flex: 3,
-          child: ElevatedButton.icon(
+          child: UbanButton(
+            label: '換句好話 (${_quotes[_currentQuoteIndex].category})',
+            icon: Icons.auto_awesome_rounded,
+            variant: UbanButtonVariant.tonal,
             onPressed: _nextQuote,
-            icon: const Icon(Icons.auto_awesome_rounded, color: Color(0xFFB45309), size: 22),
-            label: Text(
-              '✨ 換句好話 (${_quotes[_currentQuoteIndex].category})',
-              style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w900),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFEF3C7),
-              foregroundColor: const Color(0xFF92400E),
-              elevation: 1,
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
           ),
         ),
         const SizedBox(width: 10),
         // 換字體發光按鈕
         Expanded(
           flex: 2,
-          child: ElevatedButton.icon(
+          child: UbanButton(
+            label: '換字體發光',
+            icon: Icons.format_color_text_rounded,
+            variant: UbanButtonVariant.outline,
             onPressed: _cycleClassicFontStyle,
-            icon: const Icon(Icons.format_color_text_rounded, color: Color(0xFF1E293B), size: 22),
-            label: Text(
-              '🔤 換字體發光',
-              style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.w900),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE2E8F0),
-              foregroundColor: const Color(0xFF1E293B),
-              elevation: 1,
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
           ),
         ),
       ],
@@ -1942,99 +1830,38 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   Widget _buildAiActionTools() {
     return Column(
       children: [
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _isAiGenerating ? null : _triggerAiRegeneration,
-            icon: const Icon(Icons.auto_awesome_rounded, color: Colors.amber, size: 26),
-            label: Text(
-              '✨ AI 重新繪製 3D 新圖',
-              style: GoogleFonts.notoSansTc(fontSize: 18, fontWeight: FontWeight.w900),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF4F46E5),
-              foregroundColor: Colors.white,
-              elevation: 4,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-            ),
-          ),
+        UbanButton(
+          label: 'AI 重新繪製 3D 新圖',
+          icon: Icons.auto_awesome_rounded,
+          size: UbanButtonSize.xl,
+          loading: _isAiGenerating,
+          onPressed: _isAiGenerating ? null : _triggerAiRegeneration,
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              setState(() {
-                _aiThemeIndex = (_aiThemeIndex + 1) % _aiThemes.length;
-              });
-            },
-            icon: Icon(_aiThemes[_aiThemeIndex].icon, size: 20),
-            label: Text(
-              '🎨 切換主題 (${_aiThemes[_aiThemeIndex].name})',
-              style: GoogleFonts.notoSansTc(fontSize: 15, fontWeight: FontWeight.w800),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE2E8F0),
-              foregroundColor: const Color(0xFF1E293B),
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-          ),
+        UbanButton(
+          label: '切換主題 (${_aiThemes[_aiThemeIndex].name})',
+          icon: _aiThemes[_aiThemeIndex].icon,
+          variant: UbanButtonVariant.outline,
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            setState(() {
+              _aiThemeIndex = (_aiThemeIndex + 1) % _aiThemes.length;
+            });
+          },
         ),
       ],
     );
   }
 
-  /// 一鍵傳給 LINE 好友之特大綠色主按鈕
+  /// 一鍵傳給 LINE 好友之特大主按鈕（設計稿 `.btn line xl`）
   Widget _buildLineShareButton() {
-    return ElevatedButton(
+    return UbanButton(
+      label: _isSharing ? '正在準備祝賀圖…' : '傳給 LINE 好友 / 群組',
+      icon: _isSharing ? null : Icons.send_rounded,
+      variant: UbanButtonVariant.line,
+      size: UbanButtonSize.xl,
+      loading: _isSharing,
       onPressed: _isSharing ? null : _shareToLine,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF06C755),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 17),
-        elevation: 6,
-        shadowColor: const Color(0xFF06C755).withValues(alpha: 0.5),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      ),
-      child: _isSharing
-          ? const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-                ),
-                SizedBox(width: 12),
-                Text('正在準備祝賀圖…', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              ],
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.send_rounded, color: Color(0xFF06C755), size: 24),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '傳給 LINE 好友 / 群組',
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-              ],
-            ),
     );
   }
 }
