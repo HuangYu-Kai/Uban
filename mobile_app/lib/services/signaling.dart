@@ -197,6 +197,10 @@ class Signaling {
   bool isCallInvalidated(String? callId) =>
       callId != null && callId.isNotEmpty && _invalidCallIds.contains(callId);
 
+  /// 📞 目前是否有進行中或連線中的通話
+  bool get isInCall => _currentCallId != null && _currentCallId!.isNotEmpty;
+  String? get currentCallId => _currentCallId;
+
   /// ★ Fix E（2026-08-02 第十四輪修正）：依 callId 查詢是否為視訊通話；
   ///   callId 不吻合或查無紀錄時預設為 true。旗標解析改用 globals.dart 的
   ///   parseIsVideoCall（共用解析器，相容 bool 與後端 str(bool) 產生的大小寫字串）。
