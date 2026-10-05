@@ -130,7 +130,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       child: Container(
         width: double.infinity,
-        height: MediaQuery.of(context).size.height * 0.75,
+        height: MediaQuery.of(context).size.height * 0.9,
         decoration: BoxDecoration(
           color: const Color(0xFFF9FAFB),
           borderRadius: BorderRadius.circular(24),
@@ -191,7 +191,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                           widget.lastUpdated,
                           style: GoogleFonts.notoSansTc(
                             color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 11,
+                            fontSize: 14,
                           ),
                         ),
                       ],
@@ -262,9 +262,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                               child: Text(
                                 widget.introText,
                                 style: GoogleFonts.notoSansTc(
-                                  fontSize: 12.5,
+                                  fontSize: 17,
                                   color: widget.primaryColor.withValues(alpha: 0.85),
-                                  height: 1.5,
+                                  height: 1.6,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -434,7 +434,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                           child: Text(
                             section.title,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 14.5,
+                              fontSize: 20,
                               fontWeight: FontWeight.bold,
                               color: const Color(0xFF1E293B),
                             ),
@@ -487,19 +487,19 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
         children.add(TextSpan(
           text: text.substring(start, match.start),
           style: GoogleFonts.notoSansTc(
-            fontSize: 13,
+            fontSize: 18,
             color: const Color(0xFF4B5563),
-            height: 1.5,
+            height: 1.7,
           ),
         ));
       }
       children.add(TextSpan(
         text: match.group(1),
         style: GoogleFonts.notoSansTc(
-          fontSize: 13,
+          fontSize: 18,
           fontWeight: FontWeight.bold,
           color: const Color(0xFF0F172A),
-          height: 1.5,
+          height: 1.7,
         ),
       ));
       start = match.end;
@@ -509,9 +509,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
       children.add(TextSpan(
         text: text.substring(start),
         style: GoogleFonts.notoSansTc(
-          fontSize: 13,
+          fontSize: 18,
           color: const Color(0xFF4B5563),
-          height: 1.5,
+          height: 1.7,
         ),
       ));
     }

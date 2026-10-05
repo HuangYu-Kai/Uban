@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
 import '../widgets/login_flow_parts.dart';
+import '../utils/taiwan_districts.dart';
 import '../widgets/ui/ui.dart';
 
 /// 長輩帳號「年齡／居住地」強制補填畫面（長輩尺規）。
@@ -54,11 +59,72 @@ class _ElderProfileOnboardingScreenState
   String? _residenceDistrict;
   bool _isSaving = false;
   String? _errorMessage;
+  bool _isLocating = false;
+  bool _autoFilled = false;
 
   @override
   void initState() {
     super.initState();
     _prefillAge();
+    _autoLocate();
+  }
+
+  /// 「台」→「臺」後才能對上白名單（kTaiwanCities 一律用「臺」）。
+  String _normalizeRegion(String? s) => (s ?? '').trim().replaceAll('台', '臺');
+
+  /// 自動定位帶入縣市／區。任何失敗（拒絕權限、逾時、查不到、不在白名單）
+  /// 一律靜默，維持手動選擇；也不覆蓋長輩已經自己選好的值（[force] 除外）。
+  Future<void> _autoLocate({bool force = false}) async {
+    if (_isLocating) return;
+    setState(() => _isLocating = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.medium),
+      ).timeout(const Duration(seconds: 8));
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      ).timeout(const Duration(seconds: 8));
+      if (placemarks.isEmpty || !mounted) return;
+      final place = placemarks.first;
+      final city = _normalizeRegion(place.administrativeArea);
+      String? district;
+      for (final cand in [
+        place.subAdministrativeArea,
+        place.locality,
+        place.subLocality,
+      ]) {
+        final d = _normalizeRegion(cand);
+        if (d.isNotEmpty && isValidCityDistrict(city, d)) {
+          district = d;
+          break;
+        }
+      }
+      if (district == null) return;
+      // 定位期間長輩若已手動選好，就不要覆蓋。
+      if (!force && (_residenceCity != null || _residenceDistrict != null)) {
+        return;
+      }
+      setState(() {
+        _residenceCity = city;
+        _residenceDistrict = district;
+        _autoFilled = true;
+        _errorMessage = null;
+      });
+    } catch (_) {
+      // 靜默：保留手動選擇
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   /// 長輩帳號建立時（自主模式預設 75 歲，或家屬配對時手動輸入）多半已經有
@@ -171,8 +237,49 @@ class _ElderProfileOnboardingScreenState
                           onChanged: (city, district) => setState(() {
                             _residenceCity = city;
                             _residenceDistrict = district;
+                            _autoFilled = false; // 手動改過就不再宣稱是自動帶入
                             _errorMessage = null;
                           }),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            if (_autoFilled)
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.my_location_rounded,
+                                        size: 20, color: c.brandStrong),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '已依您目前位置自動帶入',
+                                        style: ubanText(
+                                            17, FontWeight.w600, c.text2),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              const Spacer(),
+                            TextButton.icon(
+                              onPressed: _isLocating
+                                  ? null
+                                  : () => _autoLocate(force: true),
+                              icon: _isLocating
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.refresh_rounded, size: 20),
+                              label: Text(_isLocating ? '定位中…' : '重新定位',
+                                  style: ubanText(
+                                      17, FontWeight.w700, c.brandStrong)),
+                            ),
+                          ],
                         ),
                         if (_errorMessage != null) ...[
                           const SizedBox(height: 20),

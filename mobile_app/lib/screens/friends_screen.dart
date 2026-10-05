@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ui/ui.dart';
 import 'elder_tabs/elder_layout.dart';
+import 'elder_tabs/profile/dialogs/family_pairing_dialog.dart';
 import 'elder_tabs/widgets/elder_call_button.dart';
 import '../services/api_service.dart';
 import '../services/friend_service.dart';
@@ -364,6 +365,15 @@ class _FriendsScreenState extends State<FriendsScreen>
               '請家人先完成配對',
               textAlign: TextAlign.center,
               style: ubanText(18, FontWeight.w400, c.text3),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            // 長輩端專用畫面（FriendsScreen 只有長輩端使用）：直接出示配對碼，
+            // 只開對話框，不碰通話／撥號邏輯。
+            UbanButton(
+              label: '出示配對碼給家人',
+              icon: Icons.link_rounded,
+              size: UbanButtonSize.xl,
+              onPressed: () => showFamilyPairingDialog(context, widget.userId),
             ),
           ],
         ),

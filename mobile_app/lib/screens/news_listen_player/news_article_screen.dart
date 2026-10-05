@@ -187,15 +187,29 @@ class NewsArticleScreen extends StatelessWidget {
                     const SizedBox(height: 20),
 
                     // 內文：20pt、行高 1.85
-                    Text(
-                      content.isNotEmpty ? content : '（此新聞暫無內文）',
-                      style: ubanText(
-                        20,
-                        FontWeight.w400,
-                        content.isNotEmpty ? c.text : c.text3,
-                        height: 1.85,
+                    if (content.isNotEmpty)
+                      ..._splitParagraphs(content).expand((para) => [
+                            Text(
+                              para,
+                              style: ubanText(
+                                20,
+                                FontWeight.w400,
+                                c.text,
+                                height: 1.85,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ])
+                    else
+                      Text(
+                        '（此新聞暫無內文）',
+                        style: ubanText(
+                          20,
+                          FontWeight.w400,
+                          c.text3,
+                          height: 1.85,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -204,6 +218,37 @@ class NewsArticleScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 內文分段：優先依換行；舊資料（無換行且偏長）則每約 3 句切一段。
+  static List<String> _splitParagraphs(String text) {
+    final byLine = text
+        .split(RegExp(r'\n+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (byLine.length > 1 || text.length < 120) return byLine;
+
+    final paras = <String>[];
+    final buf = StringBuffer();
+    var sentences = 0;
+    var quoteDepth = 0;
+    for (final ch in text.trim().split('')) {
+      buf.write(ch);
+      if (ch == '「') quoteDepth++;
+      if (ch == '」' && quoteDepth > 0) quoteDepth--;
+      if (quoteDepth == 0 && (ch == '。' || ch == '！' || ch == '？')) {
+        sentences++;
+        if (sentences >= 3) {
+          paras.add(buf.toString().trim());
+          buf.clear();
+          sentences = 0;
+        }
+      }
+    }
+    final rest = buf.toString().trim();
+    if (rest.isNotEmpty) paras.add(rest);
+    return paras;
   }
 
   Widget _buildGradientPlaceholder(String category) {
