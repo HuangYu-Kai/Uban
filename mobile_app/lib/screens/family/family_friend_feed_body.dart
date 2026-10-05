@@ -542,7 +542,7 @@ class _FamilyFriendFeedBodyState extends State<FamilyFriendFeedBody> {
     return FamCard(
       padding: const EdgeInsets.all(28),
       child: Text(
-        '還沒有朋友圈動態，加朋友後就能看到彼此的近況！',
+        '還沒有朋友圈動態，加好友後就能看到彼此的近況！',
         textAlign: TextAlign.center,
         style: famText(_c.text2, 15, height: 1.6),
       ),
