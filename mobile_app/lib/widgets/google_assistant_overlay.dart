@@ -362,6 +362,12 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       // 呼叫 ApiService.aiChatStream (Stream<String>)
       await for (final token in ApiService.aiChatStream(widget.userId, query)) {
         if (!mounted) return;
+        // 後端／網路錯誤以 `[ERROR] ...` 開頭的 token 回報，不可把原始例外
+        // 顯示給長輩；丟給下方 catch 走同一句友善說明。
+        if (token.startsWith('[ERROR]')) {
+          debugPrint("🤖 [UbanAssistant] Stream error token: $token");
+          throw Exception('aiChatStream error');
+        }
         setState(() {
           if (firstChunk) {
             _isThinking = false;

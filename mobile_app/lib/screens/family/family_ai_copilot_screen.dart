@@ -209,13 +209,23 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         'elder_id': elderIdStr,
         'elder_name': elderName,
         'message': text,
-      });
+      }, timeout: const Duration(seconds: 45));
 
       Map<String, dynamic>? data;
       if (res != null && res['status'] == 'success' && res['data'] != null) {
         data = Map<String, dynamic>.from(res['data']);
+      } else if (res != null) {
+        // 伺服器有回應但不是成功（例如 4xx/5xx）
+        data = {
+          'reply_text': '暫時查不到 $elderName 的資料（伺服器回應錯誤），請稍後再試。',
+        };
       } else {
+        // null＝逾時或網路錯誤（ApiClient.post 會吞掉例外）；沿用離線備援，
+        // 但近況查詢類改成提示重問，避免誤導成「查不到資料」。
         data = _generateFallbackResponse(text, elderName);
+        if (data['status_summary'] != null) {
+          data['reply_text'] = '小嘎想太久了或網路不穩，暫時無法查詢 $elderName 的近況，請再問一次。';
+        }
       }
 
       setState(() {

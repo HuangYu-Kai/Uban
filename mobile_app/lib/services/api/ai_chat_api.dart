@@ -62,7 +62,7 @@ class AiChatApi {
         if (userName != null && userName.isNotEmpty) 'user_name': userName,
       });
 
-      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
+      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 40));
 
       if (streamedResponse.statusCode != 200) {
         client.close();
