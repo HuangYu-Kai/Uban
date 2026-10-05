@@ -1036,6 +1036,57 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           debugPrint('📍 [Main] caregiver_id 缺漏，略過安心提醒點擊導航');
           return;
         }
+
+        // 📞 通話中點擊通知：彈出確認對話框，讓家屬自選「查看地圖」或「留在通話」
+        if (sig.Signaling().isInCall) {
+          final context = navigatorKey.currentContext;
+          if (context != null && context.mounted) {
+            final bool? shouldOpen = await showDialog<bool>(
+              context: context,
+              barrierDismissible: true,
+              builder: (ctx) {
+                return AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.location_on_outlined, color: Color(0xFF2E7D78)),
+                      SizedBox(width: 8),
+                      Text('長輩位置提醒', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  content: Text(
+                    '目前正在通話中。是否要開啟 $elderName 的位置地圖？\n（通話將在背景繼續進行）',
+                    style: const TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('留在通話', style: TextStyle(color: Colors.grey)),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E7D78),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text('查看位置'),
+                    ),
+                  ],
+                );
+              },
+            );
+            if (shouldOpen != true) {
+              debugPrint('📍 [Main] 使用者選擇留在通話，略過安心提醒地圖導航');
+              return;
+            }
+          }
+        }
+
         final nav = navigatorKey.currentState;
         if (nav == null || !isAppReady) return;
         nav.push(MaterialPageRoute(
