@@ -411,7 +411,12 @@ class ApiService {
   static Future<List<dynamic>> getElderReminders(String elderId) => ReminderApi.getElderReminders(elderId);
   static Future<bool> createElderReminder(Map<String, dynamic> body) => ReminderApi.createElderReminder(body);
   static Future<bool> toggleElderReminder(int reminderId) => ReminderApi.toggleElderReminder(reminderId);
-  static Future<bool> deleteElderReminder(int reminderId) => ReminderApi.deleteElderReminder(reminderId);
+  static Future<bool> deleteElderReminder(int reminderId,
+          {String? requesterRole, int? requesterUserId}) =>
+      ReminderApi.deleteElderReminder(reminderId,
+          requesterRole: requesterRole, requesterUserId: requesterUserId);
+  static Future<Map<String, dynamic>> getTodayProgress(String elderId) =>
+      ReminderApi.getTodayProgress(elderId);
   static Future<bool> updateElderReminder(int reminderId, Map<String, dynamic> body) =>
       ReminderApi.updateElderReminder(reminderId, body);
   static Future<bool> completeElderReminder(int reminderId) => ReminderApi.completeElderReminder(reminderId);

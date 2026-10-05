@@ -23,6 +23,7 @@ import '../../utils/reminder_schedule.dart';
 import '../../widgets/ui/ui.dart';
 import 'elder_layout.dart';
 import 'widgets/elder_task_sheet.dart';
+import 'widgets/elder_goal_form.dart';
 import 'streak/streak_celebration.dart';
 import 'streak/streak_service.dart';
 import 'widgets/gem_in.dart';
@@ -1029,8 +1030,26 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         readGroups: () =>
             groupByStatus(_reminders, _completedReminderIds, DateTime.now()),
         onCheckIn: _completeNextDose,
+        onAddGoal: () => _editGoal(null),
+        onEditGoal: _editGoal,
+        onDeleteGoal: (g) async {
+          if (await confirmDeleteElderGoal(context, g, userId: widget.userId)) {
+            await _loadNextDoseData();
+          }
+        },
       ),
     ).whenComplete(() => _taskSheetOpen = false);
+  }
+
+  /// 長輩自建目標：新增（[goal]＝null）或修改。成功後重讀清單，進度環／打卡走既有路徑。
+  Future<void> _editGoal(Map<String, dynamic>? goal) async {
+    final elderId = _resolvedElderId ??
+        await TodayTasksLoader.resolveElderId(widget.userId,
+            roomId: widget.roomId);
+    if (elderId == null || elderId.isEmpty || !mounted) return;
+    final ok = await runElderGoalForm(context,
+        elderId: elderId, userId: widget.userId, existing: goal);
+    if (ok) await _loadNextDoseData();
   }
 
   /// 今日頭條卡（設計稿 `.news-hero`＋`.headline`）。

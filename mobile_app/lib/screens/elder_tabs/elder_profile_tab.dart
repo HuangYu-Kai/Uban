@@ -31,6 +31,7 @@ import 'streak/streak_celebration.dart';
 import 'streak/streak_service.dart';
 import 'streak/streak_widgets.dart';
 import 'widgets/elder_task_sheet.dart';
+import 'widgets/elder_goal_form.dart';
 
 class ElderProfileTab extends StatefulWidget {
   final int userId;
@@ -530,8 +531,24 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         readGroups: () =>
             groupByStatus(_reminders, _completedReminderIds, DateTime.now()),
         onCheckIn: _checkIn,
+        onAddGoal: () => _editGoal(null),
+        onEditGoal: _editGoal,
+        onDeleteGoal: (g) async {
+          if (await confirmDeleteElderGoal(context, g, userId: widget.userId)) {
+            await _loadElderReminders();
+          }
+        },
       ),
     ).whenComplete(() => _taskSheetOpen = false);
+  }
+
+  /// 長輩自建目標：新增（[goal]＝null）或修改；成功後重讀清單。
+  Future<void> _editGoal(Map<String, dynamic>? goal) async {
+    final elderId = _myFriendElderId;
+    if (elderId == null || elderId.isEmpty || !mounted) return;
+    final ok = await runElderGoalForm(context,
+        elderId: elderId, userId: widget.userId, existing: goal);
+    if (ok) await _loadElderReminders();
   }
 
   void _openPolicy() {

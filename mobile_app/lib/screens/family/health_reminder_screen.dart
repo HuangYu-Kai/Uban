@@ -456,6 +456,8 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
                             label: '$catName・$repeatDays',
                             tone: isActive ? FamTone.brand : FamTone.neutral,
                           ),
+                          if (r['created_by_role'] == 'elder')
+                            const FamChip(label: '長輩自訂', tone: FamTone.info),
                         ],
                       ),
                       const SizedBox(height: 6),

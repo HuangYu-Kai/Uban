@@ -45,9 +45,16 @@ class ReminderApi {
     }
   }
 
-  static Future<bool> deleteElderReminder(int reminderId) async {
+  /// [requesterRole]＝'elder' 時，後端只允許刪除長輩自建的目標。
+  static Future<bool> deleteElderReminder(int reminderId,
+      {String? requesterRole, int? requesterUserId}) async {
     try {
-      final url = ApiClient.fullUrl('/reminder/$reminderId');
+      final q = <String>[
+        if (requesterRole != null) 'requester_role=$requesterRole',
+        if (requesterUserId != null) 'requester_user_id=$requesterUserId',
+      ];
+      final url = ApiClient.fullUrl(
+          '/reminder/$reminderId${q.isEmpty ? '' : '?${q.join('&')}'}');
       final res = await http.delete(Uri.parse(url)).timeout(ApiClient.timeout);
       final data = ApiClient.safeDecode(res);
       return data['status'] == 'success';
@@ -74,6 +81,22 @@ class ReminderApi {
     } catch (e) {
       debugPrint('⚠️ completeElderReminder error: $e');
       return false;
+    }
+  }
+
+  /// 家屬端「今日打卡」：今天適用的提醒＋是否已完成。
+  /// 回傳 `{date, items:[{id,title,category,time_str,completed,created_by_role}], done, total}`；
+  /// 失敗**丟出例外**（呼叫端分辨「沒有安排」與「讀取失敗」）。
+  static Future<Map<String, dynamic>> getTodayProgress(String elderId) async {
+    try {
+      final res = await ApiClient.get('/reminder/elder/$elderId/today-progress');
+      if (res != null && res['status'] == 'success' && res['data'] is Map) {
+        return Map<String, dynamic>.from(res['data'] as Map);
+      }
+      throw Exception('getTodayProgress: unexpected response');
+    } catch (e) {
+      debugPrint('⚠️ getTodayProgress error: $e');
+      rethrow;
     }
   }
 }

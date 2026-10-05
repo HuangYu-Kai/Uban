@@ -6,6 +6,7 @@ import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/ui/uban_glass_nav_bar.dart';
 import 'home/widgets/home_elder_header_card.dart';
+import 'home/widgets/home_checkin_card.dart';
 import 'home/widgets/home_zone_card.dart';
 import 'home/widgets/home_gps_trail_card.dart';
 import 'home/widgets/home_monitor_device_card.dart';
@@ -86,6 +87,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
   List<dynamic> _emergencyAlerts = [];
+  int _checkinRefresh = 0;
 
   @override
   void initState() {
@@ -102,6 +104,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   }
 
   Future<void> _loadDynamicData() async {
+    if (mounted) setState(() => _checkinRefresh++);
     if (widget.currentElder == null) return;
     final elderIdStr = widget.currentElder!.elderId ?? widget.currentElder!.id.toString();
 
@@ -175,6 +178,11 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                           currentElder: widget.currentElder,
                           isElderOnline: widget.isElderOnline,
                           realLogs: _realLogs,
+                        ),
+                        const SizedBox(height: 16),
+                        HomeCheckinCard(
+                          currentElder: widget.currentElder,
+                          refreshToken: _checkinRefresh,
                         ),
                         const SizedBox(height: 16),
                         HomeZoneCard(
@@ -262,6 +270,13 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
                       currentElder: widget.currentElder,
                       isElderOnline: widget.isElderOnline,
                       realLogs: _realLogs,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 1.2 ✅ 今日打卡進度（含長輩自建目標）
+                    HomeCheckinCard(
+                      currentElder: widget.currentElder,
+                      refreshToken: _checkinRefresh,
                     ),
                     const SizedBox(height: 16),
 

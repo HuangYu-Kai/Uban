@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/reminder_schedule.dart';
 import '../../../widgets/ui/ui.dart';
+import 'elder_goal_form.dart';
 
 /// 提醒分類 → 圖示與色調（對應設計稿 `catStyle`）。
 ({IconData icon, Color bg, Color fg}) reminderCategoryStyle(
@@ -31,10 +32,20 @@ class ElderTaskSheetBody extends StatefulWidget {
   final ReminderGroups Function() readGroups;
   final Future<void> Function(Map<String, dynamic> reminder) onCheckIn;
 
+  /// 「＋ 新增我的目標」；為 null 且沒有長輩自建項目時，維持原本的三組呈現。
+  final Future<void> Function()? onAddGoal;
+
+  /// 長輩自建目標的修改／刪除（只對 `created_by_role=='elder'` 的列出現）。
+  final Future<void> Function(Map<String, dynamic> goal)? onEditGoal;
+  final Future<void> Function(Map<String, dynamic> goal)? onDeleteGoal;
+
   const ElderTaskSheetBody({
     super.key,
     required this.readGroups,
     required this.onCheckIn,
+    this.onAddGoal,
+    this.onEditGoal,
+    this.onDeleteGoal,
   });
 
   @override
@@ -51,11 +62,74 @@ class _ElderTaskSheetBodyState extends State<ElderTaskSheetBody> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _run(Future<void> Function() f) async {
+    await f();
+    if (mounted) setState(() {});
+  }
+
+  /// 兩區（家人提醒／我的目標）：各區未完成在前（依時間）、已完成在後。
+  List<Widget> _splitSections(UbanColors c, ReminderGroups g) {
+    final pending = [...g.dueNow, ...g.later]..sort((a, b) =>
+        (a['time_str'] ?? '')
+            .toString()
+            .compareTo((b['time_str'] ?? '').toString()));
+    final all = [
+      for (final r in pending) (r: r, done: false),
+      for (final r in g.done) (r: r, done: true),
+    ];
+    Widget section(String name, bool mine) {
+      final rows = all.where((e) => isElderGoal(e.r) == mine).toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 2),
+            child: Text(name, style: ubanText(16, FontWeight.w700, c.text2)),
+          ),
+          if (rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(mine ? '還沒有自己的目標' : '家人還沒有設定提醒',
+                  style: ubanText(17, FontWeight.w600, c.text3)),
+            ),
+          for (final e in rows)
+            _TaskRow(
+              reminder: e.r,
+              done: e.done,
+              onCheck: () => _check(e.r),
+              onEdit: mine && widget.onEditGoal != null
+                  ? () => _run(() => widget.onEditGoal!(e.r))
+                  : null,
+              onDelete: mine && widget.onDeleteGoal != null
+                  ? () => _run(() => widget.onDeleteGoal!(e.r))
+                  : null,
+            ),
+        ],
+      );
+    }
+
+    return [
+      section('家人提醒', false),
+      const SizedBox(height: 8),
+      Divider(height: 1, thickness: 1, color: c.line),
+      section('我的目標', true),
+      const SizedBox(height: 12),
+      if (widget.onAddGoal != null)
+        UbanButton(
+          label: '新增我的目標',
+          icon: Icons.add_rounded,
+          onPressed: () => _run(widget.onAddGoal!),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = UbanColors.of(context);
     final g = widget.readGroups();
     final total = g.dueNow.length + g.later.length + g.done.length;
+    final hasMine = [...g.dueNow, ...g.later, ...g.done].any(isElderGoal);
+    final split = widget.onAddGoal != null || hasMine;
     final sections =
         <({String key, String name, List<Map<String, dynamic>> items})>[
       (key: 'now', name: '現在要做', items: g.dueNow),
@@ -79,39 +153,41 @@ class _ElderTaskSheetBodyState extends State<ElderTaskSheetBody> {
           ],
         ),
         const SizedBox(height: 6),
-        if (sections.isEmpty)
+        if (split) ..._splitSections(c, g),
+        if (!split && sections.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Text('今天沒有要做的事',
                 textAlign: TextAlign.center,
                 style: ubanText(19, FontWeight.w700, c.text2)),
           ),
-        for (final s in sections) ...[
-          _GroupHeader(
-            title: '${s.name}（${s.items.length}）',
-            open: _open[s.key]!,
-            onTap: () => setState(() => _open[s.key] = !_open[s.key]!),
-          ),
-          AnimatedSize(
-            duration: reduceMotion(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 350),
-            curve: UbanMotion.enter,
-            alignment: Alignment.topCenter,
-            child: _open[s.key]!
-                ? Column(
-                    children: [
-                      for (final r in s.items)
-                        _TaskRow(
-                          reminder: r,
-                          done: s.key == 'done',
-                          onCheck: () => _check(r),
-                        ),
-                    ],
-                  )
-                : const SizedBox(width: double.infinity),
-          ),
-        ],
+        if (!split)
+          for (final s in sections) ...[
+            _GroupHeader(
+              title: '${s.name}（${s.items.length}）',
+              open: _open[s.key]!,
+              onTap: () => setState(() => _open[s.key] = !_open[s.key]!),
+            ),
+            AnimatedSize(
+              duration: reduceMotion(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 350),
+              curve: UbanMotion.enter,
+              alignment: Alignment.topCenter,
+              child: _open[s.key]!
+                  ? Column(
+                      children: [
+                        for (final r in s.items)
+                          _TaskRow(
+                            reminder: r,
+                            done: s.key == 'done',
+                            onCheck: () => _check(r),
+                          ),
+                      ],
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ],
       ],
     );
   }
@@ -183,9 +259,38 @@ class _TaskRow extends StatelessWidget {
   final Map<String, dynamic> reminder;
   final bool done;
   final VoidCallback onCheck;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
-  const _TaskRow(
-      {required this.reminder, required this.done, required this.onCheck});
+  const _TaskRow({
+    required this.reminder,
+    required this.done,
+    required this.onCheck,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  Future<void> _showGoalMenu(BuildContext context) async {
+    final pick = await showUbanSheet<String>(
+      context,
+      (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UbanButton(
+              label: '修改', onPressed: () => Navigator.of(ctx).pop('edit')),
+          const SizedBox(height: 8),
+          UbanButton(
+              label: '刪除',
+              variant: UbanButtonVariant.ghost,
+              onPressed: () => Navigator.of(ctx).pop('delete')),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+    if (pick == 'edit') onEdit?.call();
+    if (pick == 'delete') onDelete?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -194,50 +299,60 @@ class _TaskRow extends StatelessWidget {
         reminderCategoryStyle(c, (reminder['category'] ?? '').toString());
     final time = (reminder['time_str'] ?? '').toString();
     final title = (reminder['title'] ?? '提醒').toString();
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: c.line)),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: st.bg,
-              borderRadius: BorderRadius.circular(14),
+    return GestureDetector(
+      onLongPress: onEdit,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: c.line)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: st.bg,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(st.icon, size: 24, color: st.fg),
             ),
-            child: Icon(st.icon, size: 24, color: st.fg),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (time.isNotEmpty)
-                  Text(time,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ubanBrandText(18, FontWeight.w600, c.text2)),
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ubanText(
-                    19,
-                    FontWeight.w700,
-                    done ? c.text3 : c.text,
-                  ).copyWith(
-                    decoration: done ? TextDecoration.lineThrough : null,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (time.isNotEmpty)
+                    Text(time,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ubanBrandText(18, FontWeight.w600, c.text2)),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: ubanText(
+                      19,
+                      FontWeight.w700,
+                      done ? c.text3 : c.text,
+                    ).copyWith(
+                      decoration: done ? TextDecoration.lineThrough : null,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          _Tick(done: done, label: title, onTap: done ? null : onCheck),
-        ],
+            if (onEdit != null)
+              IconButton(
+                tooltip: '修改或刪除 $title',
+                icon: Icon(Icons.more_horiz_rounded, size: 26, color: c.text2),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                onPressed: () => _showGoalMenu(context),
+              ),
+            const SizedBox(width: 4),
+            _Tick(done: done, label: title, onTap: done ? null : onCheck),
+          ],
+        ),
       ),
     );
   }
