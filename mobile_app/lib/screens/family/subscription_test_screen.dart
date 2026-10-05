@@ -8,13 +8,18 @@
 // 依賴：pubspec.yaml → purchases_flutter: ^8.0.0
 //
 // ★ 版面（2026-08-10 改版）--------------------------------------------------
-//   採「官網 Pricing 頁」骨架、Uban 既有配色（slate + sky #0284C7 / #38BDF8）：
+//   採「官網 Pricing 頁」骨架：
 //     Hero 標題 → 目前狀態列 → 月/季/年方案卡（自算每月均價與省下 %）
-//     → 「所有方案都包含」特色清單 → 深色 CTA → 小字條款 → 開發者選項（收合）
+//     → 「所有方案都包含」特色清單 → CTA → 小字條款 → 開發者選項（收合）
 //   除錯用的 App User ID、切換測試 User、後端狀態對照，全部收進最下方
 //   ExpansionTile「開發者選項」，正式使用者不會第一眼看到。
 //   ⚠️ 特色清單目前是 UI 文案，尚未對應真正被鎖住的功能
 //      （見 docs/technical/SUBSCRIPTION_ARCHITECTURE.md ❽「功能鎖尚未接上」）。
+//
+// ★ 2026-10 外觀改版：換成家屬端新設計系統（海灣藍 ocean，見 theme/family_theme.dart
+//   與 theme/app_theme.dart 的 UbanColors.familyLight/familyDark）。本輪**純 UI 換皮**：
+//   所有 RevenueCat 邏輯、callback、Navigator、API、SharedPreferences、免費試用揭露
+//   文字與邏輯皆與改版前相同，只換顏色／版面／元件外觀。
 //
 // ★ 測試方式：RevenueCat「Test Store」— 官方虛擬測試環境 -----------------------
 //   不需 Google Play / App Store 設定、不綁信用卡、模擬器可直接測。
@@ -58,20 +63,11 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../../services/api_service.dart';
 import '../../services/subscription_service.dart';
-
-/// 版面配色：沿用 App 家屬端既有的 slate + sky 色階，不另開一套。
-class _Palette {
-  static const canvas = Color(0xFFF8FAFC); // 頁面底
-  static const surface = Colors.white; // 卡片
-  static const ink = Color(0xFF0F172A); // 主文字 / 深色 CTA
-  static const slate = Color(0xFF64748B); // 次要文字
-  static const mist = Color(0xFF94A3B8); // 說明小字
-  static const line = Color(0xFFE2E8F0); // 邊框
-  static const accent = Color(0xFF0284C7); // 強調（選中、勾選）
-  static const accentSoft = Color(0xFF38BDF8); // 強調亮色
-  static const success = Color(0xFF16A34A); // 已開通
-  static const danger = Color(0xFFEF4444);
-}
+import '../../theme/app_theme.dart';
+import '../../theme/family_theme.dart';
+import 'widgets/fam_data_ui.dart';
+import 'widgets/fam_interaction_ui.dart';
+import 'widgets/fam_ui.dart';
 
 class SubscriptionTestScreen extends StatefulWidget {
   /// 要開通的長輩 elder_id（elder_profile.elder_id，四碼字串）。
@@ -153,6 +149,12 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   bool get _effectiveIsPro => widget.elderId == null ? _isPro : _backendIsPro;
 
   final TextEditingController _userIdController = TextEditingController();
+
+  // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
+  // 取色與開 dialog／SnackBar 都用它，才吃得到家屬色票；每次 build 更新。
+  BuildContext? _themed;
+  BuildContext get _themeCtx => _themed ?? context;
+  UbanColors get _c => UbanColors.of(_themeCtx);
 
   @override
   void initState() {
@@ -359,28 +361,45 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     final elderId = widget.elderId;
     if (elderId == null) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('重設為未訂閱？', style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold)),
-        content: Text(
-          '會對後端補送一則 EXPIRATION 事件，把 $_elderLabel（elder_$elderId）的訂閱狀態'
-          '翻成未開通。\n\n'
-          '這是寫進正式資料庫的操作，不是只改本機畫面；也不會真的取消商店那邊的訂閱。',
-          style: GoogleFonts.notoSansTc(fontSize: 14, height: 1.7),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('取消', style: GoogleFonts.notoSansTc()),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: _Palette.danger),
-            child: Text('確定重設', style: GoogleFonts.notoSansTc()),
-          ),
-        ],
-      ),
+    final confirmed = await showFamDialog<bool>(
+      _themeCtx,
+      (dialogContext) {
+        final dc = UbanColors.of(dialogContext);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            famDialogTitle(dc, '重設為未訂閱？'),
+            const SizedBox(height: 10),
+            Text(
+              '會對後端補送一則 EXPIRATION 事件，把 $_elderLabel（elder_$elderId）的訂閱狀態'
+              '翻成未開通。\n\n'
+              '這是寫進正式資料庫的操作，不是只改本機畫面；也不會真的取消商店那邊的訂閱。',
+              style: famText(dc.text2, 14, height: 1.7),
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: FamButton(
+                    label: '取消',
+                    kind: FamButtonKind.ghost,
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FamButton(
+                    label: '確定重設',
+                    kind: FamButtonKind.danger,
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true) return;
 
@@ -448,13 +467,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(msg, style: GoogleFonts.notoSansTc(color: Colors.white)),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: _Palette.ink,
-        ),
-      );
+      ..showSnackBar(famSnackBar(_themeCtx, msg));
   }
 
   // ==========================================================================
@@ -683,26 +696,27 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       (_selected != null && pkg.identifier == _selected!.identifier);
 
   // ==========================================================================
-  // UI
+  // UI（2026-10 起外觀改家屬新設計，海灣藍 ocean；僅換視覺，邏輯與改版前相同）
   // ==========================================================================
 
   @override
   Widget build(BuildContext context) {
+    // push 出去的家屬頁不在主殼的 Theme 之下，需在 build 最外層包一層。
+    return FamilyThemeScope(
+      child: Builder(builder: _buildScreen),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    _themed = context;
+    final c = _c;
     return Scaffold(
-      backgroundColor: _Palette.canvas,
-      appBar: AppBar(
-        backgroundColor: _Palette.canvas,
-        surfaceTintColor: Colors.transparent,
-        scrolledUnderElevation: 0,
-        elevation: 0,
-        foregroundColor: _Palette.ink,
-      ),
+      backgroundColor: c.bg,
+      appBar: famSubBar(context, title: '訂閱方案'),
       body: Stack(
         children: [
           if (_initialLoading)
-            const Center(
-              child: CircularProgressIndicator(color: _Palette.accent),
-            )
+            Center(child: CircularProgressIndicator(color: c.brandFill))
           else
             _buildContent(),
           if (_busy) _buildBusyOverlay(),
@@ -712,16 +726,18 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   }
 
   Widget _buildBusyOverlay() {
+    final c = _c;
     return Container(
-      color: _Palette.ink.withValues(alpha: 0.25),
+      color: c.scrim,
       child: Center(
         child: Container(
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: _Palette.surface,
-            borderRadius: BorderRadius.circular(20),
+            color: c.surface,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: c.shadows.glass,
           ),
-          child: const CircularProgressIndicator(color: _Palette.accent),
+          child: CircularProgressIndicator(color: c.brandFill),
         ),
       ),
     );
@@ -729,80 +745,73 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
   Widget _buildContent() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 48),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_loadError != null) ...[
             _buildErrorBanner(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
           ],
           _buildHero(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           _buildStatusStrip(),
-          const SizedBox(height: 28),
-          _buildPlanList(),
           const SizedBox(height: 24),
+          _buildPlanList(),
+          const SizedBox(height: 20),
           _buildFeatureCard(),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
           _buildOfferDisclosure(),
           _buildCta(),
           const SizedBox(height: 12),
           _buildRestoreRow(),
           const SizedBox(height: 20),
           _buildFinePrint(),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
           _buildDeveloperPanel(),
         ],
       ),
     );
   }
 
-  // ---- Hero -----------------------------------------------------------------
+  // ---- Hero（對應 design_prototype `.prohero`）-------------------------------
 
   Widget _buildHero() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'UBAN 進階照護',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2.4,
-            color: _Palette.accent,
+    final c = _c;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: c.brandContainer,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const FamChip(label: 'PRO', tone: FamTone.warm),
+          const SizedBox(height: 12),
+          Text(
+            '幫$_elderLabel升級，多一份安心',
+            style: famText(c.brandStrong, 24, weight: FontWeight.w900, height: 1.3),
           ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          '把最好的陪伴，\n留給$_elderLabel。',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 30,
-            fontWeight: FontWeight.w700,
-            height: 1.35,
-            letterSpacing: -0.4,
-            color: _Palette.ink,
+          const SizedBox(height: 8),
+          Text(
+            '不限次數的 AI 陪聊、每月深度洞察報告，以及長久保存的回憶錄備份。'
+            '選一個適合的計費週期即可，隨時能取消。',
+            style: famText(c.text2, 14.5, height: 1.6),
           ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          '不限次數的 AI 陪聊、每月深度洞察報告，以及長久保存的回憶錄備份。'
-          '選一個適合的計費週期即可，隨時能取消。',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 15,
-            height: 1.75,
-            color: _Palette.slate,
-          ),
-        ),
-      ],
+        ],
+      ),
     ).animate().fadeIn(duration: 380.ms).slideY(begin: 0.06, curve: Curves.easeOut);
   }
 
   // ---- 目前狀態列 ------------------------------------------------------------
 
   Widget _buildStatusStrip() {
+    final c = _c;
     final bool pro = _effectiveIsPro;
-    final Color accent = pro ? _Palette.success : _Palette.slate;
+    final FamTone tone = pro ? FamTone.brand : FamTone.neutral;
+    final Color fg = famToneFg(c, tone);
 
     final String detail;
     if (_backendChecking) {
@@ -815,48 +824,32 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       detail = '一般方案';
     }
 
-    return Container(
+    return FamCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: _Palette.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _Palette.line),
-      ),
       child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-          ),
+          FamDot(color: fg, size: 8),
           const SizedBox(width: 10),
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: GoogleFonts.notoSansTc(fontSize: 13.5, color: _Palette.slate),
+                style: famText(c.text2, 13.5),
                 children: [
                   TextSpan(
                     text: widget.elderId == null ? '目前狀態　' : '$_elderLabel 目前　',
                   ),
                   TextSpan(
                     text: detail,
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: accent,
-                    ),
+                    style: famText(fg, 13.5, weight: FontWeight.w700),
                   ),
                 ],
               ),
             ),
           ),
-          InkWell(
+          FamIconButton(
+            icon: Icons.refresh_rounded,
+            tooltip: '重新整理狀態',
             onTap: _busy ? null : _refreshStatus,
-            borderRadius: BorderRadius.circular(8),
-            child: const Padding(
-              padding: EdgeInsets.all(4),
-              child: Icon(Icons.refresh_rounded, size: 18, color: _Palette.mist),
-            ),
           ),
         ],
       ),
@@ -866,22 +859,10 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   // ---- 方案卡 ---------------------------------------------------------------
 
   Widget _buildPlanList() {
+    final c = _c;
     if (_packages.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: _Palette.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _Palette.line),
-        ),
-        child: Text(
-          '目前抓不到任何方案。\n請確認 RevenueCat 後台已建立 default Offering，並包含月/季/年方案。',
-          style: GoogleFonts.notoSansTc(
-            color: _Palette.slate,
-            fontSize: 13.5,
-            height: 1.7,
-          ),
-        ),
+      return FamNote(
+        text: '目前抓不到任何方案。\n請確認 RevenueCat 後台已建立 default Offering，並包含月/季/年方案。',
       );
     }
 
@@ -892,14 +873,9 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       children: [
         Text(
           '選擇計費週期',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
-            color: _Palette.slate,
-          ),
+          style: famText(c.text3, 13, weight: FontWeight.w700, letterSpacing: 1.2),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         for (int i = 0; i < _packages.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -916,36 +892,30 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   }
 
   Widget _buildPlanCard(Package pkg, {required bool isBestValue}) {
+    final c = _c;
     final bool selected = _isSelected(pkg);
     final product = pkg.storeProduct;
     final saving = _savingPercent(pkg);
     final perMonth = _perMonthText(pkg);
     final offerBadge = _offerBadgeText(pkg);
+    final br = BorderRadius.circular(24);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: _busy ? null : () => setState(() => _selected = pkg),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: br,
         child: AnimatedContainer(
           duration: 160.ms,
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: _Palette.surface,
-            borderRadius: BorderRadius.circular(18),
+            color: c.surface,
+            borderRadius: br,
+            boxShadow: c.shadows.card,
             border: Border.all(
-              color: selected ? _Palette.accent : _Palette.line,
-              width: selected ? 2 : 1,
+              color: selected ? c.brand : Colors.transparent,
+              width: 2,
             ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: _Palette.accent.withValues(alpha: 0.12),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : null,
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -961,53 +931,27 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                         Flexible(
                           child: Text(
                             _planLabel(pkg),
-                            style: GoogleFonts.notoSansTc(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: _Palette.ink,
-                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: famText(c.text, 16, weight: FontWeight.w900),
                           ),
                         ),
                         if (isBestValue) ...[
                           const SizedBox(width: 8),
-                          _buildBadge(saving == null ? '最划算' : '省 $saving%'),
+                          FamChip(
+                            label: saving == null ? '最划算' : '省 $saving%',
+                            tone: FamTone.brand,
+                          ),
                         ],
                       ],
                     ),
                     if (perMonth != null) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        perMonth,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 12.5,
-                          color: _Palette.mist,
-                        ),
-                      ),
+                      Text(perMonth, style: famText(c.text3, 12.5)),
                     ],
                     if (offerBadge != null) ...[
                       const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.card_giftcard_rounded,
-                            size: 13,
-                            color: _Palette.success,
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              offerBadge,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.notoSansTc(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                                color: _Palette.success,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      FamChip(label: offerBadge, tone: FamTone.warm, dot: true),
                     ],
                   ],
                 ),
@@ -1018,20 +962,12 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                 children: [
                   Text(
                     product.priceString,
-                    style: GoogleFonts.inter(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w700,
-                      color: _Palette.ink,
-                      letterSpacing: -0.3,
-                    ),
+                    style: famText(c.text, 19, weight: FontWeight.w900, tabular: true),
                   ),
                   if (_periodSuffix(pkg).isNotEmpty)
                     Text(
                       _periodSuffix(pkg),
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 12,
-                        color: _Palette.mist,
-                      ),
+                      style: famText(c.text3, 12),
                     ),
                 ],
               ),
@@ -1044,84 +980,54 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
   /// 自繪的選取圓點，比 Radio 更貼合卡片視覺。
   Widget _buildSelectDot(bool selected) {
+    final c = _c;
     return AnimatedContainer(
       duration: 160.ms,
       width: 22,
       height: 22,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: selected ? _Palette.accent : Colors.transparent,
+        color: selected ? c.brandFill : Colors.transparent,
         border: Border.all(
-          color: selected ? _Palette.accent : const Color(0xFFCBD5E1),
+          color: selected ? c.brandFill : c.line,
           width: 1.6,
         ),
       ),
       child: selected
-          ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+          ? Icon(Icons.check_rounded, size: 14, color: c.onBrand)
           : null,
-    );
-  }
-
-  Widget _buildBadge(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: _Palette.accentSoft.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        text,
-        style: GoogleFonts.notoSansTc(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: _Palette.accent,
-        ),
-      ),
     );
   }
 
   // ---- 特色清單 -------------------------------------------------------------
 
   Widget _buildFeatureCard() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
-      decoration: BoxDecoration(
-        color: _Palette.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _Palette.line),
-      ),
+    final c = _c;
+    return FamCard(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '所有方案都包含',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-              color: _Palette.slate,
-            ),
+            style: famText(c.text3, 13, weight: FontWeight.w700, letterSpacing: 1.2),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           for (final f in _features)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 3),
-                    child: Icon(Icons.check_rounded, size: 17, color: _Palette.accent),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(Icons.check_rounded, size: 17, color: c.brandStrong),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       f,
-                      style: GoogleFonts.notoSansTc(
-                        fontSize: 14.5,
-                        height: 1.55,
-                        color: _Palette.ink,
-                      ),
+                      style: famText(c.text, 14.5, height: 1.55),
                     ),
                   ),
                 ],
@@ -1145,38 +1051,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: _Palette.success.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _Palette.success.withValues(alpha: 0.28),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.info_outline_rounded,
-              size: 16,
-              color: _Palette.success,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 12.5,
-                  height: 1.6,
-                  fontWeight: FontWeight.w600,
-                  color: _Palette.slate,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: FamNote(text: text, tone: FamTone.warm),
     );
   }
 
@@ -1197,56 +1072,25 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
           : '為$_elderLabel開通 · ${pkg.storeProduct.priceString}';
     }
 
-    return SizedBox(
+    return FamButton(
+      label: label,
       height: 56,
-      child: FilledButton(
-        onPressed: (_busy || pkg == null || alreadyPro) ? null : _purchaseSelected,
-        style: FilledButton.styleFrom(
-          backgroundColor: _Palette.ink,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: alreadyPro
-              ? _Palette.success.withValues(alpha: 0.12)
-              : const Color(0xFFE2E8F0),
-          disabledForegroundColor:
-              alreadyPro ? _Palette.success : _Palette.mist,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (alreadyPro) ...[
-              const Icon(Icons.verified_rounded, size: 19),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      kind: alreadyPro ? FamButtonKind.tonal : FamButtonKind.filled,
+      onPressed: (_busy || pkg == null || alreadyPro) ? null : _purchaseSelected,
     );
   }
 
   Widget _buildRestoreRow() {
+    final c = _c;
     return Center(
       child: TextButton(
         onPressed: _busy ? null : _restorePurchases,
-        style: TextButton.styleFrom(foregroundColor: _Palette.slate),
+        style: TextButton.styleFrom(foregroundColor: c.text2),
         child: Text(
           '已經買過了？恢復購買',
-          style: GoogleFonts.notoSansTc(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
+          style: famText(c.text2, 13.5, weight: FontWeight.w600).copyWith(
             decoration: TextDecoration.underline,
-            decorationColor: _Palette.mist,
+            decorationColor: c.text3,
           ),
         ),
       ),
@@ -1254,6 +1098,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   }
 
   Widget _buildFinePrint() {
+    final c = _c;
     final pkg = _selected;
     final free = pkg == null ? null : _freeTrialText(pkg);
 
@@ -1263,50 +1108,23 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
       '開通後由$_elderLabel的裝置自動解鎖進階功能，不需另外操作。\n'
       '目前為 RevenueCat Test Store 模擬環境，不會實際扣款。',
       textAlign: TextAlign.center,
-      style: GoogleFonts.notoSansTc(
-        fontSize: 11.5,
-        height: 1.8,
-        color: _Palette.mist,
-      ),
+      style: famText(c.text3, 11.5, height: 1.8),
     );
   }
 
   Widget _buildErrorBanner() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _Palette.danger.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.error_outline_rounded, size: 18, color: Color(0xFFB91C1C)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _loadError!,
-              style: GoogleFonts.notoSansTc(
-                color: const Color(0xFF991B1B),
-                fontSize: 13,
-                height: 1.6,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return FamNote(text: _loadError!, tone: FamTone.danger);
   }
 
   // ---- 開發者選項（除錯工具，預設收合）---------------------------------------
 
   Widget _buildDeveloperPanel() {
+    final c = _c;
     return Container(
       decoration: BoxDecoration(
-        color: _Palette.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _Palette.line),
+        color: c.surface,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: c.shadows.card,
       ),
       clipBehavior: Clip.antiAlias,
       child: Theme(
@@ -1316,16 +1134,12 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
           childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
           // ExpansionTile 的 children 預設置中，這裡全是標籤與說明文字，要靠左。
           expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          leading: const Icon(Icons.tune_rounded, size: 18, color: _Palette.mist),
-          iconColor: _Palette.mist,
-          collapsedIconColor: _Palette.mist,
+          leading: Icon(Icons.tune_rounded, size: 18, color: c.text3),
+          iconColor: c.text3,
+          collapsedIconColor: c.text3,
           title: Text(
             '開發者選項',
-            style: GoogleFonts.notoSansTc(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              color: _Palette.slate,
-            ),
+            style: famText(c.text2, 13.5, weight: FontWeight.w700),
           ),
           children: [
             _buildDevLabel(
@@ -1339,7 +1153,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
               style: GoogleFonts.robotoMono(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: _Palette.ink,
+                color: c.text,
               ),
             ),
             const SizedBox(height: 16),
@@ -1347,11 +1161,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
             const SizedBox(height: 4),
             Text(
               _isPro ? 'PRO（entitlement: $_entitlementId）' : 'FREE',
-              style: GoogleFonts.notoSansTc(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: _isPro ? _Palette.success : _Palette.slate,
-              ),
+              style: famText(_isPro ? c.brandStrong : c.text2, 14, weight: FontWeight.w700),
             ),
             if (widget.elderId != null) ...[
               const SizedBox(height: 16),
@@ -1363,10 +1173,10 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                     : _backendIsPro
                         ? 'PRO 已開通${_backendExpiresText == null ? '' : '（到期 $_backendExpiresText）'}'
                         : '尚未開通',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: _backendIsPro ? _Palette.success : _Palette.slate,
+                style: famText(
+                  _backendIsPro ? c.brandStrong : c.text2,
+                  14,
+                  weight: FontWeight.w700,
                 ),
               ),
             ],
@@ -1383,67 +1193,42 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                     decoration: InputDecoration(
                       isDense: true,
                       hintText: '例如 dev_test_user_001',
-                      hintStyle: GoogleFonts.notoSansTc(
-                        color: _Palette.mist,
-                        fontSize: 13,
-                      ),
+                      hintStyle: famText(c.text3, 13),
                       filled: true,
-                      fillColor: _Palette.canvas,
+                      fillColor: c.surface2,
                       contentPadding:
                           const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _Palette.line),
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: c.line),
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _Palette.line),
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: c.line),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _Palette.accent),
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: c.brandFill),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.tonal(
+                FamButton(
+                  label: '切換',
+                  kind: FamButtonKind.outline,
+                  expand: false,
+                  height: 46,
                   onPressed: _busy ? null : _switchUser,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _Palette.canvas,
-                    foregroundColor: _Palette.ink,
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: const BorderSide(color: _Palette.line),
-                    ),
-                  ),
-                  child: Text(
-                    '切換',
-                    style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
-                  ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _refreshStatus,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _Palette.slate,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  side: const BorderSide(color: _Palette.line),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: Text(
-                  '重新整理狀態',
-                  style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
-                ),
-              ),
+            FamButton(
+              label: '重新整理狀態',
+              kind: FamButtonKind.outline,
+              height: 46,
+              onPressed: _busy ? null : _refreshStatus,
             ),
             // 重設鈕只在 debug build 出現：kDebugMode 是編譯期常數，
             // release 版整段會被 tree-shake 掉，不會流到使用者手上。
@@ -1454,17 +1239,17 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _busy ? null : _devResetToFree,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _Palette.danger,
+                    foregroundColor: c.danger,
                     padding: const EdgeInsets.symmetric(vertical: 13),
-                    side: BorderSide(color: _Palette.danger.withValues(alpha: 0.4)),
+                    side: BorderSide(color: c.danger.withValues(alpha: 0.4)),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
                   icon: const Icon(Icons.lock_reset_rounded, size: 18),
                   label: Text(
                     '重設為未訂閱（測試用）',
-                    style: GoogleFonts.notoSansTc(fontWeight: FontWeight.w600),
+                    style: famText(c.danger, 15, weight: FontWeight.w700),
                   ),
                 ),
               ),
@@ -1472,11 +1257,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
               Text(
                 '送一則 EXPIRATION 到後端，把這位長輩翻回未開通，方便重測 FREE 畫面。'
                 '不會真的取消商店訂閱——真正的取消要使用者自己到 Google Play / App Store 操作。',
-                style: GoogleFonts.notoSansTc(
-                  fontSize: 11.5,
-                  height: 1.6,
-                  color: _Palette.mist,
-                ),
+                style: famText(c.text3, 11.5, height: 1.6),
               ),
             ],
           ],
@@ -1486,9 +1267,7 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
   }
 
   Widget _buildDevLabel(String text) {
-    return Text(
-      text,
-      style: GoogleFonts.notoSansTc(fontSize: 12, color: _Palette.mist),
-    );
+    final c = _c;
+    return Text(text, style: famText(c.text3, 12));
   }
 }
