@@ -9,6 +9,8 @@
   function SW() { return 390; }  // 邏輯寬（canvas 參考寬）
   function SH() { return screen.clientHeight / SCALE; } // 邏輯高
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var showcaseEmbed = window.parent !== window && new URLSearchParams(window.location.search).get('showcase') === '1';
+  if (showcaseEmbed) root.classList.add('showcase-embed');
   function $(s, c) { return (c || document).querySelector(s); }
   function $$(s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); }
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
