@@ -197,7 +197,10 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
       final profile = await ApiService.getElderProfile(widget.currentElder!.id);
       if (mounted) {
         setState(() {
-          _elderProfileData = profile;
+          // 後端回傳 {status, data}，只取 data；失敗（status != success）則視為沒資料
+          _elderProfileData = profile['status'] == 'success' && profile['data'] is Map
+              ? Map<String, dynamic>.from(profile['data'] as Map)
+              : null;
           _isLoadingAiProfile = false;
         });
       }
@@ -832,8 +835,8 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     final elder = widget.currentElder!;
     final c = _c;
 
-    final chronicDiseases = (_elderProfileData?['chronic_diseases'] ?? '無特別記載').toString();
-    final medicationNotes = (_elderProfileData?['medication_notes'] ?? '照護提醒正常').toString();
+    final chronicDiseases = (_elderProfileData?['chronic_diseases'] ?? '尚未填寫').toString();
+    final medicationNotes = (_elderProfileData?['medication_notes'] ?? '尚未填寫').toString();
 
     return _fadeIn(
       FamCard(
@@ -1084,10 +1087,21 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
       );
     }
 
-    final appellation = _elderProfileData?['appellation'] ?? widget.currentElder?.appellation ?? '金水阿公';
-    final tone = _elderProfileData?['ai_emotion_tone'] ?? 75;
-    final verbosity = _elderProfileData?['ai_text_verbosity'] ?? 65;
-    final interests = _elderProfileData?['interests'] ?? '懷舊老歌, 台股動態, 泡茶, 散步';
+    const unset = '尚未設定';
+    final appRaw = (_elderProfileData?['appellation'] ?? widget.currentElder?.appellation)?.toString().trim();
+    final appellation = (appRaw == null || appRaw.isEmpty) ? unset : appRaw;
+    final tone = num.tryParse('${_elderProfileData?['ai_emotion_tone'] ?? ''}');
+    final verbosity = num.tryParse('${_elderProfileData?['ai_text_verbosity'] ?? ''}');
+    final rawInterests = _elderProfileData?['interests'];
+    final interests = rawInterests is List
+        ? rawInterests.map((e) => '$e').where((e) => e.trim().isNotEmpty).join('、')
+        : (rawInterests?.toString().trim() ?? '');
+
+    String level(num? v, String hi, String lo, String mid) {
+      if (v == null) return unset;
+      final pct = '${v.round()}%';
+      return '${v > 60 ? hi : v < 40 ? lo : mid} ($pct)';
+    }
 
     return _fadeIn(
       FamCard(
@@ -1097,10 +1111,10 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
           children: [
             const FamSecHead(title: '長輩互動與對話偏好'),
             const SizedBox(height: 10),
-            _buildInfoRow('互動稱呼長輩', appellation.toString(), first: true),
-            _buildInfoRow('陪伴語氣風格', tone > 60 ? '活潑熱情 (85%)' : tone < 40 ? '沉穩客觀' : '溫和適中'),
-            _buildInfoRow('對話回覆篇幅', verbosity > 60 ? '詳細會聊天 (70%)' : verbosity < 40 ? '簡潔扼要' : '適度互動'),
-            _buildInfoRow('記憶與話題偏好', interests.toString()),
+            _buildInfoRow('互動稱呼長輩', appellation, first: true),
+            _buildInfoRow('陪伴語氣風格', level(tone, '活潑熱情', '沉穩客觀', '溫和適中')),
+            _buildInfoRow('對話回覆篇幅', level(verbosity, '詳細會聊天', '簡潔扼要', '適度互動')),
+            _buildInfoRow('記憶與話題偏好', interests.isEmpty ? unset : interests),
             const SizedBox(height: 12),
             FamButton(
               label: '調整互動對話設定',
