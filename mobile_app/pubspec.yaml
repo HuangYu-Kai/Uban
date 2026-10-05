@@ -175,9 +175,16 @@ flutter:
     - family: NotoSansTC
       fonts:
         - asset: assets/fonts/NotoSansTC-Regular.ttf
-        - asset: assets/fonts/NotoSansTC-Bold.ttf
-          weight: 700
+          weight: 400
         - asset: assets/fonts/NotoSansTC-Medium.ttf
           weight: 500
+        - asset: assets/fonts/NotoSansTC-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/NotoSansTC-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/NotoSansTC-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/NotoSansTC-Black.ttf
+          weight: 900
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
