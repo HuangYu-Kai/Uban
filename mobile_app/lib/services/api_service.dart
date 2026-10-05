@@ -45,7 +45,7 @@ class ApiService {
   // api_client.dart 的說明——AI 呼叫已全部改走 baseUrl。
 
   static Future<Map<String, dynamic>?> get(String path) => ApiClient.get(path);
-  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) => ApiClient.post(path, body);
+  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body, {Duration? requestTimeout}) => ApiClient.post(path, body, requestTimeout: requestTimeout);
   static Future<Map<String, dynamic>?> put(String path, Map<String, dynamic> body) => ApiClient.put(path, body);
   static Future<Map<String, dynamic>?> delete(String path) => ApiClient.delete(path);
 
