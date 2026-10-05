@@ -2,6 +2,8 @@
   'use strict';
   var root = document.documentElement;
   var screen = document.getElementById('screen');
+  var showcaseEmbed = window.parent !== window && new URLSearchParams(window.location.search).get('showcase') === '1';
+  if (showcaseEmbed) root.classList.add('showcase-embed');
   var canvas = document.getElementById('canvas');
   var SCALE = 1;                 // 縮放層倍率（由 fitScreen 更新）
   function SW() { return 390; }  // 邏輯寬（canvas 參考寬）
@@ -99,6 +101,15 @@
     requestAnimationFrame(layoutSegs);
     panelChips.forEach(function (c) { c.classList.toggle('on', c.dataset.go === target || (!sub && c.dataset.go === v)); });
   }
+
+  window.addEventListener('message', function (event) {
+    if (!showcaseEmbed || event.source !== window.parent) return;
+    var data = event.data || {};
+    if (data.app !== 'uban-showcase' || data.command !== 'show') return;
+    if (typeof data.target !== 'string' || !/^[a-z]+(?::[a-z]+)?$/.test(data.target)) return;
+    go(data.target);
+    window.parent.postMessage({ app: 'uban-prototype', type: 'shown', target: data.target, role: 'elder' }, '*');
+  });
 
   /* ---------- 開場（照搬 splash_screen.dart 時間軸） ---------- */
   var cv = $('#splashCanvas'), ctx = cv.getContext('2d'), splashRun = 0;
@@ -791,4 +802,5 @@
   }
 
   go(location.hash === '#elder' ? 'elder:home' : 'splash');
+  if (showcaseEmbed) window.parent.postMessage({ app: 'uban-prototype', type: 'ready', role: 'elder' }, '*');
 })();

@@ -2,6 +2,8 @@
   'use strict';
   var root = document.documentElement;
   var screen = document.getElementById('screen');
+  var showcaseEmbed = window.parent !== window && new URLSearchParams(window.location.search).get('showcase') === '1';
+  if (showcaseEmbed) root.classList.add('showcase-embed');
   var canvas = document.getElementById('canvas');
   var SCALE = 1;
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -116,6 +118,15 @@
     requestAnimationFrame(layoutSegs);
     panelChips.forEach(function (c) { c.classList.toggle('on', c.dataset.go === target || (!sub && c.dataset.go === v)); });
   }
+
+  window.addEventListener('message', function (event) {
+    if (!showcaseEmbed || event.source !== window.parent) return;
+    var data = event.data || {};
+    if (data.app !== 'uban-showcase' || data.command !== 'show') return;
+    if (typeof data.target !== 'string' || !/^[a-z]+(?::[a-z]+)?$/.test(data.target)) return;
+    go(data.target);
+    window.parent.postMessage({ app: 'uban-prototype', type: 'shown', target: data.target, role: 'family' }, '*');
+  });
   function back() { go(history.pop() || 'fmain:' + currentTab, true); }
 
   /* ---------- 導覽列 ---------- */
@@ -412,5 +423,6 @@
 
   /* ---------- 開場 ---------- */
   go('fmain:home');
+  if (showcaseEmbed) window.parent.postMessage({ app: 'uban-prototype', type: 'ready', role: 'family' }, '*');
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { var b = $('.on', nav); if (b) navSpring.to(targetX(b), true); layoutSegs(); });
 })();

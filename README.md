@@ -38,6 +38,10 @@ Uban 是一套專為銀髮族設計的 AI 陪伴照護系統，包含：
 - **家屬端 App**：遠端照護管理與視訊通話
 - **AI 后端**：Ollama + FastAPI 驅動的智慧陪伴引擎
 
+### Web 系統展示台
+
+`design_prototype/showcase.html` 是不連接正式後端的靜態展示入口，依照「長輩的一天」的故事流程同步呈現長輩端與家屬端互動原型，並包含系統架構／特殊技術說明頁。原型仍可分別由 `design_prototype/index.html` 與 `design_prototype/family.html` 開啟；展示台只透過瀏覽器訊息控制示意畫面，不代表正式服務連線。
+
 ---
 
 ## 系統架構

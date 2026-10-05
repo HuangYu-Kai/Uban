@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Uban 系統展示台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800;900&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="showcase.css">
+</head>
+<body>
+  <main class="showcase-shell">
+    <aside class="showcase-sidebar">
+      <div class="brand-lockup">
+        <div class="brand-mark">U</div>
+        <div>
+          <p class="eyebrow">SYSTEM DEMO</p>
+          <h1>Uban 展示台</h1>
+        </div>
+      </div>
+      <p class="intro">用「長輩的一天」展示 AI 陪伴、定位、求助與家屬回應。畫面皆為互動原型示意。</p>
+      <nav id="sectionNav" class="section-nav" aria-label="展示段落"></nav>
+      <div class="sidebar-foot">
+        <span>總長度</span>
+        <strong>約 2 分 55 秒</strong>
+      </div>
+    </aside>
+
+    <section class="showcase-content">
+      <header class="showcase-header">
+        <div>
+          <p id="sectionKicker" class="eyebrow">01 / 開場</p>
+          <h2 id="sectionTitle">問題情境</h2>
+          <p id="sectionSummary" class="section-summary"></p>
+        </div>
+        <div class="header-actions">
+          <button id="modeButton" class="control-button" type="button">雙端展示</button>
+          <button id="fullscreenButton" class="control-button" type="button">全螢幕</button>
+        </div>
+      </header>
+
+      <div class="progress-track"><span id="progressBar"></span></div>
+
+      <section id="storyStage" class="story-stage" aria-live="polite">
+        <div id="frameGrid" class="frame-grid">
+          <article class="device-card" data-role="elder">
+            <div class="device-label"><span>長輩端</span><small id="elderCaption">Uban 長輩端</small></div>
+            <div class="frame-window"><iframe id="elderFrame" title="Uban 長輩端原型" src="index.html?showcase=1#elder"></iframe></div>
+          </article>
+          <article class="device-card" data-role="family">
+            <div class="device-label"><span>家屬端</span><small id="familyCaption">Uban 家屬端</small></div>
+            <div class="frame-window"><iframe id="familyFrame" title="Uban 家屬端原型" src="family.html?showcase=1"></iframe></div>
+          </article>
+        </div>
+        <section id="technicalPanel" class="technical-panel" hidden>
+          <div class="architecture-head">
+            <p class="eyebrow">TECHNOLOGY MAP</p>
+            <h3>特殊技術如何共同完成照護</h3>
+            <p>展示影片中的技術重點以「用途」呈現，不顯示任何正式環境連線資訊。</p>
+          </div>
+          <div id="technologyGrid" class="technology-grid"></div>
+        </section>
+        <section id="closingPanel" class="closing-panel" hidden>
+          <div class="closing-mark">♡</div>
+          <p class="eyebrow">CARE WITHOUT DISTANCE</p>
+          <h3>讓每一次關心，都能被即時接住。</h3>
+          <p>Uban 連結長輩、家人與照護資訊，讓科技成為跨世代陪伴的橋樑。</p>
+        </section>
+      </section>
+
+      <footer class="showcase-footer">
+        <div class="script-card">
+          <div class="script-meta"><span id="sectionDuration"></span><span id="screenHint"></span></div>
+          <p id="scriptText"></p>
+        </div>
+        <div class="footer-controls">
+          <button id="previousButton" class="control-button" type="button">上一段</button>
+          <button id="nextButton" class="primary-button" type="button">下一段</button>
+        </div>
+      </footer>
+    </section>
+  </main>
+  <script src="showcase.js"></script>
+</body>
+</html>
