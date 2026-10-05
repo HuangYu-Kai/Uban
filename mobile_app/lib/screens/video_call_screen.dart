@@ -989,7 +989,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      // ★ 純視覺換皮：底色改用設計稿通話房的深綠黑（design_prototype `.call` = #0B110F），
+      //   取代原本的純黑，與鏡頭關閉時的漸層背景呼應。不影響任何邏輯。
+      backgroundColor: const Color(0xFF0B110F),
       body: Stack(
         children: [
           // 1. 遠端影像 (全螢幕沉浸式)
@@ -1000,11 +1002,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                   )
                 : Container(
+                    // ★ 純視覺換皮：無遠端畫面時的底色改用設計稿 `.call .remote` 的
+                    //   放射狀漸層（#3D5A50 → #16221E），取代原本的黑灰直線漸層。
                     decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0xFF1A1A1A), Colors.black],
+                      gradient: RadialGradient(
+                        center: Alignment(0, -0.4),
+                        radius: 1.3,
+                        colors: [Color(0xFF3D5A50), Color(0xFF16221E)],
                       ),
                     ),
                     // ★ 2026-08-12 第二十三輪（需求 3）：移除原本的失敗畫面
@@ -1050,56 +1054,93 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // 通話類型標示
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black26,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        widget.isEmergency
-                            ? Icons.warning
-                            : (widget.isVideoCall ? Icons.shield : Icons.call),
-                        color: widget.isEmergency
-                            ? Colors.orangeAccent
-                            : (widget.isVideoCall ? Colors.greenAccent : Colors.lightBlueAccent),
-                        size: 16,
+                // ★ 純視覺換皮：改用設計稿 `.call .pillg` 的毛玻璃膠囊樣式
+                //   （半透明深底 + 16px 模糊 + 細邊框），取代原本的純色 black26。
+                //   圖示/文案的條件判斷完全不動。
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color.fromRGBO(20, 28, 25, 0.62),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: const Color.fromRGBO(255, 255, 255, 0.1),
+                        ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        // ★ Fix E：非緊急且非視訊時顯示「語音通話」，其餘沿用原邏輯。
-                        widget.isEmergency
-                            ? "緊急通話"
-                            : (widget.isVideoCall ? "視訊通話" : "語音通話"),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            widget.isEmergency
+                                ? Icons.warning
+                                : (widget.isVideoCall ? Icons.shield : Icons.call),
+                            color: widget.isEmergency
+                                ? Colors.orangeAccent
+                                : (widget.isVideoCall ? Colors.greenAccent : Colors.lightBlueAccent),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            // ★ Fix E：非緊急且非視訊時顯示「語音通話」，其餘沿用原邏輯。
+                            widget.isEmergency
+                                ? "緊急通話"
+                                : (widget.isVideoCall ? "視訊通話" : "語音通話"),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
                 // ★ 通話計時器
+                // ★ 純視覺換皮：改用設計稿同一款 `.pillg` 毛玻璃膠囊（原本整顆實心紅底
+                //   太搶視覺），紅色改收斂成膠囊內的小圓點（呼應設計稿 `.rec`），
+                //   `_inCall` 的顯示條件與 `_formattedDuration` 完全不動。
                 if (_inCall)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.fiber_manual_record, color: Colors.white, size: 10),
-                        const SizedBox(width: 6),
-                        Text(
-                          _formattedDuration,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            fontFeatures: [FontFeature.tabularFigures()],
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color.fromRGBO(20, 28, 25, 0.62),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: const Color.fromRGBO(255, 255, 255, 0.1),
                           ),
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFF6B6E),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _formattedDuration,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -1116,29 +1157,39 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             Positioned(
               top: MediaQuery.of(context).padding.top + 56,
               left: 16,
-              child: GestureDetector(
-                onTap: _safeHangUp,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white30, width: 1),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.arrow_back_rounded, color: Colors.white, size: 16),
-                      SizedBox(width: 6),
-                      Text(
-                        '返回',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+              // ★ 純視覺換皮：外殼改用與上方通話類型膠囊相同的毛玻璃 `.pillg` 樣式，
+              //   onTap 仍是原封不動的 _safeHangUp（既有掛斷 → 導航流程）。
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                  child: GestureDetector(
+                    onTap: _safeHangUp,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color.fromRGBO(20, 28, 25, 0.62),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: const Color.fromRGBO(255, 255, 255, 0.1),
                         ),
                       ),
-                    ],
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.arrow_back_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            '返回',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1156,8 +1207,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             child: GestureDetector(
               onTap: (_mediaInitialized && !_isCameraOff) ? _switchCamera : null,
               child: Container(
+                // ★ 純視覺換皮：邊框/陰影改向設計稿 `.pip` 對齊
+                //   （2px、rgba(255,255,255,.18)、radius 18），關閉態底色與文字顏色
+                //   改用設計稿 `.pip .off`（#1C2622 / #C9D6D0）。版面與互動邏輯不動。
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.5),
@@ -1166,29 +1220,29 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     ),
                   ],
                   border: Border.all(
-                    color: _isCameraOff ? Colors.white12 : Colors.white24,
-                    width: 1.5,
+                    color: const Color.fromRGBO(255, 255, 255, 0.18),
+                    width: 2,
                   ),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
                   child: _isCameraOff
                       ? Container(
-                          color: const Color(0xFF2A2A2A),
+                          color: const Color(0xFF1C2622),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
+                              const Icon(
                                 Icons.videocam_off,
-                                color: Colors.white38,
+                                color: Color(0xFFC9D6D0),
                                 size: 36,
                               ),
                               const SizedBox(height: 8),
-                              Text(
+                              const Text(
                                 '鏡頭已關閉',
                                 style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 11,
+                                  color: Color(0xFFC9D6D0),
+                                  fontSize: 13,
                                 ),
                               ),
                             ],
@@ -1213,10 +1267,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
+                  color: const Color.fromRGBO(20, 28, 25, 0.72),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.cameraswitch, color: Colors.white70, size: 16),
+                child: const Icon(Icons.cameraswitch, color: Colors.white, size: 16),
               ),
             ),
 
@@ -1225,16 +1279,21 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             bottom: 40,
             left: 20,
             right: 20,
+            // ★ 純視覺換皮：底部控制列改向設計稿 `.ctlbar` 對齊
+            //   （深色毛玻璃 rgba(20,28,25,.72) + 20px 模糊 + 999 圓角的真膠囊），
+            //   取代原本偏白、30 角半徑的玻璃列。按鈕清單與 onPressed 完全不動。
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(999),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                 child: Container(
                   height: 80,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: Colors.white10),
+                    color: const Color.fromRGBO(20, 28, 25, 0.72),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: const Color.fromRGBO(255, 255, 255, 0.1),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1252,11 +1311,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                         color: Colors.white,
                       ),
                       // 麥克風
+                      // ★ 純視覺換皮：靜音態改用設計稿 `.ctl.off`（白底 + 深色圖示），
+                      //   取代原本的「紅色圖示 + 24% 灰底」。_isMicMuted 判斷與
+                      //   _toggleMic 完全不動，只換這兩個分支各自的顏色值。
                       _buildControlButton(
                         icon: _isMicMuted ? Icons.mic_off : Icons.mic,
                         onPressed: _toggleMic,
-                        color: _isMicMuted ? Colors.redAccent : Colors.white,
-                        bgColor: _isMicMuted ? Colors.white24 : null,
+                        color: _isMicMuted ? const Color(0xFF16201C) : Colors.white,
+                        bgColor: _isMicMuted ? Colors.white : null,
                       ),
                       // 掛斷
                       // ★ 2026-08-10 第二十輪（需求 3）：家屬端監控檢視不再顯示
@@ -1265,20 +1327,27 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                       //   走的是 `returnByPop: true` 的既有離開路徑（護欄 G31 的
                       //   唯一例外），兩個出口並存只會讓使用者選到錯的那個。
                       if (!widget.monitorViewOnly)
+                        // ★ 純視覺換皮：外形改成設計稿 `.ctl.hang` 的寬膠囊
+                        //   （寬 72 高 58、全圓角），取代原本的 50x50 正圓；
+                        //   onPressed 仍是原封不動的 _safeHangUp。
                         _buildControlButton(
                           icon: Icons.call_end,
                           onPressed: _safeHangUp,
                           isEndCall: true,
+                          width: 72,
                         ),
                       // 鏡頭
                       // ★ 2026-08-10 第十九輪（需求 2）：單向監控只留麥克風／擴音／掛斷，
                       //   兩個鏡頭類按鈕整組隱藏（見 CLAUDE_call-monitor.md §7 G55）。
                       if (!widget.monitorViewOnly)
+                        // ★ 純視覺換皮：同上，鏡頭關閉態改用設計稿 `.ctl.off`
+                        //   白底 + 深色圖示，取代紅色圖示 + 24% 灰底。
+                        //   _isCameraOff 判斷與 _toggleCamera 完全不動。
                         _buildControlButton(
                           icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
                           onPressed: _toggleCamera,
-                          color: _isCameraOff ? Colors.redAccent : Colors.white,
-                          bgColor: _isCameraOff ? Colors.white24 : null,
+                          color: _isCameraOff ? const Color(0xFF16201C) : Colors.white,
+                          bgColor: _isCameraOff ? Colors.white : null,
                         ),
                       // 翻轉鏡頭
                       if (!widget.monitorViewOnly)
@@ -1299,26 +1368,39 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     );
   }
 
+  // ★ 純視覺換皮：按鈕尺寸 50→58、圖示 24→26、預設底色與掛斷紅改採設計稿
+  //   `.ctl` / `.ctl.hang` 的數值；新增可選 [width] 讓掛斷鍵能做成比其他鍵更寬的
+  //   膠囊（設計稿 `.ctl.hang` 寬 76），不影響任何呼叫端的 onPressed／狀態邏輯。
   Widget _buildControlButton({
     required IconData icon,
     VoidCallback? onPressed,
     Color color = Colors.white,
     Color? bgColor,
     bool isEndCall = false,
+    double? width,
   }) {
     final isDisabled = onPressed == null;
+    final double resolvedWidth = width ?? 58;
     return Container(
-      width: 50,
-      height: 50,
+      width: resolvedWidth,
+      height: 58,
       decoration: BoxDecoration(
-        color: isEndCall 
-          ? Colors.redAccent 
-          : (bgColor ?? (isDisabled ? Colors.white.withValues(alpha: 0.05) : Colors.white12)),
-        shape: BoxShape.circle,
-        border: isDisabled ? Border.all(color: Colors.white12, width: 1) : null,
+        color: isEndCall
+            ? const Color(0xFFE5484D)
+            : (bgColor ??
+                (isDisabled
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : const Color.fromRGBO(255, 255, 255, 0.12))),
+        borderRadius: BorderRadius.circular(999),
+        border: isDisabled
+            ? Border.all(
+                color: const Color.fromRGBO(255, 255, 255, 0.12),
+                width: 1,
+              )
+            : null,
       ),
       child: IconButton(
-        icon: Icon(icon, color: color, size: 24),
+        icon: Icon(icon, color: color, size: 26),
         onPressed: onPressed,
       ),
     );
