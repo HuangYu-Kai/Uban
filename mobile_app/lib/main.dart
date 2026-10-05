@@ -2176,6 +2176,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       title: 'UBan',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(context),
+      darkTheme: buildAppDarkTheme(context), // ★ 2026-10-05 UI 改版：長輩端深色模式（家屬端走 FamilyThemeScope 自己的開關，不受此影響）
+      themeMode: ThemeMode.system,
       // ★ 2026-09-22 第五十一輪（長5）：長輩端語音助理的全域浮動鈕。掛在
       //   `builder` 這一層（比 Navigator 更外面），所以連 `Navigator.push`
       //   出去的畫面——通話房、監控、新聞播放器、配對頁——也叫得出小嘎。
