@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../widgets/policy_detail_dialog.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
+import '../widgets/locate_city_button.dart';
 import '../widgets/ui/ui.dart';
 import 'family_onboarding_screen.dart';
 import '../globals.dart';
@@ -278,6 +279,18 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     }),
                   ),
                   const SizedBox(height: 14),
+                  // ★ 2026-10-06：一鍵定位按鈕（只在權限已授予時開頁自動帶入）
+                  LocateCityButton(
+                    autoLocateIfGranted: true,
+                    canAutoFill: () =>
+                        _residenceCity == null && _residenceDistrict == null,
+                    onLocated: (city, district) => setState(() {
+                      _residenceCity = city;
+                      _residenceDistrict = district;
+                      _errorMessage = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
                   CityDistrictPicker(
                     initialCity: _residenceCity,
                     initialDistrict: _residenceDistrict,

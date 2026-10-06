@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/recovery_code_entry.dart';
 import 'elder_home_screen.dart';
 import 'elder_screen.dart'; // ★ 監控機模式導向
 import 'elder_profile_onboarding_screen.dart'; // ★ 第五十三輪 onboard53：長 9 強制補填
@@ -412,6 +414,25 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 // 靜默處理
       }
     });
+  }
+
+  /// ★ 2026-10-06 登入流程改善：手動輸入家人用「移機助手」傳來的數字登入代碼。
+  /// 關閉輸入框後交給 main.dart 註冊的 [recoveryCodeHandler]，沿用 Deep Link
+  /// 的復原確認對話框；掛鉤尚未註冊時提示稍後再試。
+  Future<void> _enterRecoveryCode() async {
+    final code = await showDialog<String>(
+      context: context,
+      builder: (_) => const _RecoveryCodeDialog(),
+    );
+    if (!mounted || code == null || code.isEmpty) return;
+    final handler = recoveryCodeHandler;
+    if (handler == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暫時無法使用，請稍後再試')),
+      );
+      return;
+    }
+    handler(code);
   }
 
   Future<void> _quickLoginSameElder() async {
@@ -841,6 +862,13 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  // ★ 2026-10-06：家人傳來的移機連結打不開時，改手動輸入數字代碼
+                  UbanButton(
+                    label: '輸入家人給的登入代碼',
+                    variant: UbanButtonVariant.outline,
+                    onPressed: _enterRecoveryCode,
+                  ),
                 ],
               ),
             ),
@@ -848,6 +876,76 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
         ),
       ),
     );
+  }
+}
+
+/// 手動輸入移機登入代碼的對話框（長輩尺規：大字、純數字、最多 10 位）。
+/// 確定時以 `Navigator.pop(code)` 回傳代碼；取消回傳 null。
+class _RecoveryCodeDialog extends StatefulWidget {
+  const _RecoveryCodeDialog();
+
+  @override
+  State<_RecoveryCodeDialog> createState() => _RecoveryCodeDialogState();
+}
+
+class _RecoveryCodeDialogState extends State<_RecoveryCodeDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
+    return AlertDialog(
+      backgroundColor: c.surface,
+      title: Text('輸入登入代碼',
+          style: ubanText(24, FontWeight.w800, c.text)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('家人用「移機助手」傳給您的連結裡，會有一組數字代碼',
+                style: ubanText(18, FontWeight.w500, c.text2, height: 1.4)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(10),
+              ],
+              style: ubanText(32, FontWeight.w700, c.text),
+              decoration: const InputDecoration(hintText: '請輸入數字'),
+              onSubmitted: (_) => _confirm(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text('取消', style: ubanText(20, FontWeight.w700, c.text2)),
+        ),
+        TextButton(
+          onPressed: _confirm,
+          child:
+              Text('確定', style: ubanText(20, FontWeight.w700, c.brandStrong)),
+        ),
+      ],
+    );
+  }
+
+  void _confirm() {
+    final code = _controller.text.trim();
+    if (code.isEmpty) return;
+    Navigator.of(context).pop(code);
   }
 }
 

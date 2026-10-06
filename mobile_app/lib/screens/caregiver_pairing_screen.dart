@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../widgets/age_stepper_field.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -25,9 +27,9 @@ class CaregiverPairingScreen extends StatefulWidget {
 class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _ageController = TextEditingController(
-    text: '70',
-  );
+  // ★ 2026-10-06 登入流程改善：年齡改為選填且預設留空（不再預填 '70'）。
+  //   家屬知道就填；不確定留空，長輩第一次登入的補填畫面會自己選。
+  final TextEditingController _ageController = TextEditingController();
   String _gender = 'M';
   bool _isLoading = false;
   // ★ 持久化錯誤訊息：取代原本的 SnackBar，避免 409/410/404 都顯示同一句看不出差異的訊息
@@ -59,7 +61,8 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
 
     final code = _codeController.text.trim();
     final name = _nameController.text.trim();
-    final age = int.tryParse(_ageController.text.trim()) ?? 70;
+    final ageText = _ageController.text.trim();
+    final int? age = ageText.isEmpty ? null : int.tryParse(ageText);
 
     if (code.length != 4) {
       setState(() => _errorMessage = '請輸入 4 位配對碼');
@@ -68,6 +71,16 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
 
     if (name.isEmpty) {
       setState(() => _errorMessage = '請輸入長輩姓名');
+      return;
+    }
+
+    // 有填才驗證範圍（與長輩端 AgeStepperField 一致：1～120）；留空送 null。
+    if (ageText.isNotEmpty &&
+        (age == null ||
+            age < AgeStepperField.minAge ||
+            age > AgeStepperField.maxAge)) {
+      setState(() => _errorMessage =
+          '年齡請輸入 ${AgeStepperField.minAge}～${AgeStepperField.maxAge} 的數字，或留空');
       return;
     }
 
@@ -282,10 +295,14 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                   child: TextField(
                     controller: _ageController,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(3),
+                    ],
                     style: GoogleFonts.notoSansTc(fontSize: 18, color: c.text),
                     cursorColor: c.brandStrong,
                     onChanged: (_) => setState(() => _errorMessage = null),
-                    decoration: _inputDecoration(Icons.cake_rounded, '年齡'),
+                    decoration: _inputDecoration(Icons.cake_rounded, '年齡（選填）'),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -316,7 +333,13 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 48),
+            const SizedBox(height: 8),
+            // 說明文字獨立一行（不放進窄欄位的 hint，避免被截斷／溢位）
+            Text(
+              '年齡不確定可留空，長輩登入時會自己填',
+              style: GoogleFonts.notoSansTc(fontSize: 13, color: c.text3),
+            ),
+            const SizedBox(height: 40),
 
             // ★ 持久化錯誤橫幅：取代原本容易被忽略的 SnackBar，並補讀後端 detail 欄位，
             //   讓 409（代碼已被使用）/410（已過期）/404（代碼不存在）顯示各自的真實原因。

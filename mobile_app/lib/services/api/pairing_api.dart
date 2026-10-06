@@ -83,7 +83,7 @@ class PairingApi {
     required String code,
     required String elderName,
     required String gender,
-    required int age,
+    int? age, // 選填：家屬不確定時為 null，由長輩補填
   }) async {
     try {
       final response = await http

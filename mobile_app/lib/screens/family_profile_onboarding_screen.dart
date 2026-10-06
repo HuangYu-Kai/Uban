@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
+import '../widgets/locate_city_button.dart';
 
 /// 既有家屬帳號「年齡／居住地」強制補填畫面。
 ///
@@ -127,6 +128,18 @@ class _FamilyProfileOnboardingScreenState
                   }),
                 ),
                 const SizedBox(height: 20),
+                // ★ 2026-10-06：一鍵定位按鈕（只在權限已授予時開頁自動帶入）
+                LocateCityButton(
+                  autoLocateIfGranted: true,
+                  canAutoFill: () =>
+                      _residenceCity == null && _residenceDistrict == null,
+                  onLocated: (city, district) => setState(() {
+                    _residenceCity = city;
+                    _residenceDistrict = district;
+                    _errorMessage = null;
+                  }),
+                ),
+                const SizedBox(height: 12),
                 CityDistrictPicker(
                   initialCity: _residenceCity,
                   initialDistrict: _residenceDistrict,
