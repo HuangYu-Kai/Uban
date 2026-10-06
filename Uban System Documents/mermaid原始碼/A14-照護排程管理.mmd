@@ -1,5 +1,6 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["家屬"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
@@ -8,9 +9,9 @@ flowchart TD
     S3["以自然語言描述需求"]:::act
     S4{"草稿是否<br/>符合預期？"}:::dec
     S5(["排程生效"]):::act
-    EN_S5(("●")):::endterm
     S6(["查看情緒報告<br/>與破冰話題建議"]):::act
-    EN_S6(("●")):::endterm
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
   subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -18,6 +19,7 @@ flowchart TD
     A2["AI 照護共創助理畫面"]:::act
     A3["顯示排程草稿供逐筆編輯"]:::act
     A4["首頁 AI 情緒雷達卡"]:::act
+    M_A3{" "}:::dec
   end
   subgraph BE["uban-api 後端"]
     G0{"家屬與長輩<br/>關係驗證通過？"}:::dec
@@ -29,7 +31,7 @@ flowchart TD
     J1["APScheduler 每分鐘<br/>檢查並推播提醒給長輩"]:::act
     DB[("遠端提醒資料表")]:::act
     X(["回傳無權限"]):::act
-    EN_X(("●")):::endterm
+    M_DB{" "}:::dec
   end
 
   ST_S1 --> S1
@@ -39,26 +41,27 @@ flowchart TD
   A1 --> B1
   B1 --> S2
   S2 -->|"[查閱與修改]"| B2
-  B2 --> DB
+  B2 --> M_DB
   S2 -->|"[AI 安排]"| A2
   A2 --> S3
   S3 --> B3
-  B3 --> A3
+  B3 --> M_A3
   A3 --> S4
-  S4 -->|"[否]"| A3
+  S4 -->|"[否]"| M_A3
   S4 -->|"[是]"| B4
-  B4 --> DB
+  B4 --> M_DB
   S2 -->|"[查閱數據與情緒報告]"| A4
   A4 --> B5
   B5 --> S6
   DB --> J1
   J1 --> S5
-  S5 --> EN_S5
-  S6 --> EN_S6
-  X --> EN_X
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  S5 --> M_END
+  S6 --> M_END
+  X --> M_END
+  M_DB --> DB
+  M_A3 --> A3
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

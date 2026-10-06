@@ -1,0 +1,167 @@
+<mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="550">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="title" value="圖 7-4-2 智慧照護排程生命週期狀態機 (Care Schedule State Machine)" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" vertex="1" parent="1">
+      <mxGeometry x="500" y="15" width="700" height="32" as="geometry"/>
+    </mxCell>
+    <mxCell id="sub" value="參考 ProcessOn UML 規範：涵蓋排程建立、等待觸發、推播鬧鈴、確認服藥與逾時告警" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontFamily=Microsoft JhengHei;fontColor=#64748b;" vertex="1" parent="1">
+      <mxGeometry x="350" y="50" width="1000" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="init" value="" style="shape=ellipse;fillColor=#1e293b;strokeColor=#1e293b;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="60" y="200" width="28" height="28" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_pending" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#0284c7;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="140" y="160" width="230" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_pending_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Scheduled_Pending&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(待調度狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="144" y="164" width="222" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_pending_div" value="" style="endArrow=none;html=1;strokeColor=#0284c7;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="140" y="202" as="sourcePoint"/>
+        <mxPoint x="370" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_pending_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / Cron 表達式載入 (Redis ZSet)&lt;br/&gt;• do / 排程定時輪詢監聽&lt;br/&gt;• exit / 取出執行任務&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="144" y="206" width="222" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_active" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#ea580c;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="450" y="160" width="250" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_active_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Reminder_Active&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(提醒觸發中狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="454" y="164" width="242" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_active_div" value="" style="endArrow=none;html=1;strokeColor=#ea580c;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="450" y="202" as="sourcePoint"/>
+        <mxPoint x="700" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_active_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 推送語音與全螢幕通知&lt;br/&gt;• do / 福豬語音播報「該量血壓囉！」&lt;br/&gt;• exit / 啟動應答倒數監聽&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="454" y="206" width="242" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_ack" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#0284c7;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="780" y="160" width="240" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_ack_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Awaiting_Ack&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(待長者確認狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="784" y="164" width="232" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_ack_div" value="" style="endArrow=none;html=1;strokeColor=#0284c7;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="780" y="202" as="sourcePoint"/>
+        <mxPoint x="1020" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_ack_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 啟動 15 分鐘超時倒數計時器&lt;br/&gt;• do / 螢幕維持醒目閃爍確認按鈕&lt;br/&gt;• exit / 停止計時器&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="784" y="206" width="232" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_done" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#16a34a;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="1100" y="160" width="220" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_done_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Completed&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(已確認完成狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="1104" y="164" width="212" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_done_div" value="" style="endArrow=none;html=1;strokeColor=#16a34a;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1100" y="202" as="sourcePoint"/>
+        <mxPoint x="1320" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_done_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 更新 MySQL (status=&#x27;completed&#x27;)&lt;br/&gt;• do / 發送安心通知至家屬端&lt;br/&gt;• exit / 記錄完成耗時&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="1104" y="206" width="212" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_alarm" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#dc2626;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="780" y="380" width="240" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_alarm_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Alarm_Escalating&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(逾時警報升級狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="784" y="384" width="232" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_alarm_div" value="" style="endArrow=none;html=1;strokeColor=#dc2626;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="780" y="422" as="sourcePoint"/>
+        <mxPoint x="1020" y="422" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_alarm_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 標記 status=&#x27;timeout&#x27;&lt;br/&gt;• do / FCM 高優先級強推播家屬&lt;br/&gt;• exit / 警報解除處理&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="784" y="426" width="232" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_arch" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#64748b;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="1390" y="250" width="180" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_arch_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Archived&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(已歸檔狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="1394" y="254" width="172" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_arch_div" value="" style="endArrow=none;html=1;strokeColor=#64748b;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1390" y="292" as="sourcePoint"/>
+        <mxPoint x="1570" y="292" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_arch_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 排程事件日誌固化&lt;br/&gt;• do / 併入每週健康作息報表&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="1394" y="296" width="172" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="final" value="" style="shape=ellipse;double=1;fillColor=#ffffff;strokeColor=#1e293b;strokeWidth=2;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="1630" y="281" width="28" height="28" as="geometry"/>
+    </mxCell>
+    <mxCell id="final_inner" value="" style="shape=ellipse;fillColor=#1e293b;strokeColor=#1e293b;" vertex="1" parent="1">
+      <mxGeometry x="1636" y="287" width="16" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="tr_0" value="建立照護排程" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="88" y="214" as="sourcePoint"/>
+        <mxPoint x="140" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_1" value="Cron 定時時間到達 / 喚醒排程任務" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="370" y="214" as="sourcePoint"/>
+        <mxPoint x="450" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_2" value="語音播放完成 / 等待長者點擊按鈕" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="700" y="214" as="sourcePoint"/>
+        <mxPoint x="780" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_3" value="長者點擊「已完成」[在時限內]" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1020" y="214" as="sourcePoint"/>
+        <mxPoint x="1100" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_4" value="任務完成歸檔" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1320" y="214" as="sourcePoint"/>
+        <mxPoint x="1390" y="280" as="targetPoint"/>
+        <Array as="points">
+          <mxPoint x="1350" y="214"/>
+          <mxPoint x="1350" y="280"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_5" value="倒數逾時 15 分鐘未點擊 / 升級警報" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="900" y="270" as="sourcePoint"/>
+        <mxPoint x="900" y="380" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_6" value="家屬致電確認後人工結案" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1020" y="430" as="sourcePoint"/>
+        <mxPoint x="1390" y="310" as="targetPoint"/>
+        <Array as="points">
+          <mxPoint x="1200" y="430"/>
+          <mxPoint x="1200" y="310"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_7" value="事件結束" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1570" y="295" as="sourcePoint"/>
+        <mxPoint x="1630" y="295" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+  </root>
+</mxGraphModel>

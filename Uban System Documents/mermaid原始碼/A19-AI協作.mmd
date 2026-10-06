@@ -1,21 +1,21 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["家屬"]
     ST_S1(("&nbsp;")):::term
     S1([於『互動』分頁開啟 AI 共創助理]):::act
     S2["以自然語言提問或下指令"]:::act
     S3{"草稿是否<br/>逐筆確認？"}:::dec
     S4(["取得回覆與關懷建議"]):::act
-    EN_S4(("●")):::endterm
     S5(["排程批次建立"]):::act
-    EN_S5(("●")):::endterm
   end
   subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     A1["AI 照護共創助理畫面"]:::act
     A2["顯示排程草稿清單"]:::act
     A3(["不建立任何排程"]):::act
-    EN_A3(("●")):::endterm
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -32,7 +32,7 @@ flowchart TD
     DB[("遠端提醒資料表")]:::act
     PC[("Pinecone 長期記憶<br/>（向量資料庫）")]:::act
     X(["回傳無權限"]):::act
-    EN_X(("●")):::endterm
+    D_B2{"分支選擇？"}:::dec
   end
 
   ST_S1 --> S1
@@ -42,8 +42,8 @@ flowchart TD
   A1 --> S2
   S2 --> B1
   B1 --> B2
-  B2 --- PC
-  B2 --> B3
+  D_B2 --- PC
+  D_B2 --> B3
   B3 -->|"[是]"| B4
   B3 -->|"[否]"| B5
   B4 --> B6
@@ -57,13 +57,13 @@ flowchart TD
   S3 -->|"[是]"| B8
   B8 --> DB
   DB --> S5
-  S4 --> EN_S4
-  S5 --> EN_S5
-  A3 --> EN_A3
-  X --> EN_X
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  S4 --> M_END
+  S5 --> M_END
+  A3 --> M_END
+  X --> M_END
+  B2 --> D_B2
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

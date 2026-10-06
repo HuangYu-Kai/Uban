@@ -1,5 +1,6 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["家屬"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
@@ -8,9 +9,10 @@ flowchart TD
     S3["輸入 Email 與密碼<br/>或用 Google／LINE"]:::act
     S4{"要做什麼？"}:::dec
     S5(["完成綁定"]):::act
-    EN_S5(("●")):::endterm
     S6(["訂閱生效"]):::act
-    EN_S6(("●")):::endterm
+    M_S5{" "}:::dec
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
   subgraph FE["家屬機 App"]
     A1["RegistrationScreen 帳號註冊畫面"]:::act
@@ -23,6 +25,8 @@ flowchart TD
     A8["監視機設定<br/>產生 6 碼設定碼"]:::act
     A9["subscription_test_screen<br/>★ 測試頁，Test Store 金鑰"]:::gap
     RC[("RevenueCat 訂閱金流服務・觸發後端 webhook")]:::act
+    M_A2{" "}:::dec
+    M_A6{" "}:::dec
   end
   subgraph BE["uban-api 後端"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -37,46 +41,49 @@ flowchart TD
     B9["subscription<br/>功能鎖查詢"]:::act
     MON["舊手機輸入 6 碼設定碼"]:::act
     R1(["emit join-failed<br/>reason: monitor-limit<br/>／ip_limit_exceeded<br/>並中斷連線"]):::act
-    EN_R1(("●")):::endterm
+    D_B8{"分支選擇？"}:::dec
   end
 
   ST_S1 --> S1
   S1 --> S2
   S2 -->|"[否]"| A1
   A1 --> B1
-  B1 --> A2
-  S2 -->|"[是]"| A2
+  B1 --> M_A2
+  S2 -->|"[是]"| M_A2
   A2 --> S3
   S3 --> B2
   B2 --> A3
   A3 --> A4
   A4 -->|"[否]"| A5
-  A4 -->|"[是]"| A6
+  A4 -->|"[是]"| M_A6
   A5 --> S4
   A6 --> S4
   S4 -->|"[綁定長輩]"| A7
   A7 --> B3
-  B3 --> S5
+  B3 --> M_S5
   S4 -->|"[綁定監視機]"| A8
   A8 --> B4
   B4 --> MON
   MON --> B4b
   B4b --> B5
   B5 -->|"[超過]"| R1
-  B5 -->|"[未超過]"| S5
+  B5 -->|"[未超過]"| M_S5
   S4 -->|"[訂閱付費]"| A9
   A9 --> RC
   RC --> B7
   B7 --> B8
-  B8 --> S6
-  B8 --> B9
-  B9 --> A6
-  S5 --> EN_S5
-  S6 --> EN_S6
-  R1 --> EN_R1
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  D_B8 --> S6
+  D_B8 --> B9
+  B9 --> M_A6
+  S5 --> M_END
+  S6 --> M_END
+  R1 --> M_END
+  B8 --> D_B8
+  M_A2 --> A2
+  M_A6 --> A6
+  M_S5 --> S5
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

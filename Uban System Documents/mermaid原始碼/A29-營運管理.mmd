@@ -1,14 +1,15 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["開發者"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([進入『寵物賽季與皮膚』頁]):::act
     S2{"要做什麼？"}:::dec
     S3(["新賽季開始"]):::act
-    EN_S3(("●")):::endterm
     S4(["造型上架完成"]):::act
-    EN_S4(("●")):::endterm
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
   subgraph FE["開發者管理端（寵物賽季與造型頁）"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -34,6 +35,12 @@ flowchart TD
     D4[("造型資料表")]:::act
     D5[("造型擁有紀錄表")]:::act
     GAP["★ 付費造型尚無購買金流<br/>目前只能由系統發放"]:::gap
+    D_B3{"分支選擇？"}:::dec
+    D_B4{"分支選擇？"}:::dec
+    D_B5{"分支選擇？"}:::dec
+    D_B6{"分支選擇？"}:::dec
+    D_D4{"分支選擇？"}:::dec
+    M_D1{" "}:::dec
   end
 
   ST_S1 --> S1
@@ -42,27 +49,32 @@ flowchart TD
   A1 --> S2
   S2 -->|"[賽季結算]"| B2
   B2 --> B3
-  B3 --> D1
-  B3 --> B4
-  B4 --> D2
-  B4 --> B5
-  B5 --> D3
-  B5 --> B6
-  B6 --> D1
-  B6 --> S3
+  D_B3 --> M_D1
+  D_B3 --> B4
+  D_B4 --> D2
+  D_B4 --> B5
+  D_B5 --> D3
+  D_B5 --> B6
+  D_B6 --> M_D1
+  D_B6 --> S3
   S2 -->|"[管理造型]"| A2
   A2 --> B7
   B7 --> D4
-  D4 --> S4
-  D4 --> E1
+  D_D4 --> S4
+  D_D4 --> E1
   E1 --> E2
   E2 --> D5
-  D4 -.-> GAP
-  S3 --> EN_S3
-  S4 --> EN_S4
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  D_D4 -.-> GAP
+  S3 --> M_END
+  S4 --> M_END
+  B3 --> D_B3
+  B4 --> D_B4
+  B5 --> D_B5
+  B6 --> D_B6
+  D4 --> D_D4
+  M_D1 --> D1
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ FE2 ~~~ BE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

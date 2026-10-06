@@ -1,12 +1,12 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["長輩"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([進入某個底部分頁]):::act
     S2["點『知道了』前進下一步"]:::act
     S3(["熟悉該頁操作"]):::act
-    EN_S3(("●")):::endterm
   end
   subgraph FE["長輩機 App"]
     A1["該分頁的 GlobalKey<br/>提供高光量測目標"]:::act
@@ -18,7 +18,9 @@ flowchart TD
     A7{"還有<br/>下一步？"}:::dec
     A8["寫入『已看過』旗標"]:::act
     A9(["跳過，不打擾"]):::act
-    EN_A9(("●")):::endterm
+    M_A6{" "}:::dec
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
 
   ST_S1 --> S1
@@ -29,17 +31,17 @@ flowchart TD
   A2 -->|"[是]"| A4
   A4 --> A5
   A5 -->|"[是]"| A9
-  A5 -->|"[否]"| A6
+  A5 -->|"[否]"| M_A6
   A6 --> S2
   S2 --> A7
-  A7 -->|"[是]"| A6
+  A7 -->|"[是]"| M_A6
   A7 -->|"[否]"| A8
   A8 --> S3
-  S3 --> EN_S3
-  A9 --> EN_A9
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  S3 --> M_END
+  A9 --> M_END
+  M_A6 --> A6
+  M_END --> EN_ALL
   ROLE ~~~ FE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

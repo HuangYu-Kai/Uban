@@ -1,5 +1,6 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["長輩"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
@@ -7,7 +8,6 @@ flowchart TD
     S2["點選橫幅開始述說"]:::act
     S3["錄音並輸入文字"]:::act
     S4(["故事存入本機"]):::act
-    EN_S4(("●")):::endterm
   end
   subgraph FE["長輩機 App"]
     A1["ElderStoryPromptBanner<br/>MemoirService 題庫輪播"]:::act
@@ -19,31 +19,35 @@ flowchart TD
     A7["回傳空清單<br/>記錄 debug 訊息"]:::act
     LOCAL[("SharedPreferences<br/>鍵：uban_memoirs_{elderId}<br/>★ 僅存於本機，無後端")]:::gap
     G1["家屬機藝廊讀的是<br/>家屬機自己的本機儲存<br/>→ 看不到長輩錄的內容"]:::act
-    EN_G1(("●")):::endterm
     G2["清除資料或換機<br/>→ 故事永久遺失"]:::gap
+    D_LOCAL{"分支選擇？"}:::dec
+    M_A1{" "}:::dec
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
 
   ST_S1 --> S1
-  S1 --> A1
+  S1 --> M_A1
   A1 --> S2
   S2 --> A2
   A2 --> S3
   S3 --> A3
   A3 --> A4
   A4 --> LOCAL
-  LOCAL --> S4
-  LOCAL --> A6
+  D_LOCAL --> S4
+  D_LOCAL --> A6
   A6 -->|"[是]"| A5
-  A5 --> A1
+  A5 --> M_A1
   A6 -->|"[否]"| A7
-  A7 --> A1
-  LOCAL -.-> G1
-  LOCAL -.-> G2
-  S4 --> EN_S4
-  G1 --> EN_G1
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  A7 --> M_A1
+  D_LOCAL -.-> G1
+  D_LOCAL -.-> G2
+  S4 --> M_END
+  G1 --> M_END
+  LOCAL --> D_LOCAL
+  M_A1 --> A1
+  M_END --> EN_ALL
   ROLE ~~~ FE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

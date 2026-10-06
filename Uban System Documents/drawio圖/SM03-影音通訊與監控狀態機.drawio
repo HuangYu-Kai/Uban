@@ -1,0 +1,152 @@
+<mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1780" pageHeight="550">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="title" value="圖 7-4-3 影音通訊與多端信令狀態機 (Video Communication &amp; Signaling State Machine)" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" vertex="1" parent="1">
+      <mxGeometry x="540" y="15" width="700" height="32" as="geometry"/>
+    </mxCell>
+    <mxCell id="sub" value="參考 ProcessOn UML 規範：涵蓋待機監聽、WebRTC信令協商、COTURN穿透探測、P2P即時通話與通話日誌歸檔" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontFamily=Microsoft JhengHei;fontColor=#64748b;" vertex="1" parent="1">
+      <mxGeometry x="390" y="50" width="1000" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="init" value="" style="shape=ellipse;fillColor=#1e293b;strokeColor=#1e293b;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="60" y="200" width="28" height="28" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_idle" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#0284c7;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="140" y="160" width="220" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_idle_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Standby_Idle&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(待機空閒狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="144" y="164" width="212" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_idle_div" value="" style="endArrow=none;html=1;strokeColor=#0284c7;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="140" y="202" as="sourcePoint"/>
+        <mxPoint x="360" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_idle_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 保持 WebSocket 信令連線&lt;br/&gt;• do / RTSP 心跳監聽、語音指令守候&lt;br/&gt;• exit / 鎖定媒體設備&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="144" y="206" width="212" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_sig" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#ea580c;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="440" y="160" width="240" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_sig_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Signaling_Negotiating&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(信令協商中狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="444" y="164" width="232" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_sig_div" value="" style="endArrow=none;html=1;strokeColor=#ea580c;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="440" y="202" as="sourcePoint"/>
+        <mxPoint x="680" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_sig_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 推送通話邀請 (Call Offer)&lt;br/&gt;• do / 播放響鈴、等待對端 Answer&lt;br/&gt;• exit / 停止響鈴視窗&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="444" y="206" width="232" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_ice" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#0284c7;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="760" y="160" width="230" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_ice_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Ice_Gathering&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(ICE連線探測中狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="764" y="164" width="222" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_ice_div" value="" style="endArrow=none;html=1;strokeColor=#0284c7;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="760" y="202" as="sourcePoint"/>
+        <mxPoint x="990" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_ice_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 向 COTURN 請求候選地址&lt;br/&gt;• do / 執行 STUN NAT 穿透與 TURN 中繼&lt;br/&gt;• exit / 鎖定最佳連線通道&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="764" y="206" width="222" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_p2p" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#16a34a;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="1070" y="160" width="250" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_p2p_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;P2P_Connected&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(雙向視訊串流通話中)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="1074" y="164" width="242" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_p2p_div" value="" style="endArrow=none;html=1;strokeColor=#16a34a;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1070" y="202" as="sourcePoint"/>
+        <mxPoint x="1320" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_p2p_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 建立 WebRTC 端對端加密通道&lt;br/&gt;• do / 雙向傳輸低延遲視訊與語音&lt;br/&gt;• exit / 釋放媒體硬體資源&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="1074" y="206" width="242" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_tear" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#64748b;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="1400" y="160" width="220" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_tear_hdr" value="&lt;b style='font-size:13px;color:#0f172a;'&gt;Tearing_Down&lt;/b&gt;&lt;br/&gt;&lt;font color='#475569' style='font-size:11px;'&gt;(通話釋放歸檔狀態)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft JhengHei;" vertex="1" parent="1">
+      <mxGeometry x="1404" y="164" width="212" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="s_tear_div" value="" style="endArrow=none;html=1;strokeColor=#64748b;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1400" y="202" as="sourcePoint"/>
+        <mxPoint x="1620" y="202" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="s_tear_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 斷開 PeerConnection&lt;br/&gt;• do / 寫入 MySQL 通話紀錄與品質日誌&lt;br/&gt;• exit / 重置攝影機與麥克風&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+      <mxGeometry x="1404" y="206" width="212" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="final" value="" style="shape=ellipse;double=1;fillColor=#ffffff;strokeColor=#1e293b;strokeWidth=2;shadow=1;" vertex="1" parent="1">
+      <mxGeometry x="1680" y="201" width="28" height="28" as="geometry"/>
+    </mxCell>
+    <mxCell id="final_inner" value="" style="shape=ellipse;fillColor=#1e293b;strokeColor=#1e293b;" vertex="1" parent="1">
+      <mxGeometry x="1686" y="207" width="16" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="tr_0" value="系統啟動完成" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="88" y="214" as="sourcePoint"/>
+        <mxPoint x="140" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_1" value="發起通話 [點擊頭像/按鈕] / 送出 Offer" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="360" y="214" as="sourcePoint"/>
+        <mxPoint x="440" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_2" value="對端接聽通話 [接收 Answer]" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="680" y="214" as="sourcePoint"/>
+        <mxPoint x="760" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_3" value="對端拒接 / 逾時未接 / 取消通話" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="560" y="160" as="sourcePoint"/>
+        <mxPoint x="250" y="160" as="targetPoint"/>
+        <Array as="points">
+          <mxPoint x="560" y="100"/>
+          <mxPoint x="250" y="100"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_4" value="ICE 候選匹配成功 / 建立傳輸通道" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="990" y="214" as="sourcePoint"/>
+        <mxPoint x="1070" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_5" value="任一方點擊掛斷 / 網路異常斷線" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1320" y="214" as="sourcePoint"/>
+        <mxPoint x="1400" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_6" value="資源釋放完畢 / 回到待機狀態" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1510" y="270" as="sourcePoint"/>
+        <mxPoint x="250" y="270" as="targetPoint"/>
+        <Array as="points">
+          <mxPoint x="1510" y="360"/>
+          <mxPoint x="250" y="360"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="tr_7" value="模組關閉" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;strokeColor=#1e293b;strokeWidth=1.5;edgeStyle=orthogonalEdgeStyle;rounded=1;labelBackgroundColor=#ffffff;labelPadding=3;fontSize=11;fontFamily=Microsoft JhengHei;fontColor=#0f172a;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1620" y="214" as="sourcePoint"/>
+        <mxPoint x="1680" y="214" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+  </root>
+</mxGraphModel>
