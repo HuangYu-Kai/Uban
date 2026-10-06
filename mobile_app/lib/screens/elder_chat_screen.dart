@@ -5,11 +5,14 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'package:record/record.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../globals.dart';
+import '../utils/stt_locale.dart';
 import '../services/api_service.dart';
 import '../services/friend_service.dart';
 import '../services/memoir_service.dart';
@@ -77,13 +80,14 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   final ScrollController _scroll = ScrollController();
   bool _isThinking = false; // 等待第一個 token 出現前的「思考中」狀態
 
-  // 語音輸入與 ASR (Faster-Whisper)
-  final AudioRecorder _recorder = AudioRecorder();
+  // 語音輸入：一律使用手機內建語音辨識（speech_to_text），不再上傳伺服器 Whisper
+  final SpeechToText _speechToText = SpeechToText();
+  String? _sttLocaleToUse;
+  bool _pausedWakeWord = false; // 是否由本頁暫停了首頁喚醒詞監聽
   bool _speechReady = false;
   bool _isListening = false;
   String _recognized = '';
   bool _voiceMode = true; // true=語音「按住說話」列，false=鍵盤輸入
-  String? _recordingPath;
 
   // 語音播放 (TTS) 與國台語切換
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -398,19 +402,40 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   Future<void> _initSpeech() async {
     try {
-      _speechReady = await _recorder.hasPermission();
-      debugPrint('🎙️ [ASR Init] Microphone permission: $_speechReady');
+      final status = await Permission.microphone.request();
+      if (status.isGranted) {
+        // 不依賴 onStatus：按住說話由按下／放開驅動；
+        // 辨識器可能已被首頁喚醒詞初始化過，這裡不重設其回呼。
+        _speechReady = await _speechToText.initialize(
+          onError: (err) => debugPrint('🎙️ [STT error] $err'),
+        );
+        if (_speechReady) {
+          final locales = await _speechToText.locales();
+          _sttLocaleToUse = pickChineseSttLocale(locales);
+          debugPrint('🎙️ [STT Init] locale -> $_sttLocaleToUse');
+        }
+      } else {
+        _speechReady = false;
+      }
     } catch (e) {
-      debugPrint('🎙️ [ASR Init Failed] $e');
+      debugPrint('🎙️ [STT Init Failed] $e');
       _speechReady = false;
     }
     if (mounted) setState(() {});
   }
 
+  /// 還原首頁喚醒詞監聽（只在由本頁暫停時才還原）。
+  void _restoreWakeWord() {
+    if (_pausedWakeWord) {
+      _pausedWakeWord = false;
+      isMediaPlayingNotifier.value = false;
+    }
+  }
+
   Future<void> _startListening() async {
     if (_isThinking || _isListening) return;
     if (!_speechReady) {
-      _speechReady = await _recorder.hasPermission();
+      await _initSpeech();
       if (!_speechReady) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -420,97 +445,85 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         return;
       }
     }
+    if (!mounted) return;
+
+    // 錄音期間暫停首頁喚醒詞監聽（共用同一個原生辨識器）
+    _pausedWakeWord = !isMediaPlayingNotifier.value;
+    if (_pausedWakeWord) isMediaPlayingNotifier.value = true;
+
+    setState(() {
+      _isListening = true;
+      _recognized = '';
+    });
 
     try {
-      final tempDir = await getTemporaryDirectory();
-      final path = '${tempDir.path}/temp_stt_voice.wav';
-      _recordingPath = path;
-
-      setState(() {
-        _isListening = true;
-        _recognized = '聆聽中，請開始說話...';
-      });
-
-      // 開始錄音 (單聲道、16kHz 最適合語音轉文字格式)
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-          numChannels: 1,
+      await _speechToText.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          setState(() => _recognized = result.recognizedWords);
+        },
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 4),
+        localeId: _sttLocaleToUse,
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenMode: ListenMode.dictation,
         ),
-        path: path,
       );
-      debugPrint('🎙️ [ASR Start] Recording started to: $path');
     } catch (e) {
-      debugPrint('🎙️ [ASR Start Failed] $e');
+      debugPrint('🎙️ [STT Start Failed] $e');
+      _restoreWakeWord();
+      if (!mounted) return;
       setState(() {
         _isListening = false;
+        _recognized = '';
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('啟動錄音失敗: $e')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('語音辨識暫時無法使用，請改用打字')),
+      );
     }
   }
 
   Future<void> _stopListeningAndSend() async {
     if (!_isListening) return;
+    String text = '';
     try {
-      final path = await _recorder.stop();
-      debugPrint('🎙️ [ASR Stop] Recording stopped. File path: $path');
-
-      setState(() {
-        _isListening = false;
-        _isThinking = true; // 顯示思考中動畫
-        _recognized = '';
-      });
-
-      if (path != null) {
-        // 呼叫 AI Server 的 ASR (/api/voice/transcribe) 轉錄音檔
-        final text = await ApiService.transcribeAudio(path);
-        debugPrint('🎙️ [ASR Result] Transcribed text: $text');
-
-        if (!ApiService.isTranscriptionError(text)) {
-          final recognized = text!;
-          setState(() {
-            _controller.text = recognized;
-            _voiceMode = false; // 自動切換為鍵盤打字模式，供使用者確認與手動送出
-            _isThinking = false;
-          });
-        } else {
-          setState(() {
-            _isThinking = false;
-          });
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('語音辨識暫時無法使用，請改用打字')),
-            );
-          }
-        }
-      } else {
+      // 放開瞬間最後一段結果可能還沒回來，稍等一下
+      if (_recognized.isEmpty) {
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+      await _speechToText.stop();
+      text = _recognized.trim();
+    } catch (e) {
+      debugPrint('🎙️ [STT Stop Failed] $e');
+    } finally {
+      _restoreWakeWord();
+      if (mounted) {
         setState(() {
-          _isThinking = false;
+          _isListening = false;
+          _recognized = '';
         });
       }
-    } catch (e) {
-      debugPrint('🎙️ [ASR Stop Failed] $e');
+    }
+    if (!mounted) return;
+    if (text.isNotEmpty) {
       setState(() {
-        _isListening = false;
-        _isThinking = false;
+        _controller.text = text;
+        _voiceMode = false; // 切換為鍵盤模式，供長輩確認後手動送出
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('語音傳輸失敗: $e')),
-        );
-      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('我好像沒聽清楚，再說一次好嗎？')),
+      );
     }
   }
 
   @override
   void dispose() {
     CareMessageStore.instance.latest.removeListener(_onCareMessage);
-    _recorder.dispose();
+    _speechToText.stop();
+    _restoreWakeWord();
     _audioPlayer.dispose();
     _controller.dispose();
     _scroll.dispose();

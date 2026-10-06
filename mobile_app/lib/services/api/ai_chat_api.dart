@@ -149,43 +149,6 @@ class AiChatApi {
     }
   }
 
-  /// 辨識結果是否為失敗：null、空字串，或整串被 [] 包住（後端錯誤佔位字串，
-  /// 例如「[遠端 ASR 連線異常且本地模型未加載]」）都算失敗，不可填入輸入框。
-  static bool isTranscriptionError(String? text) {
-    if (text == null) return true;
-    final t = text.trim();
-    if (t.isEmpty) return true;
-    return t.startsWith('[') && t.endsWith(']');
-  }
-
-  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至主後端。
-  /// 失敗（success:false、空字串、"[...]" 錯誤字串、網路錯誤）一律回傳 null。
-  static Future<String?> transcribeAudio(String filePath) async {
-    try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('${ApiClient.baseUrl}/voice/transcribe'),
-      );
-      request.files.add(await http.MultipartFile.fromPath('file', filePath));
-      request.fields['language'] = 'zh';
-
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          final text = data['transcription']?.toString().trim();
-          return isTranscriptionError(text) ? null : text;
-        }
-      }
-      return null;
-    } catch (e) {
-      debugPrint('❌ [transcribeAudio] 錯誤: $e');
-      return null;
-    }
-  }
-
   static Future<Map<String, dynamic>> petGreeting(int userId, String context) async {
     try {
       final response = await http
