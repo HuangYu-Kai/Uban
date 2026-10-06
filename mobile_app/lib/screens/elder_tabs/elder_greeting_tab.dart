@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -192,6 +194,22 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   int _classicTemplateIndex = 0;
   // 經典字體樣式切換 (0: 招牌白光藍 1: 喜慶立體金 2: 暖陽純白)
   int _classicFontStyleIndex = 0;
+
+  // ── 經典祝賀圖「拖動小豬／文字」自訂位置（依範本分別記憶）──
+  // 值為「元素左上角 ÷ 方形邊長」的比例（0..1），null＝用範本預設位置。
+  // 以比例儲存，換螢幕尺寸與 2.8 倍匯出都不會跑位。
+  static const String _kLayoutHintPrefKey = 'greeting_layout_hint_seen';
+  Offset? _pigFrac;
+  Offset? _textFrac;
+  _GreetingDragItem? _draggingItem; // 拖動中才顯示虛線外框（匯出前一定是 null）
+  bool _layoutHintSeen = false;
+  final GlobalKey _squareKey = GlobalKey();
+  final GlobalKey _pigItemKey = GlobalKey();
+  final GlobalKey _textItemKey = GlobalKey();
+  // 單次拖動的起點資訊
+  Offset _dragStartGlobal = Offset.zero;
+  Offset _dragStartTopLeft = Offset.zero; // 方形座標（px）
+  Size _dragChildSize = Size.zero;
 
   // AI 模式選中主題
   int _aiThemeIndex = 0;
@@ -509,6 +527,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     unawaited(_loadPigPrefs());
     widget.refreshSignal?.addListener(_reloadPig);
     _checkAndPrioritizeHolidayTemplates();
+    unawaited(_loadLayout());
+    unawaited(_loadHintFlag());
   }
 
   @override
@@ -612,11 +632,12 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
               img,
             ],
           );
-          return Padding(
+          return _buildDraggableItem(
+            item: _GreetingDragItem.pig,
+            itemKey: _pigItemKey,
+            align: corner,
             padding: EdgeInsets.all(pad),
-            child: Align(
-              alignment: corner,
-              child: SizedBox(
+            child: SizedBox(
                 width: w,
                 child: Stack(
                   clipBehavior: Clip.none,
@@ -640,9 +661,230 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                   ],
                 ),
               ),
-            ),
           );
         },
+      ),
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // 拖動小豬／文字（經典模式）：位置記憶、夾限、還原
+  // ════════════════════════════════════════════════════════════════
+
+  String get _layoutPrefKey =>
+      'greeting_layout_${_classicTemplates[_classicTemplateIndex].id}';
+
+  bool get _hasCustomLayout => _pigFrac != null || _textFrac != null;
+
+  /// 載入目前範本的自訂位置；換範本時先同步清掉舊範本的位置，
+  /// 以免讀檔期間短暫套用上一個範本的座標。
+  Future<void> _loadLayout() async {
+    final id = _classicTemplates[_classicTemplateIndex].id;
+    _pigFrac = null;
+    _textFrac = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('greeting_layout_$id');
+      Offset? pig, text;
+      if (raw != null) {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        Offset? parse(Object? v) {
+          if (v is! Map) return null;
+          final x = v['x'], y = v['y'];
+          if (x is! num || y is! num) return null;
+          return Offset(
+              x.toDouble().clamp(0.0, 1.0), y.toDouble().clamp(0.0, 1.0));
+        }
+
+        pig = parse(m['pig']);
+        text = parse(m['text']);
+      }
+      // 讀檔期間又換了範本：丟棄這次結果
+      if (!mounted || _classicTemplates[_classicTemplateIndex].id != id) return;
+      setState(() {
+        _pigFrac = pig;
+        _textFrac = text;
+      });
+    } catch (_) {
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _saveLayout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!_hasCustomLayout) {
+        await prefs.remove(_layoutPrefKey);
+        return;
+      }
+      Map<String, double> enc(Offset o) => {'x': o.dx, 'y': o.dy};
+      await prefs.setString(
+        _layoutPrefKey,
+        jsonEncode({
+          if (_pigFrac != null) 'pig': enc(_pigFrac!),
+          if (_textFrac != null) 'text': enc(_textFrac!),
+        }),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _resetLayout() async {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _pigFrac = null;
+      _textFrac = null;
+    });
+    await _saveLayout(); // 沒有自訂位置 → 會清掉儲存的鍵
+  }
+
+  Future<void> _loadHintFlag() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seen = prefs.getBool(_kLayoutHintPrefKey) ?? false;
+      if (mounted && seen != _layoutHintSeen) {
+        setState(() => _layoutHintSeen = seen);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _markHintSeen() async {
+    if (_layoutHintSeen) return;
+    setState(() => _layoutHintSeen = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kLayoutHintPrefKey, true);
+    } catch (_) {}
+  }
+
+  Offset? _fracOf(_GreetingDragItem item) =>
+      item == _GreetingDragItem.pig ? _pigFrac : _textFrac;
+
+  void _dragStart(_GreetingDragItem item, Offset global) {
+    final itemBox = (item == _GreetingDragItem.pig ? _pigItemKey : _textItemKey)
+        .currentContext
+        ?.findRenderObject() as RenderBox?;
+    final squareBox =
+        _squareKey.currentContext?.findRenderObject() as RenderBox?;
+    if (itemBox == null || squareBox == null || !itemBox.hasSize) return;
+    HapticFeedback.lightImpact();
+    _dragStartGlobal = global;
+    _dragChildSize = itemBox.size;
+    _dragStartTopLeft = itemBox.localToGlobal(Offset.zero, ancestor: squareBox);
+    setState(() => _draggingItem = item);
+  }
+
+  void _dragUpdate(_GreetingDragItem item, Offset global) {
+    if (_draggingItem != item) return;
+    final squareBox =
+        _squareKey.currentContext?.findRenderObject() as RenderBox?;
+    if (squareBox == null || !squareBox.hasSize) return;
+    final side = squareBox.size.width;
+    if (side <= 0) return;
+    final raw = _dragStartTopLeft + (global - _dragStartGlobal);
+    // 夾限：整個元素一律留在圖內
+    final x = raw.dx.clamp(0.0, math.max(0.0, side - _dragChildSize.width));
+    final y = raw.dy.clamp(0.0, math.max(0.0, side - _dragChildSize.height));
+    setState(() {
+      final f = Offset(x / side, y / side);
+      if (item == _GreetingDragItem.pig) {
+        _pigFrac = f;
+      } else {
+        _textFrac = f;
+      }
+    });
+  }
+
+  void _dragEnd(_GreetingDragItem item) {
+    if (_draggingItem != item) return;
+    setState(() => _draggingItem = null);
+    unawaited(_saveLayout());
+    unawaited(_markHintSeen());
+  }
+
+  /// 可拖動元素：觸碰即開始拖（不用長按），用「立即勝出」的手勢辨識器，
+  /// 在手勢競技場贏過外層垂直捲動；沒碰到元素的地方仍可捲動頁面。
+  /// [align]/[padding] 是「沒有自訂位置」時的預設落點（與舊版 Align+Padding 完全相同）。
+  Widget _buildDraggableItem({
+    required _GreetingDragItem item,
+    required Key itemKey,
+    required Alignment align,
+    required EdgeInsets padding,
+    required Widget child,
+  }) {
+    final dragging = _draggingItem == item;
+    return CustomSingleChildLayout(
+      delegate: _GreetingItemLayout(
+        frac: _fracOf(item),
+        align: align,
+        padding: padding,
+      ),
+      child: RawGestureDetector(
+        key: ValueKey('greeting_drag_${item.name}'),
+        behavior: HitTestBehavior.opaque,
+        gestures: {
+          _ImmediateDragRecognizer:
+              GestureRecognizerFactoryWithHandlers<_ImmediateDragRecognizer>(
+            () => _ImmediateDragRecognizer(),
+            (r) {
+              r.onStart = (p) => _dragStart(item, p);
+              r.onUpdate = (p) => _dragUpdate(item, p);
+              r.onEnd = () => _dragEnd(item);
+            },
+          ),
+        },
+        child: Transform.scale(
+          key: itemKey, // 量測用（尺寸＝元素本身，不含外層撐滿的版面）
+          scale: dragging ? 1.03 : 1.0,
+          child: dragging
+              ? CustomPaint(
+                  key: const ValueKey('greeting_drag_highlight'),
+                  foregroundPainter: _DashedOutlinePainter(),
+                  child: child,
+                )
+              : child,
+        ),
+      ),
+    );
+  }
+
+  /// 「還原位置」按鈕（只有目前範本有自訂位置時才出現；UbanButton 最小高 60）。
+  Widget _buildResetLayoutButton() {
+    if (!_hasCustomLayout) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: UbanButton(
+        key: const ValueKey('greeting_layout_reset'),
+        label: '還原位置',
+        icon: Icons.restart_alt_rounded,
+        variant: UbanButtonVariant.outline,
+        onPressed: _resetLayout,
+      ),
+    );
+  }
+
+  /// 圖下方的拖動提示（拖過一次就不再出現；不在匯出的 RepaintBoundary 內）。
+  Widget _buildLayoutHint() {
+    if (_currentMode != GreetingCardMode.classic || _layoutHintSeen) {
+      return const SizedBox.shrink();
+    }
+    final c = UbanColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        key: const ValueKey('greeting_layout_hint'),
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.open_with_rounded, size: 20, color: c.text2),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '可以用手指拖動小豬和文字',
+              style: ubanText(16, FontWeight.w700, c.text2),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -813,6 +1055,11 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   /// 擷取長輩圖畫布為 PNG
   Future<Uint8List?> _captureCardImage() async {
     try {
+      // 保險：拖動虛線外框絕不進輸出圖（正常情況手指在螢幕上時按不到分享）
+      if (_draggingItem != null) {
+        setState(() => _draggingItem = null);
+        await WidgetsBinding.instance.endOfFrame;
+      }
       final boundary = _cardRepaintKey.currentContext?.findRenderObject()
           as RenderRepaintBoundary?;
       if (boundary == null) return null;
@@ -1092,6 +1339,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                     child: _buildSquarePreviewCard(maxWidth: 480),
                   ),
                 ),
+                _buildLayoutHint(),
               ],
             ),
           ),
@@ -1116,6 +1364,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                 if (_currentMode == GreetingCardMode.classic) ...[
                   const SizedBox(height: 12),
                   _buildPigToggle(),
+            _buildResetLayoutButton(),
                 ],
                 const SizedBox(height: 18),
                 _buildLineShareButton(),
@@ -1163,6 +1412,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
               child: _buildSquarePreviewCard(maxWidth: 400),
             ),
           ),
+          _buildLayoutHint(),
           const SizedBox(height: 14),
           if (_currentMode == GreetingCardMode.classic)
             _buildClassicTemplateSelectorBar(),
@@ -1175,6 +1425,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           if (_currentMode == GreetingCardMode.classic) ...[
             const SizedBox(height: 12),
             _buildPigToggle(),
+            _buildResetLayoutButton(),
           ],
           const SizedBox(height: 16),
           _buildLineShareButton(),
@@ -1314,6 +1565,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     final String mainText = _getCurrentMainText();
 
     return Stack(
+      key: _squareKey,
       children: [
         // 背景相片（1:1 滿版）
         Positioned.fill(
@@ -1343,9 +1595,12 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         ),
 
         // ★ 核心黃金律：純粹超大字！無任何日期、時間或多餘小字干擾
-        Align(
-          alignment: tpl.textAlign,
-          child: Padding(
+        // （可拖動；未自訂位置時落點與舊版 Align+Padding 相同）
+        Positioned.fill(
+          child: _buildDraggableItem(
+            item: _GreetingDragItem.text,
+            itemKey: _textItemKey,
+            align: tpl.textAlign,
             padding: tpl.textPadding,
             child: _buildClassicTypography(mainText, tpl),
           ),
@@ -1670,6 +1925,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                               _classicTemplateIndex = idx;
                               _customTemplateMainText = t.defaultMain;
                             });
+                            unawaited(_loadLayout());
                           },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
@@ -1859,6 +2115,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                               _classicTemplateIndex = globalIdx;
                               _customTemplateMainText = tpl.defaultMain;
                             });
+                            unawaited(_loadLayout());
                             Navigator.pop(sheetCtx);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
@@ -2009,7 +2266,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     );
   }
 
-  /// 經典模式操作工具列（換金句 ＋ 換字體發光）
+  /// 經典模式操作工具列（換句好話 ＋ 換字體款式）
   Widget _buildClassicActionTools() {
     return Row(
       children: [
@@ -2017,18 +2274,18 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         Expanded(
           flex: 3,
           child: UbanButton(
-            label: '換句好話 (${_quotes[_currentQuoteIndex].category})',
+            label: '換句好話',
             icon: Icons.auto_awesome_rounded,
             variant: UbanButtonVariant.tonal,
             onPressed: _nextQuote,
           ),
         ),
         const SizedBox(width: 10),
-        // 換字體發光按鈕
+        // 換字體款式按鈕
         Expanded(
           flex: 2,
           child: UbanButton(
-            label: '換字體發光',
+            label: '換字體款式',
             icon: Icons.format_color_text_rounded,
             variant: UbanButtonVariant.outline,
             onPressed: _cycleClassicFontStyle,
@@ -2076,4 +2333,125 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
       onPressed: _isSharing ? null : _shareToLine,
     );
   }
+}
+
+/// 祝賀圖上可拖動的兩個元素。
+enum _GreetingDragItem { pig, text }
+
+/// 版面代理：沒有自訂位置時，落點與 `Align(alignment) + Padding(padding)` 完全相同；
+/// 有自訂位置時以「方形邊長的比例」定位，並夾限讓元素整個留在圖內
+/// （換句好話／換字體導致尺寸改變時會自動重新夾限）。
+class _GreetingItemLayout extends SingleChildLayoutDelegate {
+  final Offset? frac;
+  final Alignment align;
+  final EdgeInsets padding;
+
+  const _GreetingItemLayout({
+    required this.frac,
+    required this.align,
+    required this.padding,
+  });
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    return BoxConstraints.loose(Size(
+      math.max(0.0, constraints.maxWidth - padding.horizontal),
+      math.max(0.0, constraints.maxHeight - padding.vertical),
+    ));
+  }
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final f = frac;
+    if (f == null) {
+      final inner = Size(
+        math.max(0.0, size.width - padding.horizontal),
+        math.max(0.0, size.height - padding.vertical),
+      );
+      return align.inscribe(childSize, Offset.zero & inner).topLeft +
+          padding.topLeft;
+    }
+    return Offset(
+      (f.dx * size.width).clamp(0.0, math.max(0.0, size.width - childSize.width)),
+      (f.dy * size.height)
+          .clamp(0.0, math.max(0.0, size.height - childSize.height)),
+    );
+  }
+
+  @override
+  bool shouldRelayout(covariant _GreetingItemLayout old) =>
+      old.frac != frac || old.align != align || old.padding != padding;
+}
+
+/// 「碰到就算」的單指拖動辨識器：pointer down 當下就宣告勝出，
+/// 因此會贏過祖先 SingleChildScrollView 的垂直拖動（其門檻要先位移 18px）。
+class _ImmediateDragRecognizer extends OneSequenceGestureRecognizer {
+  void Function(Offset global)? onStart;
+  void Function(Offset global)? onUpdate;
+  VoidCallback? onEnd;
+  int? _pointer;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    if (_pointer != null) return; // 只處理第一根手指
+    _pointer = event.pointer;
+    startTrackingPointer(event.pointer, event.transform);
+    resolve(GestureDisposition.accepted);
+    onStart?.call(event.position);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event.pointer != _pointer) return;
+    if (event is PointerMoveEvent) {
+      onUpdate?.call(event.position);
+    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
+      _finish(event.pointer);
+    }
+  }
+
+  void _finish(int pointer) {
+    if (_pointer == null) return;
+    _pointer = null;
+    stopTrackingPointer(pointer);
+    onEnd?.call();
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {}
+
+  @override
+  String get debugDescription => 'greeting immediate drag';
+}
+
+/// 拖動中的白色虛線圓角外框（只在拖動時才掛上，輸出圖不會有）。
+class _DashedOutlinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(
+      (Offset.zero & size).inflate(4),
+      const Radius.circular(12),
+    );
+    final path = Path()..addRRect(rrect);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = Colors.white;
+    final shadow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..color = const Color(0x66000000);
+    for (final m in path.computeMetrics()) {
+      double d = 0;
+      while (d < m.length) {
+        final seg = m.extractPath(d, math.min(d + 10, m.length));
+        canvas.drawPath(seg, shadow);
+        canvas.drawPath(seg, paint);
+        d += 17;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
