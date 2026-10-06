@@ -32,6 +32,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   final List<Map<String, dynamic>> _chatMessages = [];
   bool _isSending = false;
 
+  // 後端會串接 Ollama→Gemini 兩段 LLM 呼叫，常超過預設 15 秒，故此端點放寬到 45 秒。
+  static const Duration _copilotTimeout = Duration(seconds: 45);
+
   // 🎙️ 語音輸入（第四十九輪新增）：只把辨識結果寫回輸入框，絕不自動送出
   // ——語音可能聽錯，必須讓家屬看過文字內容、自己按送出鍵確認，否則等於
   // 讓系統代替家屬決定要建立什麼排程。
@@ -209,48 +212,34 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         'elder_id': elderIdStr,
         'elder_name': elderName,
         'message': text,
-      }, timeout: const Duration(seconds: 45));
+      }, timeout: _copilotTimeout);
 
-      Map<String, dynamic>? data;
+      final Map<String, dynamic> data;
       if (res != null && res['status'] == 'success' && res['data'] != null) {
         data = Map<String, dynamic>.from(res['data']);
-      } else if (res != null) {
-        // 伺服器有回應但不是成功（例如 4xx/5xx）
-        data = {
-          'reply_text': '暫時查不到 $elderName 的資料（伺服器回應錯誤），請稍後再試。',
-        };
-      } else {
-        // null＝逾時或網路錯誤（ApiClient.post 會吞掉例外）；沿用離線備援，
-        // 但近況查詢類改成提示重問，避免誤導成「查不到資料」。
+      } else if (res == null) {
+        // 網路失敗或逾時：ApiClient 回 null，走離線後備（不編造近況）。
         data = _generateFallbackResponse(text, elderName);
-        if (data['status_summary'] != null) {
-          data['reply_text'] = '小嘎想太久了或網路不穩，暫時無法查詢 $elderName 的近況，請再問一次。';
-        }
+      } else {
+        // 伺服器有回應但非 success（404 未綁定、500 等）：與離線分開顯示。
+        final msg = res['message'] ?? res['detail'];
+        data = _serverFailureResponse(text, elderName, msg is String ? msg : null);
       }
 
-      setState(() {
-        _chatMessages.add({
-          'isUser': false,
-          'text': (data!['reply_text'] ?? '已為您處理完成！').toString(),
-          'statusSummary': data['status_summary'],
-          'scheduleDrafts': data['schedule_drafts'] != null ? List<dynamic>.from(data['schedule_drafts']) : null,
-        });
-      });
+      if (!mounted) return;
+      setState(() => _addBotMessage(data));
     } catch (e) {
-      final fallbackData = _generateFallbackResponse(text, elderName);
-      setState(() {
-        _chatMessages.add({
-          'isUser': false,
-          'text': fallbackData['reply_text'].toString(),
-          'statusSummary': fallbackData['status_summary'],
-          'scheduleDrafts': fallbackData['schedule_drafts'] != null ? List<dynamic>.from(fallbackData['schedule_drafts']) : null,
-        });
-      });
+      debugPrint('⚠️ [FamilyCopilot] 送出失敗：$e');
+      if (!mounted) return;
+      final fallbackData = _serverFailureResponse(text, elderName, null);
+      setState(() => _addBotMessage(fallbackData));
     } finally {
-      setState(() {
-        _isSending = false;
-      });
-      _scrollToBottom();
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+        _scrollToBottom();
+      }
     }
   }
 
@@ -392,25 +381,47 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       };
     }
 
-    // ⚠️ 第四十九輪誠實性修復：這個分支只在完全連不上後端時才會走到
-    // （見 _sendMessage 的 catch）。舊版在這裡依「現在幾點」編一段看起來
+    // ⚠️ 第四十九輪誠實性修復：這個分支只在 res == null（網路失敗或逾時）
+    // 時才會走到（見 _sendMessage）。舊版在這裡依「現在幾點」編一段看起來
     // 煞有其事、其實與長輩真實狀況完全無關的假近況（例如固定寫死「今日
     // 各時段用藥與關懷打卡皆已全數完成」）。既然是離線也查不到任何真實
     // 資料，唯一誠實的做法就是照實告知「現在連不上，這不是真的近況」，
     // 不能因為畫面要有東西顯示就編數字——這正是本輪要根除的問題本身，
     // 沒有理由只修後端、留著前端這個離線分支繼續騙。
     return {
-      'reply_text': '目前無法連線到伺服器，暫時無法查詢 $elderName 的即時近況。請檢查網路連線後再試一次。',
-      'status_summary': {
-        'mood_status': '目前無法連線，查不到情緒紀錄。',
-        'mood_score': null,
-        'medication_status': '目前無法連線，查不到用藥打卡紀錄。',
-        'activity_status': '目前無法連線，查不到活動與步數資料。',
-        'recent_topics': [],
-        'next_appointment': '目前無法連線，查不到排程資料。',
-      },
+      'reply_text': '目前無法連線到伺服器，或伺服器回應逾時，暫時無法查詢 $elderName 的即時近況。請稍後再試一次。',
+      'status_summary': null,
       'schedule_drafts': [],
     };
+  }
+
+  /// 伺服器有回應、但不是 success（例如 404 未綁定、500）時的提示。
+  /// 與「連不上／逾時」分開顯示，家屬才知道該檢查綁定而不是網路。
+  Map<String, dynamic> _buildServerErrorResponse(String elderName, String? serverMsg) {
+    final detail = (serverMsg == null || serverMsg.isEmpty) ? '' : '（$serverMsg）';
+    return {
+      'reply_text': '伺服器暫時無法處理這個問題$detail。請稍後再試，或確認已與 $elderName 完成綁定。',
+      'status_summary': null,
+      'schedule_drafts': [],
+    };
+  }
+
+  /// 伺服器失敗時的後備：先試本機排程解析，解析不出排程才顯示伺服器錯誤。
+  Map<String, dynamic> _serverFailureResponse(String text, String elderName, String? serverMsg) {
+    final local = _generateFallbackResponse(text, elderName);
+    final drafts = local['schedule_drafts'];
+    if (drafts is List && drafts.isNotEmpty) return local;
+    return _buildServerErrorResponse(elderName, serverMsg);
+  }
+
+  /// 把回覆資料加成一則機器人訊息。
+  void _addBotMessage(Map<String, dynamic> data) {
+    _chatMessages.add({
+      'isUser': false,
+      'text': (data['reply_text'] ?? '已為您處理完成！').toString(),
+      'statusSummary': data['status_summary'],
+      'scheduleDrafts': data['schedule_drafts'] != null ? List<dynamic>.from(data['schedule_drafts']) : null,
+    });
   }
 
   @override
