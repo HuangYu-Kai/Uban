@@ -30,6 +30,8 @@ void main() {
     await tester.pumpWidget(host());
     await tester.pump(const Duration(milliseconds: 100));
     expect(overlay, findsOneWidget);
+    // 白邊圖層（貼紙式描邊）隨小豬一起存在
+    expect(find.byKey(const ValueKey('greeting_pig_outline')), findsWidgets);
 
     await tester.tap(toggle);
     await tester.pump(const Duration(milliseconds: 100));

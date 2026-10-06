@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' as io;
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -587,6 +588,30 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         builder: (context, box) {
           final w = box.maxWidth * 0.22;
           final pad = box.maxWidth * 0.04;
+          // 白邊半徑：約小豬寬的 3.5%，視覺上與大字標語的白描邊粗細相當
+          final r = w * 0.035;
+          // 貼紙式白邊：把純白剪影複製 16 份、繞圓周位移，疊在原圖下方，
+          // 邊緣會沿著小豬的透明輪廓走（不是方框／圓形）。同一個 img 實例，圖片只解碼一次。
+          const n = 16;
+          final white = ColorFiltered(
+            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+            child: img,
+          );
+          final outlined = Stack(
+            key: const ValueKey('greeting_pig_outline'),
+            clipBehavior: Clip.none,
+            children: [
+              for (var i = 0; i < n; i++)
+                Transform.translate(
+                  offset: Offset(
+                    r * math.cos(2 * math.pi * i / n),
+                    r * math.sin(2 * math.pi * i / n),
+                  ),
+                  child: white,
+                ),
+              img,
+            ],
+          );
           return Padding(
             padding: EdgeInsets.all(pad),
             child: Align(
@@ -594,8 +619,9 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
               child: SizedBox(
                 width: w,
                 child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    // 淡陰影：黑色剪影模糊後下移，讓小豬「站」在圖上
+                    // 淡陰影：套在「含白邊的整體」外側，黑色剪影模糊後下移，讓小豬「站」在圖上
                     Transform.translate(
                       offset: Offset(0, w * 0.04),
                       child: ImageFiltered(
@@ -605,12 +631,12 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                           child: ColorFiltered(
                             colorFilter: const ColorFilter.mode(
                                 Colors.black, BlendMode.srcIn),
-                            child: img,
+                            child: outlined,
                           ),
                         ),
                       ),
                     ),
-                    img,
+                    outlined,
                   ],
                 ),
               ),
