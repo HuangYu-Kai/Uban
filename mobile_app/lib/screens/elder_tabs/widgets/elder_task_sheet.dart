@@ -93,7 +93,7 @@ class _ElderTaskSheetBodyState extends State<ElderTaskSheetBody> {
                   style: ubanText(17, FontWeight.w600, c.text3)),
             ),
           for (final e in rows)
-            _TaskRow(
+            ElderTaskRow(
               reminder: e.r,
               done: e.done,
               onCheck: () => _check(e.r),
@@ -149,7 +149,7 @@ class _ElderTaskSheetBodyState extends State<ElderTaskSheetBody> {
                   style: ubanText(22, FontWeight.w900, c.text)),
             ),
             const SizedBox(width: 8),
-            _Tag('${g.done.length}／$total'),
+            ElderTaskTag('${g.done.length}／$total'),
           ],
         ),
         const SizedBox(height: 6),
@@ -178,7 +178,7 @@ class _ElderTaskSheetBodyState extends State<ElderTaskSheetBody> {
                   ? Column(
                       children: [
                         for (final r in s.items)
-                          _TaskRow(
+                          ElderTaskRow(
                             reminder: r,
                             done: s.key == 'done',
                             onCheck: () => _check(r),
@@ -193,9 +193,10 @@ class _ElderTaskSheetBodyState extends State<ElderTaskSheetBody> {
   }
 }
 
-class _Tag extends StatelessWidget {
+/// 設計稿 `.tag`：右上角「done／total」小膠囊（首頁任務卡與抽屜共用）。
+class ElderTaskTag extends StatelessWidget {
   final String text;
-  const _Tag(this.text);
+  const ElderTaskTag(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -255,14 +256,16 @@ class _GroupHeader extends StatelessWidget {
   }
 }
 
-class _TaskRow extends StatelessWidget {
+/// 任務列（設計稿 `.trow`）：抽屜與首頁任務卡共用；onEdit／onDelete 為 null 時不顯示選單。
+class ElderTaskRow extends StatelessWidget {
   final Map<String, dynamic> reminder;
   final bool done;
   final VoidCallback onCheck;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
-  const _TaskRow({
+  const ElderTaskRow({
+    super.key,
     required this.reminder,
     required this.done,
     required this.onCheck,
@@ -350,7 +353,8 @@ class _TaskRow extends StatelessWidget {
                 onPressed: () => _showGoalMenu(context),
               ),
             const SizedBox(width: 4),
-            _Tick(done: done, label: title, onTap: done ? null : onCheck),
+            ElderTaskTick(
+                done: done, label: title, onTap: done ? null : onCheck),
           ],
         ),
       ),
@@ -359,12 +363,16 @@ class _TaskRow extends StatelessWidget {
 }
 
 /// 設計稿 `.tick`：52 圓、2.5 框；完成時填 brandFill 並顯示勾。點擊範圍放大到 60。
-class _Tick extends StatelessWidget {
+class ElderTaskTick extends StatelessWidget {
   final bool done;
   final String label;
   final VoidCallback? onTap;
 
-  const _Tick({required this.done, required this.label, required this.onTap});
+  const ElderTaskTick(
+      {super.key,
+      required this.done,
+      required this.label,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {

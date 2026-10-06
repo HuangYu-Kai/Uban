@@ -899,8 +899,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 任務卡（設計稿 `.taskcard`）：進度環（中間只寫「done/total」）＋下一件＋打卡鈕；
-  /// 點卡片開「今天要做的事」抽屜。
+  /// 任務卡（設計稿 `data-taskcard="list"`）：標題「今天要做的事」＋「done／total 完成」標籤，
+  /// 下接最多 3 列未完成任務（可直接打卡）；總數更多時底部「看全部 N 件」開抽屜。
+  /// 進度環＋下一件的樣式只留在「我的」頁（`ProfileTaskCard`）。
   ///
   /// 視覺沿用 [UbanCard]。讀取失敗與「真的沒有提醒／都完成了」分成兩種畫面
   /// （第四十九輪：避免網路不穩被誤導成「今天沒有藥要吃」）。
@@ -949,70 +950,70 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final done = groups.done.length;
     final total = done + groups.dueNow.length + groups.later.length;
 
-    final Widget right;
-    if (next == null) {
-      right = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    // 首頁只列「未完成」前 3 件（dueNow 在前、later 在後），讓「今日頭條」留在第一屏；
+    // 總數比列出的多（含已完成）時，底部給「看全部 N 件」開抽屜。
+    final pending = [...groups.dueNow, ...groups.later];
+    final shown = pending.take(3).toList();
+
+    return UbanCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Icon(Icons.check_circle_rounded, size: 24, color: c.brandStrong),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  total == 0 ? '今天沒有要做的事' : '今天的事都做完了',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ubanText(19, FontWeight.w900, c.brandStrong),
-                ),
+              Expanded(
+                child: Text('今天要做的事',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ubanText(22, FontWeight.w900, c.text)),
               ),
+              const SizedBox(width: 8),
+              ElderTaskTag('$done／$total 完成'),
             ],
           ),
-          if (total > 0) ...[
-            const SizedBox(height: 4),
-            Text('小豬也替您開心', style: ubanText(16, FontWeight.w400, c.text2)),
-          ],
-        ],
-      );
-    } else {
-      final timeStr = (next['time_str'] ?? '').toString();
-      final title = (next['title'] ?? '提醒').toString();
-      // ⚠️ 時間＋標題皆為動態長度（後端自訂文字），時間用 FittedBox、標題限 2 行省略。
-      right = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('下一件',
-              style: ubanText(16, FontWeight.w700, c.text3, letterSpacingEm: .1)),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(timeStr,
-                maxLines: 1,
-                style: ubanBrandText(24, FontWeight.w600, c.text, height: 1.3)),
-          ),
-          Text(title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: ubanText(19, FontWeight.w700, c.text, height: 1.3)),
-        ],
-      );
-    }
-
-    return UbanCard(
-      onTap: total > 0 ? _openTaskSheet : null,
-      child: Row(
-        children: [
-          UbanProgressRing(done: done, total: total),
-          const SizedBox(width: 16),
-          Expanded(child: right),
-          if (next != null) ...[
-            const SizedBox(width: 12),
+          const SizedBox(height: 6),
+          if (shown.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.check_circle_rounded,
+                          size: 24, color: c.brandStrong),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          total == 0 ? '今天沒有要做的事' : '今天的事都做完了',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: ubanText(19, FontWeight.w900, c.brandStrong),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (total > 0) ...[
+                    const SizedBox(height: 4),
+                    Text('小豬也替您開心',
+                        style: ubanText(16, FontWeight.w400, c.text2)),
+                  ],
+                ],
+              ),
+            ),
+          for (final r in shown)
+            ElderTaskRow(
+              reminder: r,
+              done: false,
+              onCheck: () => _completeNextDose(r),
+            ),
+          if (total > shown.length) ...[
+            const SizedBox(height: 6),
             UbanButton(
-              label: '打卡',
-              expand: false,
-              onPressed: () => _completeNextDose(next),
+              label: '看全部 $total 件',
+              variant: UbanButtonVariant.ghost,
+              onPressed: _openTaskSheet,
             ),
           ],
         ],
