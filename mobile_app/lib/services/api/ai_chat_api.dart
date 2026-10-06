@@ -149,7 +149,17 @@ class AiChatApi {
     }
   }
 
-  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至主後端
+  /// 辨識結果是否為失敗：null、空字串，或整串被 [] 包住（後端錯誤佔位字串，
+  /// 例如「[遠端 ASR 連線異常且本地模型未加載]」）都算失敗，不可填入輸入框。
+  static bool isTranscriptionError(String? text) {
+    if (text == null) return true;
+    final t = text.trim();
+    if (t.isEmpty) return true;
+    return t.startsWith('[') && t.endsWith(']');
+  }
+
+  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至主後端。
+  /// 失敗（success:false、空字串、"[...]" 錯誤字串、網路錯誤）一律回傳 null。
   static Future<String?> transcribeAudio(String filePath) async {
     try {
       final request = http.MultipartRequest(
@@ -165,7 +175,8 @@ class AiChatApi {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          return data['transcription']?.toString().trim();
+          final text = data['transcription']?.toString().trim();
+          return isTranscriptionError(text) ? null : text;
         }
       }
       return null;

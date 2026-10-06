@@ -159,6 +159,9 @@ class _ElderPetTabState extends State<ElderPetTab>
   /// 重新同步：食物解鎖來源、胡蘿蔔帳本、小豬成長狀態、排行榜。進行中不重複發。
   /// 三種觸發共用：下拉刷新、切回本分頁（TickerMode 由不可見→可見，不節流）、
   /// App 回前景（僅本分頁可見時）。
+  // 祝賀圖（嵌在本分頁下半部）監聽此值，變動時重讀小豬品種／階段。
+  final ValueNotifier<int> _greetingPigSignal = ValueNotifier<int>(0);
+
   Future<void> _refreshAll() async {
     if (_refreshing || !mounted) return;
     _refreshing = true;
@@ -172,6 +175,8 @@ class _ElderPetTabState extends State<ElderPetTab>
       // 本機較重則推上去；見 PetWeightSync）。
       await _reconcileWeight();
       if (mounted) setState(() => _leaderboardTick++);
+      // 通知嵌在下方的祝賀圖重讀小豬品種／階段
+      _greetingPigSignal.value++;
     } finally {
       _refreshing = false;
     }
@@ -459,6 +464,7 @@ class _ElderPetTabState extends State<ElderPetTab>
     StreakService.changes.removeListener(_onCheckinChanged);
     _positionStream?.cancel();
     _stepCountStream?.cancel();
+    _greetingPigSignal.dispose();
     super.dispose();
   }
 
@@ -974,6 +980,7 @@ class _ElderPetTabState extends State<ElderPetTab>
                 userId: widget.userId,
                 userName: widget.userName,
                 embedded: true,
+                refreshSignal: _greetingPigSignal,
               ),
             ],
           ),

@@ -330,6 +330,7 @@ Socket 通路另在 `Signaling` 以連線當下 `_role == 'family'` 再守一次
 1. **分享開關是長輩本人的**：預設開啟（016），但僅 `PUT /sharing` 由長輩本人可呼叫，家屬無法代為切換。
 2. **開關閉鎖所有家屬讀取與提醒**：`/current`、`/trail`、`/summary`、`/daily` 一律在**讀取端**強制檢查（defense-in-depth，即使 DB 已有歷史資料也回「尚未分享」）；提醒排程只巡檢 `location_sharing_enabled=1` 的長輩。寫入端（`/ping`）刻意不擋，簡化「回報途中開關剛被關」的競態，防線永遠在讀取端。
 3. **常去地點是家屬輸入的資料，不受分享開關限制**：`/places` 讀取不看分享開關（長輩端「帶我回家」要用，離線也要用快取）；寫入僅限已配對家屬（長輩本人寫入也回 404）。`/alert-settings` 同為家屬限定。
+4. **本機消費端：天氣**：長輩端 `WeatherService` 在分享開啟且權限已授予時，讀取最近定位（`ElderLocationService.lastAcceptedFix`／系統最後已知位置，必要時低精度現取一次、逾時 5 秒、只收 6 小時內），座標四捨五入到小數 2 位（約 1 公里）後**只**送給 Open-Meteo 查區域天氣；不寫入後端、不新增 API，畫面僅顯示縣市名稱。權限未授予時絕不在天氣路徑跳對話框，失敗一律退回依居住地文字的縣市天氣。
 4. **不外流**：位置僅供已配對家屬與長輩本人查看；不提供第三方、不用於廣告；道路吸附（map matching）會把位置送第三方，因此暫不做（§12）。地圖底圖是第三方圖磚服務，僅收到畫面範圍的圖磚請求，不會收到長輩身分或軌跡。
 5. **保存期限 90 天**：`cleanup_old_location_pings_job` 每日 03:30（Asia/Taipei）`DELETE FROM elder_location_ping WHERE recorded_at < DATE_SUB(NOW(), INTERVAL 90 DAY)`；`location_daily_job` 每日 03:45 清 `elder_location_daily` 中早於「今天 − 90 天」的列。（`NOW()` 取決於 MySQL `time_zone`，與 naive UTC 的 `recorded_at` 邊界可能差數小時，不影響保存期限的語意。）前端日期選擇器同樣限制 90 天。
 6. **隱私權政策第 9 節「位置資訊與移動軌跡」**（`mobile_app/lib/data/privacy_policy_content.dart`）：說明收集什麼（背景持續回報、系統常駐通知、常去地點）、為什麼（含每日外出摘要與三種提醒）、由誰決定（預設開啟、僅長輩可關、分享關閉一律不提醒）、怎麼保護（含第三方圖磚說明）、保存多久（90 天）。同意版本鍵 **`privacy_policy_accepted_v3`**（`PrivacyPolicyScreen.prefsKey`）；2026-09-30 將 `_v2` 升為 `_v3`，後續補充的條文（地點、摘要、提醒、圖磚）都併入 v3、沒有再升版——**日後只要實質改動位置相關條文，就要把版本再升一級**，所有使用者下次啟動才會重新同意。

@@ -156,6 +156,7 @@ class ApiService {
   }) => AiChatApi.aiChatStream(userId, message, appellation: appellation, userName: userName);
 
   static Future<String?> transcribeAudio(String filePath) => AiChatApi.transcribeAudio(filePath);
+  static bool isTranscriptionError(String? text) => AiChatApi.isTranscriptionError(text);
   static Future<Map<String, dynamic>> petGreeting(int userId, String context) => AiChatApi.petGreeting(userId, context);
   static Future<List<dynamic>> getPersonaTemplates() => AiChatApi.getPersonaTemplates();
   static Future<Map<String, dynamic>> getElderAgentProfile(int elderId) => AiChatApi.getElderAgentProfile(elderId);
