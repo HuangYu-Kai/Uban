@@ -1,13 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
 import '../widgets/login_flow_parts.dart';
-import '../utils/taiwan_districts.dart';
+import '../widgets/locate_city_button.dart';
 import '../widgets/ui/ui.dart';
 
 /// 長輩帳號「年齡／居住地」強制補填畫面（長輩尺規）。
@@ -56,91 +54,40 @@ class _ElderProfileOnboardingScreenState
     extends State<ElderProfileOnboardingScreen> {
   int? _age;
   String? _residenceCity;
+  final ValueNotifier<int> _locateReset = ValueNotifier<int>(0);
   String? _residenceDistrict;
   bool _isSaving = false;
   String? _errorMessage;
-  bool _isLocating = false;
-  bool _autoFilled = false;
+  // ★ 2026-10-06：年齡由「知道的那一方設一次」——家屬配對時若已填年齡，這裡不再詢問；
+  //   profile 讀取完成前不渲染年齡區塊，避免步進器閃一下又消失。
+  bool _profileLoaded = false;
+  bool _ageFromProfile = false;
 
   @override
   void initState() {
     super.initState();
     _prefillAge();
-    _autoLocate();
   }
 
-  /// 「台」→「臺」後才能對上白名單（kTaiwanCities 一律用「臺」）。
-  String _normalizeRegion(String? s) => (s ?? '').trim().replaceAll('台', '臺');
-
-  /// 自動定位帶入縣市／區。任何失敗（拒絕權限、逾時、查不到、不在白名單）
-  /// 一律靜默，維持手動選擇；也不覆蓋長輩已經自己選好的值（[force] 除外）。
-  Future<void> _autoLocate({bool force = false}) async {
-    if (_isLocating) return;
-    setState(() => _isLocating = true);
-    try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.medium),
-      ).timeout(const Duration(seconds: 8));
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      ).timeout(const Duration(seconds: 8));
-      if (placemarks.isEmpty || !mounted) return;
-      final place = placemarks.first;
-      final city = _normalizeRegion(place.administrativeArea);
-      String? district;
-      for (final cand in [
-        place.subAdministrativeArea,
-        place.locality,
-        place.subLocality,
-      ]) {
-        final d = _normalizeRegion(cand);
-        if (d.isNotEmpty && isValidCityDistrict(city, d)) {
-          district = d;
-          break;
-        }
-      }
-      if (district == null) return;
-      // 定位期間長輩若已手動選好，就不要覆蓋。
-      if (!force && (_residenceCity != null || _residenceDistrict != null)) {
-        return;
-      }
-      setState(() {
-        _residenceCity = city;
-        _residenceDistrict = district;
-        _autoFilled = true;
-        _errorMessage = null;
-      });
-    } catch (_) {
-      // 靜默：保留手動選擇
-    } finally {
-      if (mounted) setState(() => _isLocating = false);
-    }
-  }
-
-  /// 長輩帳號建立時（自主模式預設 75 歲，或家屬配對時手動輸入）多半已經有
-  /// 一個年齡值，預先帶入讓長輩用「-／+」確認或調整，不必從空白重新選——
-  /// 讀取失敗就維持空白，長輩仍可自行用 +／- 選擇，不影響這個畫面本身的
-  /// 必填要求（提交前仍會檢查 _age 是否已選）。
+  /// 讀取長輩既有資料。已有年齡（家屬配對時填的）→ 隱藏年齡步進器、原值送出，
+  /// 只問居住地；沒有年齡（家屬留空／自主模式）→ 顯示步進器必選。
+  /// 讀取失敗 → 顯示步進器（fail-safe，仍可自行選擇）。
   Future<void> _prefillAge() async {
-    final result = await ApiService.getElderProfile(widget.userId);
-    if (!mounted) return;
-    if (result['status'] == 'success' && result['data'] is Map) {
-      final data = result['data'] as Map<String, dynamic>;
-      final ageVal = data['age'];
-      if (ageVal is num) {
-        setState(() => _age = ageVal.toInt());
+    int? age;
+    try {
+      final result = await ApiService.getElderProfile(widget.userId);
+      if (result['status'] == 'success' && result['data'] is Map) {
+        final data = result['data'] as Map<String, dynamic>;
+        final ageVal = data['age'];
+        if (ageVal is num) age = ageVal.toInt();
       }
-    }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _age = age;
+      _ageFromProfile = age != null;
+      _profileLoaded = true;
+    });
   }
 
   Future<void> _submit() async {
@@ -177,6 +124,12 @@ class _ElderProfileOnboardingScreenState
           (result['message'] ?? result['error'] ?? result['detail'] ?? '儲存失敗，請稍後再試')
               .toString();
     });
+  }
+
+  @override
+  void dispose() {
+    _locateReset.dispose();
+    super.dispose();
   }
 
   @override
@@ -217,69 +170,49 @@ class _ElderProfileOnboardingScreenState
                         Text('請完成基本資料', style: ubanH1(context)),
                         const SizedBox(height: 20),
                         Text(
-                          '${widget.userName} 您好，麻煩您確認一下年齡跟居住的縣市／地區，這樣才能繼續使用喔！',
+                          (_profileLoaded && _ageFromProfile)
+                              ? '${widget.userName} 您好，麻煩您選一下居住的縣市／地區，這樣才能繼續使用喔！'
+                              : '${widget.userName} 您好，麻煩您確認一下年齡跟居住的縣市／地區，這樣才能繼續使用喔！',
                           style: ubanBody(context, size: 20),
                         ),
                         const SizedBox(height: 20),
-                        AgeStepperField(
+                        if (_profileLoaded && !_ageFromProfile) ...[
+                          AgeStepperField(
+                            elderMode: true,
+                            value: _age,
+                            onChanged: (v) => setState(() {
+                              _age = v;
+                              _errorMessage = null;
+                            }),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                        // ★ 2026-10-06：一鍵定位按鈕放在縣市選單上方；
+                        //   只在權限已授予時開頁自動帶入，不覆蓋手動選擇。
+                        LocateCityButton(
+                          resetNotifier: _locateReset,
                           elderMode: true,
-                          value: _age,
-                          onChanged: (v) => setState(() {
-                            _age = v;
+                          autoLocateIfGranted: true,
+                          canAutoFill: () =>
+                              _residenceCity == null &&
+                              _residenceDistrict == null,
+                          onLocated: (city, district) => setState(() {
+                            _residenceCity = city;
+                            _residenceDistrict = district;
                             _errorMessage = null;
                           }),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
                         CityDistrictPicker(
                           elderMode: true,
                           initialCity: _residenceCity,
                           initialDistrict: _residenceDistrict,
                           onChanged: (city, district) => setState(() {
+                            _locateReset.value++; // 手動改選 → 清掉「已依位置填入」提示
                             _residenceCity = city;
                             _residenceDistrict = district;
-                            _autoFilled = false; // 手動改過就不再宣稱是自動帶入
                             _errorMessage = null;
                           }),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            if (_autoFilled)
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.my_location_rounded,
-                                        size: 20, color: c.brandStrong),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        '已依您目前位置自動帶入',
-                                        style: ubanText(
-                                            17, FontWeight.w600, c.text2),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              const Spacer(),
-                            TextButton.icon(
-                              onPressed: _isLocating
-                                  ? null
-                                  : () => _autoLocate(force: true),
-                              icon: _isLocating
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.refresh_rounded, size: 20),
-                              label: Text(_isLocating ? '定位中…' : '重新定位',
-                                  style: ubanText(
-                                      17, FontWeight.w700, c.brandStrong)),
-                            ),
-                          ],
                         ),
                         if (_errorMessage != null) ...[
                           const SizedBox(height: 20),
@@ -315,7 +248,8 @@ class _ElderProfileOnboardingScreenState
                       label: '確定，開始使用',
                       size: UbanButtonSize.xl,
                       loading: _isSaving,
-                      onPressed: _isSaving ? null : _submit,
+                      // ★ 2026-10-06：profile 讀取完成前停用，避免對看不見的年齡欄報錯
+                      onPressed: (_isSaving || !_profileLoaded) ? null : _submit,
                     ),
                   ],
                 ),

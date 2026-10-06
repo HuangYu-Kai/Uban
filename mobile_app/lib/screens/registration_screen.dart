@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../widgets/policy_detail_dialog.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
+import '../widgets/locate_city_button.dart';
 import '../widgets/ui/ui.dart';
 import 'family_onboarding_screen.dart';
 import '../globals.dart';
@@ -32,6 +33,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   //   僅收集到縣市／行政區（不含街道門牌），因為這筆資料只用於開發者統計。
   int? _age;
   String? _residenceCity;
+  final ValueNotifier<int> _locateReset = ValueNotifier<int>(0);
   String? _residenceDistrict;
 
   void _showDisclaimerDialog(BuildContext context) {
@@ -228,6 +230,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   @override
+  void dispose() {
+    _locateReset.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = UbanColors.of(context);
     return Scaffold(
@@ -278,10 +286,24 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     }),
                   ),
                   const SizedBox(height: 14),
+                  // ★ 2026-10-06：一鍵定位按鈕（只在權限已授予時開頁自動帶入）
+                  LocateCityButton(
+                    resetNotifier: _locateReset,
+                    autoLocateIfGranted: true,
+                    canAutoFill: () =>
+                        _residenceCity == null && _residenceDistrict == null,
+                    onLocated: (city, district) => setState(() {
+                      _residenceCity = city;
+                      _residenceDistrict = district;
+                      _errorMessage = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
                   CityDistrictPicker(
                     initialCity: _residenceCity,
                     initialDistrict: _residenceDistrict,
                     onChanged: (city, district) => setState(() {
+                      _locateReset.value++; // 手動改選 → 清掉「已依位置填入」提示
                       _residenceCity = city;
                       _residenceDistrict = district;
                       _errorMessage = null;

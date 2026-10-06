@@ -34,6 +34,7 @@ import 'screens/privacy_policy_screen.dart';
 // Utils & Globals
 import 'globals.dart';
 import 'services/signaling.dart' as sig;
+import 'services/recovery_code_entry.dart';
 import 'services/api_service.dart';
 import 'services/video_call_permission_service.dart';
 import 'services/local_call_notification.dart';
@@ -287,6 +288,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true; // ★ 標記 APP 已就緒，允許導航
+    // ★ 2026-10-06：讓長輩身分選擇畫面可「手動輸入移機登入代碼」（見 recovery_code_entry.dart）
+    recoveryCodeHandler = _showRecoveryConfirmationDialog;
     if (!kIsWeb) {
       _setupForegroundMessaging(); // ★ 新增：背景推播之外，前景也要監聽
       if (_supportsCallKit()) {
@@ -341,6 +344,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void dispose() {
     _linkSubscription?.cancel();
     _recoveryPollTimer?.cancel();
+    if (recoveryCodeHandler == _showRecoveryConfirmationDialog) {
+      recoveryCodeHandler = null;
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

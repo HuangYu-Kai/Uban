@@ -495,7 +495,7 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 ),
                 const SizedBox(height: 14),
                 const FamNote(
-                  text: '注意：連結於 15 分鐘內有效，點擊後長輩設備即可自動免密登入回原本帳號。',
+                  text: '注意：連結於 15 分鐘內有效，點擊後長輩設備即可自動免密登入回原本帳號。若連結打不開，長輩可在 App 的「長輩」頁點「輸入家人給的登入代碼」，輸入連結中的數字代碼。',
                   tone: FamTone.warm,
                 ),
                 const SizedBox(height: 22),
