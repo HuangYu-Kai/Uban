@@ -475,6 +475,15 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-06（下午）🐾 模擬器回報：社群爪印、雙欄卡片、身心分數（`ui` 分支）
+
+- **爪印後按鈕變兩顆、離開社群紅畫面（`_dependents.isEmpty`）**：根因是 `PolaroidPostCard` 的爪印彈跳用 `Curves.easeInOutBack` 驅動 `TweenSequence`，曲線超出 0～1 使每一幀丟斷言、元素樹錯亂。改用 `Curves.easeInOut`。
+- **社群拿掉「親密度＋活力幣」彈窗**（`PetRewardDialog`，該功能目前沒有用途）：按讚不再跳窗；發文／留言改用 SnackBar。
+- **貼文顯示誰送了爪印**：貼文下方一行「🐾 A、B 送了爪印」（超過 3 人顯示「等 N 人」）；按讚時多送 `user_name`，後端回 `liked_by`（需 uban-api 同步部署，舊按讚沒有名字則不列）。
+- **雙欄卡片沒撐滿**（健康／外出趨勢、視訊／語音大卡）：`BlobRipple` 的 `Stack` 改 `StackFit.passthrough`，不再把 `Expanded` 的寬度放鬆。
+- **家屬首頁身心卡**：後端今天沒紀錄時回 `insufficient_data`，分數顯示 `--`、標題「今天還沒有紀錄」並顯示後端說明（原本公式沒紀錄也至少 73 分）。
+- **家屬通話畫面**：頂端「語音通話／視訊通話／緊急通話」膠囊只留文字、拿掉小圖示（純顯示）。
+
 ### 2026-10-06 🧹 UI 改版後實機回報 19 項修正（`ui` 分支）
 
 - **字型**：`assets/fonts/` 的 NotoSansTC／Inter 原檔其實全是改名的標楷體（DFKai-SB，微軟授權字型），已換成 Google Fonts 正版靜態檔 400–900。

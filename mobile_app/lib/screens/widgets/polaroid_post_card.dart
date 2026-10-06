@@ -54,7 +54,10 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
       TweenSequenceItem(tween: Tween(begin: 1.4, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(
       parent: _stampController,
-      curve: Curves.easeInOutBack,
+      // 不可用 easeInOutBack 這類會超出 0～1 的曲線：TweenSequence 會在每一幀丟斷言，
+      // 元素樹因此錯亂（爪印按鈕變兩顆、離開社群後紅畫面 _dependents.isEmpty）。
+      // 彈跳感已由上面 1.0→1.4→1.0 的序列提供。
+      curve: Curves.easeInOut,
     ));
 
     _initTts();
@@ -80,6 +83,16 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
     _stampController.dispose();
     _flutterTts.stop();
     super.dispose();
+  }
+
+  /// 「誰送了爪印」一行字：≤3 人列全名，超過則「A、B、C 等 N 人」。
+  String _likedByLine() {
+    final names = widget.post.likedBy;
+    if (names.length <= 3) return '🐾 ${names.join('、')} 送了爪印';
+    final total = names.length > widget.post.likeCount
+        ? names.length
+        : widget.post.likeCount;
+    return '🐾 ${names.take(3).join('、')} 等 $total 人送了爪印';
   }
 
   Future<void> _toggleSpeech() async {
@@ -301,6 +314,17 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
               ),
             ),
           ),
+
+          // 誰送了爪印（鐵律 #14：最多 2 行並截斷）
+          if (post.likedBy.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              _likedByLine(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: ubanText(16, FontWeight.w600, c.text2),
+            ),
+          ],
 
           // 最新一則留言預覽
           if (lastComment != null) ...[

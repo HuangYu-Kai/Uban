@@ -1070,31 +1070,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           color: const Color.fromRGBO(255, 255, 255, 0.1),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            widget.isEmergency
-                                ? Icons.warning
-                                : (widget.isVideoCall ? Icons.shield : Icons.call),
-                            color: widget.isEmergency
-                                ? Colors.orangeAccent
-                                : (widget.isVideoCall ? Colors.greenAccent : Colors.lightBlueAccent),
-                            size: 16,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            // ★ Fix E：非緊急且非視訊時顯示「語音通話」，其餘沿用原邏輯。
-                            widget.isEmergency
-                                ? "緊急通話"
-                                : (widget.isVideoCall ? "視訊通話" : "語音通話"),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                      // 2026-10-06：使用者要求膠囊只留文字、不放小圖示。
+                      child: Text(
+                        // ★ Fix E：非緊急且非視訊時顯示「語音通話」，其餘沿用原邏輯。
+                        widget.isEmergency
+                            ? "緊急通話"
+                            : (widget.isVideoCall ? "視訊通話" : "語音通話"),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),

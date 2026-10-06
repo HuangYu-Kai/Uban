@@ -65,6 +65,7 @@ class CommunityPost {
   final DateTime createdAt;
   final int likeCount;
   final bool isLiked;
+  final List<String> likedBy; // 按過爪印的人名（後端 liked_by）
   final List<CommunityComment> comments;
 
   const CommunityPost({
@@ -83,6 +84,7 @@ class CommunityPost {
     required this.createdAt,
     this.likeCount = 0,
     this.isLiked = false,
+    this.likedBy = const [],
     this.comments = const [],
   });
 
@@ -101,6 +103,7 @@ class CommunityPost {
     DateTime? createdAt,
     int? likeCount,
     bool? isLiked,
+    List<String>? likedBy,
     List<CommunityComment>? comments,
   }) {
     return CommunityPost(
@@ -119,6 +122,7 @@ class CommunityPost {
       createdAt: createdAt ?? this.createdAt,
       likeCount: likeCount ?? this.likeCount,
       isLiked: isLiked ?? this.isLiked,
+      likedBy: likedBy ?? this.likedBy,
       comments: comments ?? this.comments,
     );
   }
@@ -150,6 +154,12 @@ class CommunityPost {
           ? json['like_count'] as int
           : int.tryParse(json['like_count']?.toString() ?? '') ?? 0,
       isLiked: json['is_liked'] == true,
+      likedBy: json['liked_by'] is List
+          ? (json['liked_by'] as List)
+              .whereType<String>()
+              .where((name) => name.isNotEmpty)
+              .toList()
+          : const [],
       comments: rawComments is List
           ? rawComments
               .whereType<Map>()
@@ -180,6 +190,7 @@ class CommunityPost {
       'created_at': createdAt.toIso8601String(),
       'like_count': likeCount,
       'is_liked': isLiked,
+      'liked_by': likedBy,
       'comments': comments.map((comment) => comment.toJson()).toList(),
     };
   }

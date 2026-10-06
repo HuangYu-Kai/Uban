@@ -452,7 +452,12 @@ class ApiService {
   static Future<Map<String, dynamic>?> toggleCommunityPostLike({
     required int postId,
     required int userId,
-  }) => CommunityApi.toggleCommunityPostLike(postId: postId, userId: userId);
+    String? userName,
+  }) => CommunityApi.toggleCommunityPostLike(
+        postId: postId,
+        userId: userId,
+        userName: userName,
+      );
 
   static Future<Map<String, dynamic>?> addCommunityComment({
     required int postId,

@@ -33,12 +33,17 @@ class HomeAiMoodRadarCard extends StatelessWidget {
     final insufficient = moodInsightData == null ||
         moodInsightData!['insufficient_data'] == true ||
         moodInsightData!['mood_score'] == null;
-    final moodTitle = insufficient ? '資料不足' : '${moodInsightData!['mood_title'] ?? ''}';
+    // 有回應但今天沒紀錄 → 「今天還沒有紀錄」；請求失敗（無資料）→ 「資料不足」
+    final moodTitle = insufficient
+        ? (moodInsightData != null ? '今天還沒有紀錄' : '資料不足')
+        : '${moodInsightData!['mood_title'] ?? ''}';
     final moodScore = insufficient ? '--' : '${moodInsightData!['mood_score']}';
 
+    // 不足時後端仍會回說明文字（例如最近一次紀錄日期），有就優先顯示
+    final backendSummary = moodInsightData?['summary']?.toString() ?? '';
     final summaryText = insufficient
-        ? '資料不足，多和小嘎聊幾天就會出現'
-        : (moodInsightData!['summary']?.toString() ?? '');
+        ? (backendSummary.isNotEmpty ? backendSummary : '資料不足，多和小嘎聊幾天就會出現')
+        : backendSummary;
     final icebreakerTopic = (moodInsightData?['icebreaker_topic']?.toString().isNotEmpty ?? false)
         ? moodInsightData!['icebreaker_topic'].toString()
         : '$name！今天過得好嗎？撥個電話聽聽長輩的聲音關心一下吧！';

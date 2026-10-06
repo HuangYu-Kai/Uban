@@ -84,13 +84,17 @@ class CommunityApi {
   static Future<Map<String, dynamic>?> toggleCommunityPostLike({
     required int postId,
     required int userId,
+    String? userName,
   }) async {
     try {
       final response = await http
           .post(
             Uri.parse('${ApiClient.baseUrl}/community/posts/$postId/like'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'user_id': userId}),
+            body: jsonEncode({
+              'user_id': userId,
+              if (userName != null) 'user_name': userName,
+            }),
           )
           .timeout(ApiClient.timeout);
       final data = ApiClient.safeDecode(response);

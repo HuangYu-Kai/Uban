@@ -15,7 +15,6 @@ import 'elder_add_friend_screen.dart';
 import 'elder_friend_feed_screen.dart';
 import 'elder_tabs/profile/widgets/friend_id_card.dart';
 import 'elder_tabs/widgets/elder_social_widgets.dart';
-import 'widgets/pet_reward_dialog.dart';
 import 'widgets/polaroid_post_card.dart';
 
 class ElderCommunityScreen extends StatefulWidget {
@@ -127,7 +126,6 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
   Future<void> _toggleLike(CommunityPost post) async {
     debugPrint('🔥 [ElderCommunityScreen] _toggleLike clicked for post: ${post.id}');
     HapticFeedback.mediumImpact();
-    final isLiking = !post.isLiked;
     final posts = await _communityService.toggleLike(
       userId: widget.userId,
       userName: widget.userName,
@@ -136,15 +134,6 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
     );
     if (mounted) {
       setState(() => _posts = posts);
-      if (isLiking) {
-        PetRewardDialog.show(
-          context,
-          title: '送出爪印！',
-          message: '小嘎幫你把溫暖心意送給家人囉～',
-          intimacyExp: 3,
-          coins: 1,
-        );
-      }
     }
   }
 
@@ -419,12 +408,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
 
     if (shouldPublish == true) {
       if (!mounted) return;
-      PetRewardDialog.show(
-        context,
-        title: '近況發佈成功！',
-        message: '小嘎幫你把溫暖動態分享給家人囉～',
-        intimacyExp: 10,
-        coins: 2,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('近況已發佈')),
       );
     }
   }
@@ -608,12 +593,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                                   Navigator.pop(sheetContext);
                                 }
                                 if (context.mounted) {
-                                  PetRewardDialog.show(
-                                    context,
-                                    title: '留言已送出！',
-                                    message: '小嘎幫你把溫馨叮嚀送到家人身邊～',
-                                    intimacyExp: 5,
-                                    coins: 1,
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('留言已送出')),
                                   );
                                 }
                               },
