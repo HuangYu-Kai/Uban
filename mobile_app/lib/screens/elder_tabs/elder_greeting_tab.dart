@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lunar/lunar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -16,6 +17,8 @@ import '../../models/almanac_data_helper.dart';
 import '../../widgets/ui/ui.dart';
 import 'elder_layout.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
+import 'pet/pet_breed_store.dart';
+import 'pet/pet_ear_anchors.dart';
 
 /// 兩種長輩圖模式：
 /// 1. 【經典圖文組合】：1:1 方形、常見風景花卉、嚴格避讓主體之文字安全區、50+精選金句、語音防呆排版
@@ -144,11 +147,16 @@ class ElderGreetingTab extends StatefulWidget {
   /// 版面；其餘邏輯（範本、金句、分享、存圖）完全不變。
   final bool embedded;
 
+  /// 外層（小豬分頁的 `_refreshAll`）通知「小豬品種／階段可能變了」的訊號；
+  /// 每次通知時本分頁重讀品種與階段，祝賀圖上的小豬才會跟著更新。
+  final Listenable? refreshSignal;
+
   const ElderGreetingTab({
     super.key,
     required this.userId,
     required this.userName,
     this.embedded = false,
+    this.refreshSignal,
   });
 
   @override
@@ -163,6 +171,13 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   // 狀態資料
   PetGrowthState? _petState;
+
+  // 祝賀圖角落的「我的小豬」（預覽與輸出同一個 widget，輸出圖一定含小豬）
+  static const String _kShowPigPrefKey = 'greeting_show_pig';
+  bool _showPig = true;
+  PetBreed _pigBreed = PetBreed.pink;
+  int _pigStage = 1; // 1..5
+  bool _wasVisible = false;
   late String _customSenderName;
   bool _isSharing = false;
   bool _isAiGenerating = false;
@@ -485,7 +500,156 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     _customTemplateMainText = _classicTemplates[0].defaultMain;
     _initDateAndAlmanac();
     _loadPetState();
+    unawaited(_loadPigPrefs());
+    widget.refreshSignal?.addListener(_reloadPig);
     _checkAndPrioritizeHolidayTemplates();
+  }
+
+  @override
+  void didUpdateWidget(covariant ElderGreetingTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_reloadPig);
+      widget.refreshSignal?.addListener(_reloadPig);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 分頁由不可見變可見（IndexedStack 以 TickerMode 開關）時重讀小豬品種／階段。
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (visible && !_wasVisible && mounted) unawaited(_reloadPig());
+    _wasVisible = visible;
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_reloadPig);
+    super.dispose();
+  }
+
+  /// 讀取「放上我的小豬」開關（預設開）＋品種／階段。
+  Future<void> _loadPigPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final on = prefs.getBool(_kShowPigPrefKey) ?? true;
+      if (mounted && on != _showPig) setState(() => _showPig = on);
+    } catch (_) {}
+    await _reloadPig();
+  }
+
+  /// 重讀小豬品種（PetBreedStore）與成長階段（1..5）；讀不到就維持粉紅豬第 1 階。
+  Future<void> _reloadPig() async {
+    PetBreed breed = PetBreed.pink;
+    int stage = 1;
+    try {
+      breed = await PetBreedStore.load();
+    } catch (_) {}
+    try {
+      stage = (await PetStorageService.loadState()).stage.index + 1;
+    } catch (_) {}
+    if (!mounted) return;
+    if (breed != _pigBreed || stage != _pigStage) {
+      setState(() {
+        _pigBreed = breed;
+        _pigStage = stage.clamp(1, 5);
+      });
+    }
+  }
+
+  Future<void> _setShowPig(bool v) async {
+    HapticFeedback.lightImpact();
+    setState(() => _showPig = v);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kShowPigPrefKey, v);
+    } catch (_) {}
+  }
+
+  /// 祝賀圖上的小豬（疊在 RepaintBoundary 內，預覽與 toImage 輸出共用）。
+  /// [corner] 由版面決定，避開大字標語。寬度約為圖寬的 22%，加淡陰影。
+  Widget _buildPigOverlay(Alignment corner) {
+    if (!_showPig) return const SizedBox.shrink();
+    final img = Image.asset(
+      'assets/images/pet_breeds/${_pigBreed.id}_front_$_pigStage.png',
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+    return Positioned.fill(
+      key: const ValueKey('greeting_pig_overlay'),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth * 0.22;
+          final pad = box.maxWidth * 0.04;
+          return Padding(
+            padding: EdgeInsets.all(pad),
+            child: Align(
+              alignment: corner,
+              child: SizedBox(
+                width: w,
+                child: Stack(
+                  children: [
+                    // 淡陰影：黑色剪影模糊後下移，讓小豬「站」在圖上
+                    Transform.translate(
+                      offset: Offset(0, w * 0.04),
+                      child: ImageFiltered(
+                        imageFilter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                        child: Opacity(
+                          opacity: 0.35,
+                          child: ColorFiltered(
+                            colorFilter: const ColorFilter.mode(
+                                Colors.black, BlendMode.srcIn),
+                            child: img,
+                          ),
+                        ),
+                      ),
+                    ),
+                    img,
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 「放上我的小豬」開關列（整列可點、高度 ≥56，長輩好按）。
+  Widget _buildPigToggle() {
+    final c = UbanColors.of(context);
+    return UbanCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: InkWell(
+        key: const ValueKey('greeting_pig_toggle'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _setShowPig(!_showPig),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Row(
+            children: [
+              Icon(Icons.pets_rounded, size: 28, color: c.brandStrong),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '放上我的小豬',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.notoSansTc(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: c.text,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              UbanSwitch(value: _showPig, onChanged: _setShowPig),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _initDateAndAlmanac() {
@@ -917,6 +1081,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                   _buildClassicActionTools()
                 else
                   _buildAiActionTools(),
+                const SizedBox(height: 12),
+                _buildPigToggle(),
                 const SizedBox(height: 18),
                 _buildLineShareButton(),
                 const SizedBox(height: 12),
@@ -970,6 +1136,8 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             _buildClassicActionTools()
           else
             _buildAiActionTools(),
+          const SizedBox(height: 12),
+          _buildPigToggle(),
           const SizedBox(height: 16),
           _buildLineShareButton(),
           const SizedBox(height: 10),
@@ -1144,6 +1312,10 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             child: _buildClassicTypography(mainText, tpl),
           ),
         ),
+
+        // 小豬放在沒有大字的那一側：文字靠下 → 放右上，否則放右下
+        _buildPigOverlay(
+            tpl.textAlign.y > 0 ? Alignment.topRight : Alignment.bottomRight),
       ],
     );
   }
@@ -1203,6 +1375,9 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           bottom: 28,
           child: _buildAiTypography(mainText),
         ),
+
+        // AI 版大字固定在下方 → 小豬放右上
+        _buildPigOverlay(Alignment.topRight),
       ],
     );
   }

@@ -3,10 +3,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
+import 'elder_location_service.dart';
 
 /// 天氣查詢結果（給長輩端首頁天氣卡片使用）。
 ///
@@ -153,6 +155,90 @@ class WeatherService {
     return _fallback;
   }
 
+  // ───────── GPS 精準到區（僅在長輩開啟位置分享且已有定位時） ─────────
+
+  /// GPS 定位的最大年齡：超過就視為過時，不拿來查天氣。
+  static const Duration _maxFixAge = Duration(hours: 6);
+
+  /// 現場取一次定位的逾時上限（天氣不值得讓畫面等太久）。
+  static const Duration _fixTimeout = Duration(seconds: 5);
+
+  /// 座標四捨五入到小數 2 位（約 1 公里）：夠分出行政區的天氣差異，
+  /// 也避免把精確位置送出去（隱私）。
+  @visibleForTesting
+  static double roundCoord(double v) => (v * 100).round() / 100;
+
+  /// 以區域座標為鍵的快取名稱，例如 `cached_weather_geo_25.03_121.56`。
+  /// 不同區各有各的快取，不會與縣市層級的 `cached_weather_<city>` 混用。
+  @visibleForTesting
+  static String geoCacheKey(double roundedLat, double roundedLon) =>
+      'cached_weather_geo_${roundedLat.toStringAsFixed(2)}_'
+      '${roundedLon.toStringAsFixed(2)}';
+
+  /// 定位是否夠新（年齡小於 [maxAge]）。
+  @visibleForTesting
+  static bool isFixFresh(DateTime fixTime, DateTime now,
+          {Duration maxAge = _maxFixAge}) =>
+      now.difference(fixTime) < maxAge;
+
+  /// 距離 (lat, lon) 最近的縣市項目（簡易等距投影，台灣範圍足夠）。
+  static _CityCoord _nearestCity(double lat, double lon) {
+    _CityCoord best = _cityTable.first;
+    var bestD = double.infinity;
+    for (final c in _cityTable) {
+      final dLat = c.lat - lat;
+      final dLon = (c.lon - lon) * 0.91; // cos(24.5°)，修正經度縮短
+      final d = dLat * dLat + dLon * dLon;
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  /// 最近縣市的顯示名稱（供測試與「居住地未填」時的城市推定）。
+  @visibleForTesting
+  static String nearestCityName(double lat, double lon) =>
+      _nearestCity(lat, lon).displayName;
+
+  /// 取得可用於天氣的 GPS 定位；任何條件不符或失敗都回 null（靜默退回縣市）。
+  ///
+  /// 條件：長輩位置分享開啟、定位權限「已經」授予（天氣路徑絕不跳權限對話框）、
+  /// 取得的定位不超過 [_maxFixAge]。來源順序：位置服務最近接受的點 →
+  /// 系統最後已知位置 → 現場低精度取一次（逾時 [_fixTimeout]）。
+  static Future<Position?> _resolveFix() async {
+    if (kIsWeb) return null;
+    try {
+      final svc = ElderLocationService.instance;
+      if (!svc.sharingEnabled) return null;
+
+      final perm = await Geolocator.checkPermission();
+      if (perm != LocationPermission.always &&
+          perm != LocationPermission.whileInUse) {
+        return null;
+      }
+
+      final now = DateTime.now();
+      final recent = svc.lastAcceptedFix;
+      if (recent != null && isFixFresh(recent.timestamp, now)) return recent;
+
+      final known = await Geolocator.getLastKnownPosition();
+      if (known != null && isFixFresh(known.timestamp, now)) return known;
+
+      final current = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: _fixTimeout,
+        ),
+      );
+      if (isFixFresh(current.timestamp, DateTime.now())) return current;
+    } catch (e) {
+      debugPrint('⚠️ [WeatherService] 取得定位失敗，改用縣市天氣: $e');
+    }
+    return null;
+  }
+
   /// 讀取長輩的 `location` 自由文字欄位。
   ///
   /// ⚠️ 依 `friend_service.dart::resolveMyElderId` 的既有寫法解開
@@ -189,10 +275,11 @@ class WeatherService {
 
   static String _cacheKey(String city) => 'cached_weather_$city';
 
-  static Future<WeatherInfo?> _readCache(String city) async {
+  /// [key] 為完整的 SharedPreferences 鍵位（縣市用 [_cacheKey]、區域用 [geoCacheKey]）。
+  static Future<WeatherInfo?> _readCache(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_cacheKey(city));
+      final raw = prefs.getString(key);
       if (raw == null) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
@@ -203,10 +290,10 @@ class WeatherService {
     }
   }
 
-  static Future<void> _writeCache(WeatherInfo info) async {
+  static Future<void> _writeCache(String key, WeatherInfo info) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey(info.city), jsonEncode(info.toJson()));
+      await prefs.setString(key, jsonEncode(info.toJson()));
     } catch (e) {
       debugPrint('⚠️ [WeatherService] 寫入天氣快取失敗: $e');
     }
@@ -220,9 +307,26 @@ class WeatherService {
   static Future<WeatherInfo?> getWeather(int userId) async {
     try {
       final locationText = await _resolveLocationText(userId);
-      final cityCoord = _resolveCity(locationText);
+      var cityCoord = _resolveCity(locationText);
 
-      final cached = await _readCache(cityCoord.displayName);
+      // 有 GPS 定位時，改以約 1 公里精度的座標查詢（精準到區），但畫面上
+      // 顯示的仍是縣市層級名稱；居住地未填／比對不到時，用最近縣市推定，
+      // 不要硬顯示台北。
+      double queryLat = cityCoord.lat;
+      double queryLon = cityCoord.lon;
+      String cacheKey = _cacheKey(cityCoord.displayName);
+      final fix = await _resolveFix();
+      if (fix != null) {
+        queryLat = roundCoord(fix.latitude);
+        queryLon = roundCoord(fix.longitude);
+        cacheKey = geoCacheKey(queryLat, queryLon);
+        final text = locationText?.trim() ?? '';
+        final matched = text.isNotEmpty &&
+            _cityTable.any((c) => c.variants.any(text.contains));
+        if (!matched) cityCoord = _nearestCity(fix.latitude, fix.longitude);
+      }
+
+      final cached = await _readCache(cacheKey);
       if (cached != null &&
           DateTime.now().difference(cached.fetchedAt) < _cacheValidity) {
         // 快取仍新鮮，直接用，不必連網。
@@ -232,7 +336,7 @@ class WeatherService {
       try {
         final uri = Uri.parse(
           'https://api.open-meteo.com/v1/forecast'
-          '?latitude=${cityCoord.lat}&longitude=${cityCoord.lon}'
+          '?latitude=$queryLat&longitude=$queryLon'
           '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max'
           '&timezone=Asia%2FTaipei',
         );
@@ -266,7 +370,7 @@ class WeatherService {
           fetchedAt: DateTime.now(),
           isFromCache: false,
         );
-        await _writeCache(info);
+        await _writeCache(cacheKey, info);
         return info;
       } catch (e) {
         debugPrint('⚠️ [WeatherService] 連線取得天氣失敗，改用舊資料頂替: $e');

@@ -471,9 +471,10 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         final text = await ApiService.transcribeAudio(path);
         debugPrint('🎙️ [ASR Result] Transcribed text: $text');
 
-        if (text != null && text.isNotEmpty) {
+        if (!ApiService.isTranscriptionError(text)) {
+          final recognized = text!;
           setState(() {
-            _controller.text = text;
+            _controller.text = recognized;
             _voiceMode = false; // 自動切換為鍵盤打字模式，供使用者確認與手動送出
             _isThinking = false;
           });
@@ -483,7 +484,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('沒有聽清楚，請再試一次喔 😊')),
+              const SnackBar(content: Text('語音辨識暫時無法使用，請改用打字')),
             );
           }
         }
