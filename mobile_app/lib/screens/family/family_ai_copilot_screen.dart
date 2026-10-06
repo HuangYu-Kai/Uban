@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
@@ -104,20 +105,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
         try {
           _speechReady = await _speechToText.initialize(
-            onStatus: (status) {
-              // 靜音一段時間後 speech_to_text 會自動停止聆聽（done/notListening），
-              // 這裡只同步視覺狀態，不做任何送出動作。
-              if ((status == 'done' || status == 'notListening') && _isListening && mounted) {
-                setState(() => _isListening = false);
-              }
-            },
-            onError: (err) {
-              debugPrint('⚠️ [FamilyCopilot STT Error] ${err.errorMsg}');
-              if (!mounted) return;
-              setState(() => _isListening = false);
-              // 可重試（改用打字或再試一次），非硬錯誤，用 showWarning。
-              ErrorHandler.showWarning(context, '語音辨識發生錯誤，請改用打字或再試一次');
-            },
+            onStatus: _onCopilotSttStatus,
+            onError: _onCopilotSttError,
           );
         } catch (e) {
           debugPrint('⚠️ [FamilyCopilot STT Init Exception] $e');
@@ -137,6 +126,10 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
     if (!mounted) return;
     setState(() => _isListening = true);
+    // ★ 2026-10-06 喚醒詞修正：SpeechToText 是單例，listen 前把本畫面的
+    //   回呼掛回去（避免被先初始化的其他畫面佔用）。
+    _speechToText.errorListener = _onCopilotSttError;
+    _speechToText.statusListener = _onCopilotSttStatus;
     await _speechToText.listen(
       localeId: 'zh_TW',
       listenOptions: SpeechListenOptions(
@@ -155,6 +148,23 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         );
       },
     );
+  }
+
+  // ★ 2026-10-06 喚醒詞修正：由 initialize 的行內回呼抽成方法（見 listen 前註解）。
+  void _onCopilotSttStatus(String status) {
+    // 靜音一段時間後 speech_to_text 會自動停止聆聽（done/notListening），
+    // 這裡只同步視覺狀態，不做任何送出動作。
+    if ((status == 'done' || status == 'notListening') && _isListening && mounted) {
+      setState(() => _isListening = false);
+    }
+  }
+
+  void _onCopilotSttError(SpeechRecognitionError err) {
+    debugPrint('⚠️ [FamilyCopilot STT Error] ${err.errorMsg}');
+    if (!mounted) return;
+    setState(() => _isListening = false);
+    // 可重試（改用打字或再試一次），非硬錯誤，用 showWarning。
+    ErrorHandler.showWarning(context, '語音辨識發生錯誤，請改用打字或再試一次');
   }
 
   void _scrollToBottom() {

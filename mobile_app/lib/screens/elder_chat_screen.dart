@@ -457,6 +457,13 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     });
 
     try {
+      // ★ 2026-10-06 喚醒詞修正：SpeechToText 是單例，回呼可能還是首頁喚醒詞
+      //   的；本畫面不依賴 status，改掛只印 log 的回呼，避免喚醒詞的重啟邏輯
+      //   在本畫面錄音期間被觸發（錄音期間喚醒詞已由 isMediaPlayingNotifier 暫停）。
+      _speechToText.errorListener =
+          (err) => debugPrint('🎙️ [STT error] $err');
+      _speechToText.statusListener =
+          (status) => debugPrint('🎙️ [STT status] $status');
       await _speechToText.listen(
         onResult: (result) {
           if (!mounted) return;
