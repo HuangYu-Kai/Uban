@@ -82,7 +82,7 @@ class PairingApi {
     required int familyId,
     required String code,
     required String elderName,
-    required String gender,
+    String? gender, // ★ 2026-10-06：null＝家屬未填（後端接受 null）
     int? age, // 選填：家屬不確定時為 null，由長輩補填
   }) async {
     try {

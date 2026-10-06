@@ -28,10 +28,89 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
   bool isMonitor = false;
   Timer? _statusTimer;
 
+  // ★ 2026-10-06 登入流程審查：真正會走的配對碼倒數（後端碼 10 分鐘過期）。
+  Timer? _countdownTimer;
+  // 防止「更換代碼」連點／倒數歸零自動換碼同時打出兩個請求。
+  bool _requestingCode = false;
+  // 配對成功後正在寫入／導航：暫停倒數與輪詢，避免重複處理。
+  bool _handlingPaired = false;
+  // 同一時間只允許一個「大動作」（我自己使用／更換代碼／登入上次長輩／輸入代碼），
+  // 同步設旗標（在任何 await 之前），避免連點建立兩個帳號。
+  String? _busyAction;
+
+  static const String _kNetworkFriendly = '目前連不上伺服器，請確認網路後再試一次';
+
   @override
   void initState() {
     super.initState();
     _requestNewCode();
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  /// ★ 2026-10-06：把任何錯誤轉成長輩看得懂的中文，原始內容只進 debugPrint。
+  /// 後端 detail 現為中文，沒有明顯英文技術字樣時直接採用，其餘一律用友善預設。
+  String _friendlyError(Object? raw) {
+    debugPrint('⚠️ [ElderPairingDisplay] 原始錯誤: $raw');
+    if (raw is String) {
+      final text = raw.trim();
+      final hasCjk = RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+      final looksTechnical = RegExp(
+              r'exception|error|socket|timeout|failed|null|trace|http|status|\b[45]\d\d\b|<|\{',
+              caseSensitive: false)
+          .hasMatch(text);
+      if (hasCjk && !looksTechnical && !text.contains('網路連線失敗')) return text;
+    }
+    return _kNetworkFriendly;
+  }
+
+  /// 「大動作」互斥執行：旗標在第一個 await 之前同步設定。
+  Future<void> _runExclusive(String key, Future<void> Function() body) async {
+    if (_busyAction != null) return;
+    _busyAction = key;
+    if (mounted) setState(() {});
+    try {
+      await body();
+    } catch (e) {
+      debugPrint('⚠️ [ElderPairingDisplay] $key 失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_friendlyError(e))));
+      }
+    } finally {
+      _busyAction = null;
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// 每秒遞減；歸零時自動換新碼並重新倒數。
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _handlingPaired) {
+        timer.cancel();
+        return;
+      }
+      if (_secondsLeft > 1) {
+        setState(() => _secondsLeft--);
+        return;
+      }
+      timer.cancel();
+      setState(() => _secondsLeft = 0);
+      _requestNewCode();
+    });
+  }
+
+  String _countdownLabel() {
+    if (_secondsLeft <= 0) return '正在更新配對碼…';
+    final m = _secondsLeft ~/ 60;
+    final sec = (_secondsLeft % 60).toString().padLeft(2, '0');
+    return '配對碼 $m:$sec 後更新';
   }
 
   /// ★ 2026-07-27 第十三輪：記住「上次登入的長輩」，供登出後的快速登入使用。
@@ -325,6 +404,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
 
   Future<void> _requestNewCode() async {
+    if (_requestingCode || _handlingPaired) return;
+    _requestingCode = true;
+    // 換碼期間先停掉舊碼的倒數，避免回應回來前又觸發一次自動換碼。
+    _countdownTimer?.cancel();
     setState(() => _isLoading = true);
     try {
       // ★ 第五十輪任務 D：本畫面是「我是長者」首次上手（尚無帳號，由家屬
@@ -333,65 +416,82 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       final result = await ApiService.requestPairingCode(null, newElder: true);
       if (!mounted) return;
 
-// 檢查 API 是否回傳錯誤
+      // 檢查 API 是否回傳錯誤
       if (result['status'] == 'error') {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'API 錯誤：${result['message'] ?? result['error'] ?? '未知錯誤'}')),
-        );
+        _onCodeRequestFailed(result['detail'] ?? result['message'] ?? result['error']);
         return;
       }
 
-// 從 API Response 的 data 欄位取得配對碼
+      // 從 API Response 的 data 欄位取得配對碼
       final data = result['data'] as Map<String, dynamic>?;
+      final code = data?['pairing_code']?.toString();
+      if (code == null || code.isEmpty) {
+        _onCodeRequestFailed(result.toString());
+        return;
+      }
 
       setState(() {
-        _pairingCode = data?['pairing_code'];
-        _secondsLeft = data?['expires_in_seconds'] ?? 600;
+        _pairingCode = code;
+        _secondsLeft = (data?['expires_in_seconds'] as num?)?.toInt() ?? 600;
         _isLoading = false;
       });
-
-      if (_pairingCode != null) {
-        _startStatusPolling();
-      } else {
-        // 顯示更詳細的錯誤資訊
-        final errorDetail = result.toString();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('無法取得配對碼：$errorDetail')),
-        );
-      }
+      _startCountdown();
+      _startStatusPolling();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('申請代碼失敗：$e')));
+      _onCodeRequestFailed(e);
+    } finally {
+      _requestingCode = false;
     }
+  }
+
+  void _onCodeRequestFailed(Object? raw) {
+    // 舊碼若已過期就不要繼續顯示一組失效的號碼。
+    final expired = _secondsLeft <= 0;
+    setState(() {
+      _isLoading = false;
+      if (expired) {
+        _pairingCode = null;
+        _statusTimer?.cancel();
+      }
+    });
+    if (!expired) _startCountdown(); // 舊碼還有效：恢復倒數
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('沒辦法取得配對碼。${_friendlyError(raw)}')),
+    );
   }
 
   void _startStatusPolling() {
     _statusTimer?.cancel();
     _statusTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
-      if (_pairingCode == null) return;
+      // ★ 2026-10-06：離開畫面就收掉 timer（原本先 return 不 cancel，會一直空轉）。
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_pairingCode == null || _handlingPaired) return;
       try {
         final result = await ApiService.checkPairingStatus(_pairingCode!);
-        if (!mounted) return;
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
 
-// 從 API Response 的 data 欄位取得配對狀態
+        // 從 API Response 的 data 欄位取得配對狀態
         final status = result['data'] as Map<String, dynamic>?;
         if (status == null) return;
 
         if (status['status'] == 'paired') {
+          _handlingPaired = true;
           timer.cancel();
+          _countdownTimer?.cancel();
 
           // 核心修復：持久化儲存長輩 ID、姓名與角色
           final prefs = await SharedPreferences.getInstance();
           await prefs.setInt('caregiver_id', status['elder_id']);
           await prefs.setString('caregiver_name', status['elder_name'] ?? '長輩');
           await prefs.setString('user_role', 'elder');
-          
+
           final String? elderRoomId = status['room_id']?.toString() ?? status['elder_profile_id']?.toString() ?? status['elder_id']?.toString();
           if (elderRoomId != null) {
             await prefs.setString('elder_room_id', elderRoomId);
@@ -411,7 +511,18 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           await _promptModeAndNavigate(status['elder_id'], status['elder_name'] ?? '長輩', elderRoomId);
         }
       } catch (e) {
-// 靜默處理
+        // ★ 2026-10-06：原本空 catch 靜默吞掉例外，但 timer 已 cancel，
+        //   長輩會永遠卡在「等待配對」。配對成功後才出錯 → 重新啟動輪詢重試
+        //   （後端碼仍是 paired 狀態，下一輪會再走一次寫入與導航）。
+        debugPrint('⚠️ [ElderPairingDisplay] 輪詢／配對後處理失敗: $e');
+        if (_handlingPaired) {
+          _handlingPaired = false;
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('連線有點問題，正在重試…')),
+          );
+          _startStatusPolling();
+        }
       }
     });
   }
@@ -433,6 +544,9 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       return;
     }
     handler(code);
+    // handler 是同步 void：確認對話框由 main.dart 接手彈出。多撐一秒的忙碌狀態，
+    // 避免在對話框出現前又連點開出第二個。
+    await Future<void>.delayed(const Duration(seconds: 1));
   }
 
   Future<void> _quickLoginSameElder() async {
@@ -654,6 +768,11 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
 
   /// 🌟 方案 A：長者自主陪伴模式（單人即用，全新長者向雲端動態申領唯一獨立帳號）
   Future<void> _startAutonomousMode() async {
+    // ★ 2026-10-06：旗標在第一個 await 之前同步設定，防止連點建出兩個帳號。
+    return _runExclusive('autonomous', _startAutonomousModeImpl);
+  }
+
+  Future<void> _startAutonomousModeImpl() async {
     final prefs = await SharedPreferences.getInstance();
     int? elderId = prefs.getInt('last_elder_id');
     String elderName = (prefs.getString('last_elder_name') ?? '').trim();
@@ -676,7 +795,6 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       elderName = inputName.trim();
     }
 
-    setState(() => _isLoading = true);
     try {
       // 若全新安裝無帳號，向後端申請專屬唯一的獨立長者帳號與房號（杜絕 ID 衝突）
       if (elderId == null) {
@@ -688,12 +806,12 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
           elderRoomId = (data['room_id']?.toString()) ?? (data['elder_profile_id']?.toString());
         } else {
           final err = result['detail'] ?? result['message'] ?? result['error'] ?? '建立帳號失敗';
-          throw Exception(err);
+          throw _FriendlyFailure(_friendlyError(err));
         }
       }
 
       if (elderId == null) {
-        throw Exception('無法獲取長輩帳號識別碼');
+        throw const _FriendlyFailure('帳號建立沒有成功，請再試一次');
       }
 
       elderRoomId ??= 'room_$elderId';
@@ -723,14 +841,15 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       await _goToElderHome(elderId, elderName, elderRoomId);
     } catch (e) {
       if (!mounted) return;
+      // ★ 2026-10-06：不再把「Exception: …」原文丟給長輩；原始錯誤只進 log。
+      final msg = e is _FriendlyFailure ? e.message : _friendlyError(e);
+      if (e is _FriendlyFailure) debugPrint('⚠️ [ElderPairingDisplay] 自主模式失敗: ${e.message}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('進入自主模式失敗：$e'),
+          content: Text('暫時無法開始使用。$msg'),
           backgroundColor: Colors.redAccent,
         ),
       );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -814,10 +933,12 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    '配對倒數: $_secondsLeft 秒',
+                                    _countdownLabel(),
                                     textAlign: TextAlign.center,
                                     style: ubanText(
-                                        18, FontWeight.w700, c.danger),
+                                        18,
+                                        FontWeight.w700,
+                                        _secondsLeft < 60 ? c.danger : c.text2),
                                   ),
                                 ],
                               )
@@ -837,7 +958,8 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                   UbanButton(
                     label: '我自己使用',
                     size: UbanButtonSize.xl,
-                    onPressed: _startAutonomousMode,
+                    loading: _busyAction == 'autonomous',
+                    onPressed: _busyAction != null ? null : _startAutonomousMode,
                   ),
                   const SizedBox(height: 12),
 
@@ -849,7 +971,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                         child: UbanButton(
                           label: '更換代碼',
                           variant: UbanButtonVariant.tonal,
-                          onPressed: _requestNewCode,
+                          loading: _busyAction == 'code',
+                          onPressed: (_busyAction != null || _isLoading)
+                              ? null
+                              : () => _runExclusive('code', _requestNewCode),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -857,7 +982,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                         child: UbanButton(
                           label: '登入上次長輩',
                           variant: UbanButtonVariant.tonal,
-                          onPressed: _quickLoginSameElder,
+                          loading: _busyAction == 'quick',
+                          onPressed: _busyAction != null
+                              ? null
+                              : () => _runExclusive('quick', _quickLoginSameElder),
                         ),
                       ),
                     ],
@@ -867,7 +995,10 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
                   UbanButton(
                     label: '輸入家人給的登入代碼',
                     variant: UbanButtonVariant.outline,
-                    onPressed: _enterRecoveryCode,
+                    loading: _busyAction == 'recovery',
+                    onPressed: _busyAction != null
+                        ? null
+                        : () => _runExclusive('recovery', _enterRecoveryCode),
                   ),
                 ],
               ),
@@ -877,6 +1008,14 @@ class _ElderPairingDisplayScreenState extends State<ElderPairingDisplayScreen> {
       ),
     );
   }
+}
+
+/// 已轉成友善中文的失敗（避免再經過一次 [_friendlyError] 的技術字樣判斷）。
+class _FriendlyFailure implements Exception {
+  final String message;
+  const _FriendlyFailure(this.message);
+  @override
+  String toString() => message;
 }
 
 /// 手動輸入移機登入代碼的對話框（長輩尺規：大字、純數字、最多 10 位）。

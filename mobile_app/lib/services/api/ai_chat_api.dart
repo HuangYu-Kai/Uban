@@ -29,7 +29,8 @@ class AiChatApi {
       }
       return {'status': 'error', 'message': '伺服器錯誤: ${response.statusCode}'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ai_chat_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -160,7 +161,8 @@ class AiChatApi {
           .timeout(const Duration(seconds: 120));
       return ApiClient.safeDecode(response);
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ai_chat_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -190,7 +192,8 @@ class AiChatApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ai_chat_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -204,7 +207,8 @@ class AiChatApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '獲取建議逾時，請稍後再試'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ai_chat_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -228,7 +232,8 @@ class AiChatApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '新聞讀取逾時，請稍後再試'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ai_chat_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -252,7 +257,8 @@ class AiChatApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '語音合成逾時，請稍後再試'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ai_chat_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 

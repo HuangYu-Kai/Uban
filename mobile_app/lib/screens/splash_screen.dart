@@ -14,6 +14,7 @@ import 'elder_screen.dart'; // ★ 新增
 import 'video_call_screen.dart'; // ★ 2026-07-19：家屬冷啟動待接聽來電直接進視訊房
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // ★ 2026-07-23：splash activeCalls 輪詢
 import 'privacy_policy_screen.dart'; // ★ 2026-08-23：首次安裝隱私權政策關卡
+import 'family_profile_onboarding_screen.dart'; // ★ 2026-10-06 登入流程審查：家屬冷啟動補填守門
 import 'elder_profile_onboarding_screen.dart'; // ★ 2026-09-24 第五十三輪：既有長輩 session 補上必填檢查
 import '../utils/profile_completeness.dart'; // ★ 同上：與 login_screen.dart／elder_pairing_display_screen.dart 共用判斷
 
@@ -375,19 +376,34 @@ class _SplashScreenState extends State<SplashScreen> {
           //   逾時的網路往返。後端半死（TCP 連上但不回應）時它會永遠不回來，
           //   而下方的 catch 攔得到例外、攔不到卡住 → 家屬端永久停在開場畫面。
           //   逾時後落入 catch → `_goNextOrRestoreElder()` 依本機 session 還原。
-          final elders = await ApiService.getPairedElders(effectiveUserId)
+          // ★ 2026-10-06 登入流程審查：用 getPairedEldersOrNull 區分「讀取失敗」與
+          //   「確定沒有長輩」。原本失敗也回 []，已綁定的家屬一斷網就被送去
+          //   FamilyOnboardingScreen（一鍵配對）。失敗（null）改走既有的暫時性
+          //   失敗兜底 `_goNextOrRestoreElder()`（家屬 session → 家屬主畫面）。
+          final elders = await ApiService.getPairedEldersOrNull(effectiveUserId)
               .timeout(const Duration(seconds: 6));
           if (!mounted) return;
 
+          if (elders == null) {
+            debugPrint('⚠️ [Splash] 長輩清單讀取失敗，依本機 session 還原家屬主畫面（不進引導頁）');
+            await _goNextOrRestoreElder();
+            return;
+          }
+
           if (elders.isNotEmpty) {
             // 已有長輩，進入主介面
-            _navigateFamilyHome(effectiveUserId, effectiveUserName);
+            await _enterFamilyHomeOrProfileOnboarding(
+              effectiveUserId,
+              effectiveUserName,
+              hasPaired: true,
+            );
           } else {
             // 未綁定任何長輩，進入引導頁
-            _replaceWith(FamilyOnboardingScreen(
-              userId: effectiveUserId,
-              userName: effectiveUserName,
-            ));
+            await _enterFamilyHomeOrProfileOnboarding(
+              effectiveUserId,
+              effectiveUserName,
+              hasPaired: false,
+            );
           }
         } catch (e) {
           // 若 API 失敗，使用本地紀錄決定跳轉
@@ -424,6 +440,52 @@ class _SplashScreenState extends State<SplashScreen> {
       // ★ Issue 3 硬化：任何例外都先嘗試重讀 prefs 判斷是否為已登入長輩，
       //   絕不能因為一次例外就把已登入長輩導回身分辨識頁。
       if (mounted) await _goNextOrRestoreElder();
+    }
+  }
+
+  /// ★ 2026-10-06 登入流程審查：家屬冷啟動補上「年齡／居住地」必填守門。
+  /// 與 `login_screen.dart::_handleLogin` 用同一個判斷（`isProfileConfirmedIncomplete`）
+  /// 與同一組下一步（已配對→FamilyMainScreen；未配對→FamilyOnboardingScreen）。
+  ///
+  /// 紅線：
+  /// - fail-open：逾時 4s／例外／讀不到一律放行，不得卡住冷啟動。
+  /// - 有有效待接聽來電（pendingAcceptedCall）時**不做**任何網路檢查，直接走
+  ///   `_navigateFamilyHome`（來電優先於補填，與長輩端 callfix53b 同原則）。
+  Future<void> _enterFamilyHomeOrProfileOnboarding(
+    int userId,
+    String userName, {
+    required bool hasPaired,
+  }) async {
+    final bool hasPendingCall = pendingAcceptedCall.value != null;
+    bool incomplete = false;
+    if (!hasPendingCall) {
+      try {
+        final r = await ApiService.getElderProfile(userId)
+            .timeout(const Duration(seconds: 4));
+        incomplete = isProfileConfirmedIncomplete(r);
+      } catch (_) {
+        incomplete = false; // fail-open
+      }
+    }
+    if (!mounted) return;
+
+    if (incomplete && pendingAcceptedCall.value == null) {
+      final WidgetBuilder next = hasPaired
+          ? (context) => FamilyMainScreen(userId: userId, userName: userName)
+          : (context) =>
+              FamilyOnboardingScreen(userId: userId, userName: userName);
+      _replaceWith(FamilyProfileOnboardingScreen(
+        userId: userId,
+        userName: userName,
+        nextScreenBuilder: next,
+      ));
+      return;
+    }
+
+    if (hasPaired) {
+      _navigateFamilyHome(userId, userName);
+    } else {
+      _replaceWith(FamilyOnboardingScreen(userId: userId, userName: userName));
     }
   }
 

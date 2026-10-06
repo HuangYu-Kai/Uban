@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'registration_screen.dart';
@@ -7,7 +6,6 @@ import 'family_onboarding_screen.dart';
 import 'family_main_screen.dart';
 import 'family_profile_onboarding_screen.dart';
 import '../globals.dart';
-import '../services/auth_service.dart';
 import '../utils/profile_completeness.dart';
 import '../widgets/login_flow_parts.dart';
 import '../widgets/ui/ui.dart';
@@ -27,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -121,101 +120,65 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else {
         // 顯示錯誤訊息
-        final errorMsg = result['message'] ?? result['error'] ?? result['detail'] ?? '登入失敗';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
+        // ★ 2026-10-06 登入流程審查：不再直接顯示英文／技術字串
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_friendlyLoginError(result))));
       }
     } catch (e) {
+      debugPrint('⚠️ [Login] 登入例外: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('連線失敗: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('目前連不上伺服器，請確認網路後再試一次')),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _quickFillUserAccount() {
-    setState(() {
-      _emailController.text = 'boyo@uban.com';
-      _passwordController.text = 'robert20040924';
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('⚡ 已帶入 boyo@uban.com，正在登入...'),
-        duration: Duration(seconds: 1),
+  /// ★ 2026-10-06 登入流程審查：把後端／網路層回傳轉成使用者看得懂的繁體中文。
+  /// 後端 `detail` 現已是中文字串，優先採用；含英文技術字串（Invalid email…、
+  /// 網路連線失敗: $e 帶例外細節）一律換成友善文字，原始內容只留在 debugPrint。
+  String _friendlyLoginError(Map<String, dynamic> result) {
+    final dynamic raw = result['detail'] ?? result['message'] ?? result['error'];
+    debugPrint('⚠️ [Login] 登入失敗回應: $raw');
+    if (raw is String && raw.trim().isNotEmpty) {
+      final msg = raw.trim();
+      if (msg.contains('網路連線失敗') || msg.contains('伺服器回應格式錯誤')) {
+        return '目前連不上伺服器，請確認網路後再試一次';
+      }
+      if (msg.toLowerCase().contains('invalid email or password')) {
+        return '帳號或密碼錯誤，請再試一次';
+      }
+      // 沒有任何中文字元＝多半是技術訊息，不直接給使用者看。
+      if (!RegExp(r'[一-鿿]').hasMatch(msg)) {
+        return '登入失敗，請稍後再試';
+      }
+      return msg;
+    }
+    if (raw is List) {
+      return '請檢查 Email 與密碼的格式是否正確';
+    }
+    return '登入失敗，請稍後再試';
+  }
+
+  /// ★ 2026-10-06 登入流程審查：後端目前沒有重設密碼的端點，原本的
+  /// 「已傳送重設連結至您的 Email」是假訊息（沒有送出任何請求）。改為誠實說明。
+  /// 登入前使用者看不到 App 內的意見回饋入口（在登入後的「資料」分頁），
+  /// 所以只引導聯絡團隊。
+  void _showForgotPasswordDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('忘記密碼'),
+        content: const Text('目前還不能線上重設密碼。請聯絡 Uban 團隊協助重設密碼。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('知道了'),
+          ),
+        ],
       ),
     );
-    _handleLogin();
-  }
-
-  Future<void> _handleGoogleLogin() async {
-    setState(() => _isLoading = true);
-    try {
-      final idTokenData = await AuthService.signInWithGoogle();
-      if (!mounted) return;
-
-      if (idTokenData != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Google 登入成功！(正在執行 OIDC 測試...)')),
-        );
-
-        // 執行 OIDC 測試：將資料傳給後端寫入檔案
-        await ApiService.testOidc(
-          provider: 'google',
-          email: idTokenData['email'] ?? 'N/A',
-          uid: idTokenData['uid'] ?? 'N/A',
-          token: idTokenData['token'] ?? 'N/A',
-        );
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('OIDC 測試完成！請查看根目錄 oidc_test_results.txt')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Google 登入失敗: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _handleLineLogin() async {
-    setState(() => _isLoading = true);
-    try {
-      final accessTokenData = await AuthService.signInWithLine();
-      if (!mounted) return;
-
-      if (accessTokenData != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('LINE 登入成功！(正在執行 OIDC 測試...)')),
-        );
-
-        // 執行 OIDC 測試：將資料傳給後端寫入檔案
-        await ApiService.testOidc(
-          provider: 'line',
-          email: accessTokenData['email'] ?? 'N/A',
-          uid: accessTokenData['uid'] ?? 'N/A',
-          token: accessTokenData['token'] ?? 'N/A',
-        );
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('OIDC 測試完成！請查看根目錄 oidc_test_results.txt')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('LINE 登入失敗: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
   }
 
   @override
@@ -264,10 +227,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: ubanBody(context, size: 17)),
                         const SizedBox(height: 22),
 
-                        // Email / 手機號碼 輸入框
+                        // Email 輸入框
                         _buildTextField(
                           controller: _emailController,
-                          label: 'Email／手機號碼',
+                          label: 'Email',
                           keyboardType: TextInputType.emailAddress,
                         ),
 
@@ -286,19 +249,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                         ),
 
-                        // 忘記密碼？（照現狀只跳提示）
+                        // 忘記密碼？（目前無線上重設，顯示誠實說明）
                         Align(
                           alignment: Alignment.centerRight,
                           child: UbanButton(
                             label: '忘記密碼？',
                             variant: UbanButtonVariant.ghost,
                             expand: false,
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('已傳送重設連結至您的 Email')),
-                              );
-                            },
+                            onPressed: _showForgotPasswordDialog,
                           ),
                         ),
 
@@ -311,57 +269,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: _isLoading ? null : _handleLogin,
                         ),
 
-                        const SizedBox(height: 14),
-
-                        // 快速登入按鈕 (boyo@uban.com，開發用)
-                        UbanButton(
-                          label: '快速登入（開發用）',
-                          variant: UbanButtonVariant.tonal,
-                          onPressed: _isLoading ? null : _quickFillUserAccount,
-                        ),
-
-                        const SizedBox(height: 22),
-
-                        // 分隔線：或
-                        Row(
-                          children: [
-                            Expanded(child: Container(height: 1, color: c.line)),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text('或',
-                                  style:
-                                      ubanText(14, FontWeight.w400, c.text3)),
-                            ),
-                            Expanded(child: Container(height: 1, color: c.line)),
-                          ],
-                        ),
-
-                        const SizedBox(height: 22),
-
-                        // 社群登入按鈕
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildSocialButton(
-                              icon: FontAwesomeIcons.google,
-                              semanticLabel: 'Google 登入',
-                              // Google 品牌固定色
-                              iconColor: const Color(0xFF4285F4),
-                              background: c.surface,
-                              onTap: _isLoading ? () {} : _handleGoogleLogin,
-                            ),
-                            const SizedBox(width: 16),
-                            _buildSocialButton(
-                              icon: FontAwesomeIcons.line,
-                              semanticLabel: 'LINE 登入',
-                              iconColor: Colors.white,
-                              background: c.lineGreen,
-                              onTap: _isLoading ? () {} : _handleLineLogin,
-                            ),
-                          ],
-                        ),
-
+                        // ★ 2026-10-06 登入流程審查：已移除「快速登入（開發用）」按鈕與
+                        //   寫死的測試帳密；Google／LINE 按鈕與「或」分隔線也暫時隱藏，
+                        //   待真正的社群登入（後端驗證 token 並換發 session）完成後再加回。
                         const SizedBox(height: 22),
 
                         // 註冊連結
@@ -426,44 +336,6 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: onToggleVisibility,
             )
           : null,
-    );
-  }
-
-  /// 設計稿 `.roundbtn`：64 圓、卡片陰影、按壓縮放＋液態暈開。
-  Widget _buildSocialButton({
-    required dynamic icon,
-    required String semanticLabel,
-    required Color iconColor,
-    required Color background,
-    required VoidCallback onTap,
-  }) {
-    final c = UbanColors.of(context);
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      excludeSemantics: true,
-      child: PressableScale(
-        onTap: onTap,
-        child: BlobRipple(
-          color: c.brand.withValues(alpha: .22),
-          borderRadius: BorderRadius.circular(32),
-          child: Container(
-            width: 64,
-            height: 64,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: background,
-              shape: BoxShape.circle,
-              boxShadow: c.shadows.card,
-            ),
-            child: FaIcon(
-              icon ?? FontAwesomeIcons.question,
-              size: 28,
-              color: iconColor,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

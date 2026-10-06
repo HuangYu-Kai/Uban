@@ -28,6 +28,9 @@ import 'theme/app_theme.dart';
 import 'screens/video_call_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/elder_home_screen.dart';
+import 'screens/elder_profile_onboarding_screen.dart'; // ★ 2026-10-06 復原登入也要過年齡／居住地補填閘
+import 'utils/profile_completeness.dart';
+import 'services/session_manager.dart';
 import 'screens/identification_screen.dart';
 import 'screens/privacy_policy_screen.dart';
 
@@ -613,12 +616,35 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         String elderName = '';
         String familyName = '';
         Map<String, dynamic>? verifiedData;
+        // ★ 2026-10-06 登入流程審查：確認鍵的同步防連點旗標（setState 之前就要擋）。
+        bool confirming = false;
+
+        // 後端 detail 現為中文；沒有明顯英文技術字樣才直接顯示，其餘用友善預設，
+        // 原始內容只進 debugPrint。
+        String friendlyError(dynamic raw) {
+          debugPrint('⚠️ [Recovery] 原始錯誤: $raw');
+          if (raw is String) {
+            final text = raw.trim();
+            final hasCjk = RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+            final looksTechnical = RegExp(
+                    r'exception|error|socket|timeout|failed|null|trace|http|status|\b[45]\d\d\b|<|\{',
+                    caseSensitive: false)
+                .hasMatch(text);
+            if (hasCjk && !looksTechnical && !text.contains('網路連線失敗')) {
+              return text;
+            }
+          }
+          return '目前連不上伺服器，請確認網路後再試一次';
+        }
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
             void runVerification() async {
               try {
-                final result = await ApiService.verifyRecoveryCode(code);
+                // ★ 2026-10-06：先用 consume=false 只預覽姓名，不用掉代碼、不拿 token；
+                //   長輩按下「是的，這是我」才真正登入（consume=true）。
+                final result =
+                    await ApiService.verifyRecoveryCode(code, consume: false);
                 if (!dialogContext.mounted) return;
                 
                 if (result['status'] == 'success' && result['data'] != null) {
@@ -633,7 +659,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   setDialogState(() {
                     isLoading = false;
                     isVerified = false;
-                    errorMsg = result['message'] ?? result['error'] ?? result['detail'] ?? '驗證失敗';
+                    errorMsg = friendlyError(
+                        result['detail'] ?? result['message'] ?? result['error']);
                   });
                 }
               } catch (e) {
@@ -641,7 +668,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 setDialogState(() {
                   isLoading = false;
                   isVerified = false;
-                  errorMsg = '網路連線失敗: $e';
+                  errorMsg = friendlyError(e);
                 });
               }
             }
@@ -676,9 +703,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 24),
                         Text(
-                          '正在安全地驗證登入金鑰...',
+                          '正在確認登入代碼…',
                           style: GoogleFonts.notoSansTc(
-                            fontSize: 16,
+                            fontSize: 18,
                             color: const Color(0xFF555555),
                             fontWeight: FontWeight.w600,
                           ),
@@ -704,7 +731,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 20),
                         Text(
-                          '金鑰驗證失敗',
+                          '登入代碼無法使用',
                           style: GoogleFonts.notoSansTc(
                             fontWeight: FontWeight.w900,
                             color: const Color(0xFF991B1B),
@@ -716,7 +743,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                           errorMsg!,
                           textAlign: TextAlign.center,
                           style: GoogleFonts.notoSansTc(
-                            fontSize: 15,
+                            fontSize: 18,
                             color: const Color(0xFF555555),
                             height: 1.6,
                           ),
@@ -738,7 +765,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               '關閉',
                               style: GoogleFonts.notoSansTc(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                                fontSize: 18,
                               ),
                             ),
                           ),
@@ -775,19 +802,65 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               height: 64,
                               child: ElevatedButton(
                                 onPressed: () async {
+                                  // ★ 2026-10-06：同步防連點（避免 consume 打兩次）。
+                                  if (confirming) return;
+                                  confirming = true;
                                   setDialogState(() {
                                     isLoading = true;
                                   });
-                                  
+
                                   try {
-                                    final int elderUserId = verifiedData!['user_id'];
-                                    final String name = verifiedData!['elder_name'] ?? '長輩';
-                                    final String? elderIdUuid = verifiedData!['elder_id'];
-                                    
-                                    final prefs = await SharedPreferences.getInstance();
+                                    // (a) 真正登入：這時才用掉代碼（consume=true），
+                                    //     後續一律使用「這次」回應的資料。
+                                    final consumed = await ApiService
+                                        .verifyRecoveryCode(code, consume: true);
+                                    if (consumed['status'] != 'success' ||
+                                        consumed['data'] == null) {
+                                      confirming = false;
+                                      if (!dialogContext.mounted) return;
+                                      setDialogState(() {
+                                        isLoading = false;
+                                        errorMsg = friendlyError(
+                                            consumed['detail'] ??
+                                                consumed['message'] ??
+                                                consumed['error']);
+                                      });
+                                      return;
+                                    }
+                                    final Map<String, dynamic> loginData =
+                                        Map<String, dynamic>.from(
+                                            consumed['data'] as Map);
+                                    final int elderUserId =
+                                        (loginData['user_id'] as num).toInt();
+                                    final String name =
+                                        loginData['elder_name'] ?? '長輩';
+                                    final String? elderIdUuid =
+                                        loginData['elder_id']?.toString();
+                                    final String? accessToken =
+                                        loginData['access_token']?.toString();
+
+                                    // (b) 先釋放這台裝置上原本的 session（G58）：
+                                    //     家屬／別位長輩殘留的 FCM token、room 鍵、
+                                    //     device_role_*、last_elder_* 都要先清乾淨，
+                                    //     否則會用上一個帳號的房間收來電。
+                                    //     不保留快速登入記憶（preserveQuickLogin 預設 false）：
+                                    //     下面立刻寫入「這位」長輩的 last_elder_*，
+                                    //     舊長輩的 last_elder_device_role 不可沿用。
+                                    await SessionManager.releaseSession();
+
+                                    final prefs =
+                                        await SharedPreferences.getInstance();
                                     await prefs.setInt('caregiver_id', elderUserId);
                                     await prefs.setString('caregiver_name', name);
                                     await prefs.setString('user_role', 'elder');
+                                    // ★ 2026-10-06：與自主模式／監控登入一致，補寫 saved_role 與
+                                    //   saved_device_name（releaseSession 剛把它們清掉了）。
+                                    await prefs.setString('saved_role', 'elder');
+                                    await prefs.setString(
+                                        'saved_device_name', '$name的設備');
+                                    if (accessToken != null && accessToken.isNotEmpty) {
+                                      await prefs.setString('access_token', accessToken);
+                                    }
                                     if (elderIdUuid != null) {
                                       await prefs.setString('elder_room_id', elderIdUuid);
                                     }
@@ -806,13 +879,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                       await prefs.setString(
                                           'last_elder_room_id', elderIdUuid);
                                     }
-                                    // ⚠️ 刻意不寫 last_elder_device_role：與
+                                    // ⚠️ 刻意不寫 last_elder_device_role／saved_is_cctv／
+                                    //   device_role_*：與
                                     //   elder_pairing_display_screen.dart 的
                                     //   _promptModeAndNavigate（QR 配對／自主模式共用
                                     //   的角色指派流程）不同，本流程沒有在任何地方明確
-                                    //   寫死 saved_is_cctv（全 main.dart 對這個鍵只讀不寫，
-                                    //   ElderHomeScreen.initState 也不會呼叫
-                                    //   hasCommDevice 或讀寫這個鍵），沒有足夠把握斷言
+                                    //   指派通話機／監控機，沒有足夠把握斷言
                                     //   這台裝置這次登入一定是通話機——寫錯值會讓通話機
                                     //   被記成監控機，觸發 monitor-wakeup 被靜默丟棄、
                                     //   長輩被殺死收不到來電那條 bug 鏈（見
@@ -821,23 +893,50 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                     //   重新呼叫 hasCommDevice 判定，代價遠比寫錯低。
                                     appRole = 'elder';
 
-                                    if (navigatorKey.currentState != null) {
-                                      navigatorKey.currentState!.pop();
-                                      navigatorKey.currentState!.pushAndRemoveUntil(
+                                    // (c) 與其他長輩入口一致：先過年齡／居住地補填閘。
+                                    //     fail-open：讀取失敗一律視為已完整、直接進首頁。
+                                    bool profileIncomplete = false;
+                                    try {
+                                      profileIncomplete = isProfileConfirmedIncomplete(
+                                          await ApiService.getElderProfile(elderUserId));
+                                    } catch (_) {
+                                      profileIncomplete = false;
+                                    }
+
+                                    final nav = navigatorKey.currentState;
+                                    if (nav != null) {
+                                      nav.pop();
+                                      nav.pushAndRemoveUntil(
                                         MaterialPageRoute(
-                                          builder: (_) => ElderHomeScreen(
-                                            userId: elderUserId,
-                                            userName: name,
-                                            roomId: elderIdUuid,
-                                          ),
+                                          builder: (_) => profileIncomplete
+                                              ? ElderProfileOnboardingScreen(
+                                                  userId: elderUserId,
+                                                  userName: name,
+                                                  roomId: elderIdUuid ??
+                                                      elderUserId.toString(),
+                                                  nextScreenBuilder: (_) =>
+                                                      ElderHomeScreen(
+                                                    userId: elderUserId,
+                                                    userName: name,
+                                                    roomId: elderIdUuid,
+                                                  ),
+                                                )
+                                              : ElderHomeScreen(
+                                                  userId: elderUserId,
+                                                  userName: name,
+                                                  roomId: elderIdUuid,
+                                                ),
                                         ),
                                         (route) => false,
                                       );
                                     }
                                   } catch (e) {
+                                    confirming = false;
+                                    debugPrint('⚠️ [Recovery] 登入失敗: $e');
+                                    if (!dialogContext.mounted) return;
                                     setDialogState(() {
                                       isLoading = false;
-                                      errorMsg = '寫入登入狀態失敗: $e';
+                                      errorMsg = friendlyError(e);
                                     });
                                   }
                                 },

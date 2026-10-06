@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../services/session_manager.dart';
+import 'login_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
@@ -85,6 +88,42 @@ class _FamilyProfileOnboardingScreenState
           (result['message'] ?? result['error'] ?? result['detail'] ?? '儲存失敗，請稍後再試')
               .toString();
     });
+  }
+
+  /// ★ 2026-10-06 登入流程審查：必填補填畫面沒有出口會把人鎖死在錯的帳號。
+  /// 流程與 caregiver_pairing_screen `_handleLogout` 相同（家屬登出不保留快速登入）。
+  Future<void> _confirmLogout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('登出'),
+        content: const Text('確定要登出並換一個帳號嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('登出'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await SessionManager.releaseSession();
+    try {
+      await AuthService.signOutGoogle();
+      await AuthService.signOutLine();
+    } catch (e) {
+      debugPrint('⚠️ [FamilyProfileOnboarding] 第三方登出失敗（忽略）: $e');
+    }
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
+    );
   }
 
   @override
@@ -206,6 +245,21 @@ class _FamilyProfileOnboardingScreenState
                               color: Colors.white,
                             ),
                           ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // ★ 2026-10-06：次要出口，避免被鎖在錯的帳號
+                Center(
+                  child: TextButton(
+                    onPressed: _isSaving ? null : _confirmLogout,
+                    child: Text(
+                      '登出，換一個帳號',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.notoSansTc(
+                        fontSize: 16,
+                        color: Colors.grey[700],
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
