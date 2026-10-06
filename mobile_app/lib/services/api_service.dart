@@ -104,7 +104,7 @@ class ApiService {
   static Future<Map<String, dynamic>> createAutonomousElder({
     required String elderName,
     String gender = 'M',
-    int age = 75,
+    int? age, // ★ 2026-10-06：不再預設 75（見 pairing_api.dart）
   }) => PairingApi.createAutonomousElder(elderName: elderName, gender: gender, age: age);
 
   static Future<Map<String, dynamic>> requestPairingCode(int? elderId,

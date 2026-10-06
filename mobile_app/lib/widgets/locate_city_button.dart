@@ -35,19 +35,24 @@ class LocateCityButton extends StatefulWidget {
   /// 只影響自動執行，不影響使用者明確點擊。
   final bool Function()? canAutoFill;
 
+  /// ★ 2026-10-06：父層在使用者手動改選縣市／區時呼叫 `notifier.value++`，
+  /// 清掉「已依您目前位置填入」提示（不傳則不清）。
+  final ValueNotifier<int>? resetNotifier;
+
   const LocateCityButton({
     super.key,
     required this.onLocated,
     this.elderMode = false,
     this.autoLocateIfGranted = false,
     this.canAutoFill,
+    this.resetNotifier,
   });
 
   @override
   State<LocateCityButton> createState() => _LocateCityButtonState();
 }
 
-enum _LocateIssue { denied, deniedForever, serviceOff, notFound }
+enum _LocateIssue { denied, deniedForever, serviceOff, notFound, unavailable }
 
 class _LocateCityButtonState extends State<LocateCityButton> {
   bool _isLocating = false;
@@ -57,7 +62,18 @@ class _LocateCityButtonState extends State<LocateCityButton> {
   @override
   void initState() {
     super.initState();
+    widget.resetNotifier?.addListener(_onReset);
     if (widget.autoLocateIfGranted) _autoRunIfGranted();
+  }
+
+  void _onReset() {
+    if (mounted && _success) setState(() => _success = false);
+  }
+
+  @override
+  void dispose() {
+    widget.resetNotifier?.removeListener(_onReset);
+    super.dispose();
   }
 
   Future<void> _autoRunIfGranted() async {
@@ -125,8 +141,8 @@ class _LocateCityButtonState extends State<LocateCityButton> {
         if (city == null) issue = _LocateIssue.notFound;
       }
     } catch (_) {
-      // 逾時／查不到／平台例外：一律視為找不到
-      issue = _LocateIssue.notFound;
+      // 逾時／網路或定位／地理編碼例外：與「定位到了但不在白名單」分開提示
+      issue = _LocateIssue.unavailable;
     }
     if (!mounted) return;
     // 自動執行：定位期間若使用者已手動選好就不覆蓋；失敗也靜默不顯示訊息。
@@ -152,6 +168,8 @@ class _LocateCityButtonState extends State<LocateCityButton> {
         return '請先開啟手機的定位功能';
       case _LocateIssue.notFound:
         return '找不到您所在的縣市，請直接從下方選擇';
+      case _LocateIssue.unavailable:
+        return '目前無法取得位置，請確認網路與定位後再試，或直接從下方選擇';
     }
   }
 

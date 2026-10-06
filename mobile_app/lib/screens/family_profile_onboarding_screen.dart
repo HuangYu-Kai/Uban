@@ -45,6 +45,7 @@ class _FamilyProfileOnboardingScreenState
     extends State<FamilyProfileOnboardingScreen> {
   int? _age;
   String? _residenceCity;
+  final ValueNotifier<int> _locateReset = ValueNotifier<int>(0);
   String? _residenceDistrict;
   bool _isSaving = false;
   String? _errorMessage;
@@ -84,6 +85,12 @@ class _FamilyProfileOnboardingScreenState
           (result['message'] ?? result['error'] ?? result['detail'] ?? '儲存失敗，請稍後再試')
               .toString();
     });
+  }
+
+  @override
+  void dispose() {
+    _locateReset.dispose();
+    super.dispose();
   }
 
   @override
@@ -130,6 +137,7 @@ class _FamilyProfileOnboardingScreenState
                 const SizedBox(height: 20),
                 // ★ 2026-10-06：一鍵定位按鈕（只在權限已授予時開頁自動帶入）
                 LocateCityButton(
+                  resetNotifier: _locateReset,
                   autoLocateIfGranted: true,
                   canAutoFill: () =>
                       _residenceCity == null && _residenceDistrict == null,
@@ -144,6 +152,7 @@ class _FamilyProfileOnboardingScreenState
                   initialCity: _residenceCity,
                   initialDistrict: _residenceDistrict,
                   onChanged: (city, district) => setState(() {
+                    _locateReset.value++; // 手動改選 → 清掉「已依位置填入」提示
                     _residenceCity = city;
                     _residenceDistrict = district;
                     _errorMessage = null;

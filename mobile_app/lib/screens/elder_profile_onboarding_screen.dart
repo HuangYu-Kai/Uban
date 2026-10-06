@@ -54,6 +54,7 @@ class _ElderProfileOnboardingScreenState
     extends State<ElderProfileOnboardingScreen> {
   int? _age;
   String? _residenceCity;
+  final ValueNotifier<int> _locateReset = ValueNotifier<int>(0);
   String? _residenceDistrict;
   bool _isSaving = false;
   String? _errorMessage;
@@ -126,6 +127,12 @@ class _ElderProfileOnboardingScreenState
   }
 
   @override
+  void dispose() {
+    _locateReset.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = UbanColors.of(context);
     return PopScope(
@@ -183,6 +190,7 @@ class _ElderProfileOnboardingScreenState
                         // ★ 2026-10-06：一鍵定位按鈕放在縣市選單上方；
                         //   只在權限已授予時開頁自動帶入，不覆蓋手動選擇。
                         LocateCityButton(
+                          resetNotifier: _locateReset,
                           elderMode: true,
                           autoLocateIfGranted: true,
                           canAutoFill: () =>
@@ -200,6 +208,7 @@ class _ElderProfileOnboardingScreenState
                           initialCity: _residenceCity,
                           initialDistrict: _residenceDistrict,
                           onChanged: (city, district) => setState(() {
+                            _locateReset.value++; // 手動改選 → 清掉「已依位置填入」提示
                             _residenceCity = city;
                             _residenceDistrict = district;
                             _errorMessage = null;
@@ -239,7 +248,8 @@ class _ElderProfileOnboardingScreenState
                       label: '確定，開始使用',
                       size: UbanButtonSize.xl,
                       loading: _isSaving,
-                      onPressed: _isSaving ? null : _submit,
+                      // ★ 2026-10-06：profile 讀取完成前停用，避免對看不見的年齡欄報錯
+                      onPressed: (_isSaving || !_profileLoaded) ? null : _submit,
                     ),
                   ],
                 ),

@@ -32,7 +32,12 @@ class AgeStepperField extends StatelessWidget {
   });
 
   void _step(int delta) {
-    final current = value ?? defaultStartAge;
+    // ★ 2026-10-06：尚未選擇時，第一次點「＋」直接落在起始值（不再 +1 變成 66）。
+    if (value == null) {
+      onChanged(defaultStartAge);
+      return;
+    }
+    final current = value!;
     final next = (current + delta).clamp(minAge, maxAge);
     onChanged(next);
   }

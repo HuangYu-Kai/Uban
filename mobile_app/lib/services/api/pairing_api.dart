@@ -18,7 +18,7 @@ class PairingApi {
   static Future<Map<String, dynamic>> createAutonomousElder({
     required String elderName,
     String gender = 'M',
-    int age = 75,
+    int? age, // ★ 2026-10-06：不再預設 75；null 時不送 age，由長輩第一次登入自己填
   }) async {
     try {
       final response = await http.post(
@@ -27,7 +27,7 @@ class PairingApi {
         body: jsonEncode({
           'elder_name': elderName,
           'gender': gender,
-          'age': age,
+          if (age != null) 'age': age,
         }),
       ).timeout(const Duration(seconds: 10));
       return ApiClient.safeDecode(response);
