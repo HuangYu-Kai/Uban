@@ -490,6 +490,7 @@ void initPedometer() {
 - **豬種以後端為準**：讀 `GET /api/pet/state` 的 `breed`（或 `skin.breed_key`）、`pet/feed`、`pet/state` 回應的 `breed`，未知值退回粉紅豬，`PetBreedStore` 只當離線快取；換賽季或管理端指定後小豬直接換外觀、不跳對話框。排行榜每位好友顯示自己的豬種。（後端：賽季豬種池與逐位指定，見 uban-api readme。）
 - **「觀看本頁功能導覽」**：原本只有首頁、電話有內容，小豬／聊天／我的都退回一步的「歡迎使用 UBan」。改為各分頁導覽步驟只定義一份（`elderTabTutorialSteps`），首次進入與重看共用，`tutorialId` 不變（已看過的旗標仍有效）。電話導覽重看時會多開頭一步「打電話給家人」。
 - **救生圈視窗**拿掉標題與按鈕的 emoji（已有圖示）。
+- **小豬頁導覽第 2 步「每日吉利祝賀圖」補上高光目標**：原本沒有 `targetKey`，不會捲動也不挖洞。現掛在祝賀圖預覽卡（`ElderGreetingTab.tutorialKey` → `ElderPetTab.greetingKey` → `ElderTutorialKeys.petGreeting`）；`SpotlightTutorial` 本就先 `await Scrollable.ensureVisible` 再量測，對齊由 0.3 改 0.2，較高的卡片不會跨過中線讓指引卡片翻到上方遮住它。
 - **深色模式玻璃陰影**調淡（alpha .22、blur 20）：Flutter 的陰影會透過毛玻璃顯示成一圈黑暈；淺色不變。影響「怎麼用？」、導覽列等所有 `shadows.glass`。
 
 ### 2026-10-06（夜）☁️ 打卡與小豬體重改以後端為準、長輩深色模式切換、「怎麼用？」側邊收合（`ui` 分支）

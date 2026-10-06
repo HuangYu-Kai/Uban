@@ -345,9 +345,9 @@ class _SpotlightTutorialViewState extends State<_SpotlightTutorialView>
       try {
         await Scrollable.ensureVisible(
           targetContext,
-          // 讓目標落在畫面中間偏上：挖洞的高光留在上半部，下方留出足夠空間
-          // 給指引卡片，也避免卡片（最高可達螢幕 55%）蓋到剛捲好的目標。
-          alignment: 0.3,
+          // 讓目標落在畫面偏上：挖洞的高光留在上半部（連較高的祝賀圖卡也不會
+          // 跨過中線而讓指引卡片翻到上方遮住它），下方留給指引卡片與導覽列。
+          alignment: 0.2,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
         );

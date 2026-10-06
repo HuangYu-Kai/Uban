@@ -100,6 +100,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   final GlobalKey _chatLanguageToggleKey = GlobalKey();
   // 小豬分頁（掛在 PetHeroStage 上）
   final GlobalKey _petKey = GlobalKey();
+  // 小豬分頁「每日吉祥祝賀圖」預覽卡片（導覽第 2 步高光目標）
+  final GlobalKey _petGreetingKey = GlobalKey();
   // 我的分頁
   final GlobalKey _profileTasksKey = GlobalKey();
   final GlobalKey _profileFamilyPairingKey = GlobalKey();
@@ -1256,6 +1258,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           phoneCall: _phoneCallKey,
           phoneVideo: _phoneVideoKey,
           pet: _petKey,
+          petGreeting: _petGreetingKey,
           chatVoiceToggle: _chatVoiceToggleKey,
           chatInputArea: _chatInputAreaKey,
           chatLanguageToggle: _chatLanguageToggleKey,
@@ -1321,6 +1324,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 userId: widget.userId,
                 userName: widget.userName,
                 petKey: _petKey,
+                greetingKey: _petGreetingKey,
               ),
               // 3 聊天（小雲 AI 聊天）
               ElderChatScreen(
@@ -1454,6 +1458,7 @@ class ElderTutorialKeys {
       phoneCall,
       phoneVideo,
       pet,
+      petGreeting,
       chatVoiceToggle,
       chatInputArea,
       chatLanguageToggle,
@@ -1469,6 +1474,7 @@ class ElderTutorialKeys {
     required this.phoneCall,
     required this.phoneVideo,
     required this.pet,
+    required this.petGreeting,
     required this.chatVoiceToggle,
     required this.chatInputArea,
     required this.chatLanguageToggle,
@@ -1530,7 +1536,9 @@ List<TutorialStep> elderTabTutorialSteps(int index, ElderTutorialKeys k) {
           title: '您的小豬夥伴',
           body: '這是陪伴您的小豬，按一下摸摸牠，牠會陪您一起變健康。',
         ),
-        const TutorialStep(
+        TutorialStep(
+          // 高光祝賀圖預覽卡；導覽會先把它捲進視野（SpotlightTutorial 內建）。
+          targetKey: k.petGreeting,
           title: '每日吉利祝賀圖',
           body: '每天早上這裡會自動為您準備喜氣的早安祝賀圖，點一下就能傳到 LINE 給朋友！',
         ),

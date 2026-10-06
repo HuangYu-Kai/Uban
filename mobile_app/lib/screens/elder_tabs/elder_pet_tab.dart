@@ -47,11 +47,15 @@ class ElderPetTab extends StatefulWidget {
   /// 新手指引高光目標（掛在 PetHeroStage 上），由 ElderHomeScreen 持有。
   final GlobalKey? petKey;
 
+  /// 新手指引高光目標（掛在每日吉祥祝賀圖的預覽卡片上）。
+  final GlobalKey? greetingKey;
+
   const ElderPetTab({
     super.key,
     required this.userId,
     required this.userName,
     this.petKey,
+    this.greetingKey,
   });
 
   @override
@@ -981,6 +985,7 @@ class _ElderPetTabState extends State<ElderPetTab>
                 userName: widget.userName,
                 embedded: true,
                 refreshSignal: _greetingPigSignal,
+                tutorialKey: widget.greetingKey,
               ),
             ],
           ),

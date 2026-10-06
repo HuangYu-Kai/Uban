@@ -12,6 +12,7 @@ void main() {
         phoneCall: GlobalKey(),
         phoneVideo: GlobalKey(),
         pet: GlobalKey(),
+        petGreeting: GlobalKey(),
         chatVoiceToggle: GlobalKey(),
         chatInputArea: GlobalKey(),
         chatLanguageToggle: GlobalKey(),
@@ -31,5 +32,13 @@ void main() {
     expect(elderTabTutorialSteps(2, k).length, greaterThan(1));
     expect(elderTabTutorialSteps(4, k).length, greaterThan(1));
     expect(elderTabTutorialSteps(5, k), isEmpty);
+  });
+
+  test('小豬分頁第 2 步（每日吉利祝賀圖）有高光目標', () {
+    final k = keys();
+    final steps = elderTabTutorialSteps(2, k);
+    expect(steps[1].title, contains('祝賀圖'));
+    expect(steps[1].targetKey, isNotNull);
+    expect(steps[1].targetKey, same(k.petGreeting));
   });
 }

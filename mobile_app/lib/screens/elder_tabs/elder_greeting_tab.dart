@@ -151,12 +151,17 @@ class ElderGreetingTab extends StatefulWidget {
   /// 每次通知時本分頁重讀品種與階段，祝賀圖上的小豬才會跟著更新。
   final Listenable? refreshSignal;
 
+  /// 新手指引高光目標（掛在祝賀圖預覽卡片上，不含下方整排工具），由
+  /// ElderHomeScreen 經 ElderPetTab 傳入。
+  final GlobalKey? tutorialKey;
+
   const ElderGreetingTab({
     super.key,
     required this.userId,
     required this.userName,
     this.embedded = false,
     this.refreshSignal,
+    this.tutorialKey,
   });
 
   @override
@@ -1126,6 +1131,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           _buildModeSelector(),
           const SizedBox(height: 14),
           Center(
+            key: widget.tutorialKey,
             child: RepaintBoundary(
               key: _cardRepaintKey,
               child: _buildSquarePreviewCard(maxWidth: 400),
