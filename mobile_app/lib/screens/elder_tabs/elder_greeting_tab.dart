@@ -1081,8 +1081,11 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                   _buildClassicActionTools()
                 else
                   _buildAiActionTools(),
-                const SizedBox(height: 12),
-                _buildPigToggle(),
+                // 小豬開關只在經典模式顯示（AI 圖本身已生成小豬，不疊加）
+                if (_currentMode == GreetingCardMode.classic) ...[
+                  const SizedBox(height: 12),
+                  _buildPigToggle(),
+                ],
                 const SizedBox(height: 18),
                 _buildLineShareButton(),
                 const SizedBox(height: 12),
@@ -1136,8 +1139,11 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             _buildClassicActionTools()
           else
             _buildAiActionTools(),
-          const SizedBox(height: 12),
-          _buildPigToggle(),
+          // 小豬開關只在經典模式顯示（AI 圖本身已生成小豬，不疊加）
+          if (_currentMode == GreetingCardMode.classic) ...[
+            const SizedBox(height: 12),
+            _buildPigToggle(),
+          ],
           const SizedBox(height: 16),
           _buildLineShareButton(),
           const SizedBox(height: 10),
@@ -1376,8 +1382,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           child: _buildAiTypography(mainText),
         ),
 
-        // AI 版大字固定在下方 → 小豬放右上
-        _buildPigOverlay(Alignment.topRight),
+        // AI 模式不疊小豬：AI 圖本身已生成小豬（匯出圖也因此不含疊圖）
       ],
     );
   }

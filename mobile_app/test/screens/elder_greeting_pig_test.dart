@@ -48,4 +48,28 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(overlay, findsNothing);
   });
+
+  testWidgets('AI 智能生圖模式：無疊圖也無開關（偏好不動）；切回經典恢復', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(host());
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(overlay, findsOneWidget);
+    expect(toggle, findsOneWidget);
+
+    await tester.tap(find.text('AI 智能生圖'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(overlay, findsNothing);
+    expect(toggle, findsNothing);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('greeting_show_pig'), isNull);
+
+    await tester.tap(find.text('經典圖文組合'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(overlay, findsOneWidget);
+    expect(toggle, findsOneWidget);
+  });
 }
