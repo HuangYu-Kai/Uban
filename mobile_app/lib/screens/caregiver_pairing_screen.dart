@@ -30,7 +30,9 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
   // ★ 2026-10-06 登入流程改善：年齡改為選填且預設留空（不再預填 '70'）。
   //   家屬知道就填；不確定留空，長輩第一次登入的補填畫面會自己選。
   final TextEditingController _ageController = TextEditingController();
-  String _gender = 'M';
+  // ★ 2026-10-06 登入流程審查：性別預設「不填」（null），不再替家屬預設成男性；
+  //   後端 /pairing/confirm 已接受 gender = null。
+  String? _gender;
   bool _isLoading = false;
   // ★ 持久化錯誤訊息：取代原本的 SnackBar，避免 409/410/404 都顯示同一句看不出差異的訊息
   String? _errorMessage;
@@ -53,7 +55,24 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
       if (msg != null) return msg.toString();
       return raw.toString();
     }
-    return '配對失敗，請檢查配對碼';
+    return '配對沒有成功，請確認配對碼後再試一次';
+  }
+
+  /// ★ 2026-10-06 登入流程審查：後端 detail 現為中文可直接顯示；
+  /// 但若仍含英文技術字樣（Exception／Error／status code…）或舊的「連線失敗」，
+  /// 一律改成友善預設，避免把技術訊息丟給家屬。
+  String _friendlyPairingError(dynamic raw) {
+    final text = _readableError(raw);
+    final hasCjk = RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+    final looksTechnical = RegExp(
+            r'exception|error|socket|timeout|failed|null|\b[45]\d\d\b|<|\{',
+            caseSensitive: false)
+        .hasMatch(text);
+    if (!hasCjk || looksTechnical || text.contains('連線失敗')) {
+      debugPrint('⚠️ [CaregiverPairing] 後端錯誤原文: $text');
+      return '目前連不上伺服器，請確認網路後再試一次';
+    }
+    return text;
   }
 
   Future<void> _handleConfirmPairing() async {
@@ -129,14 +148,15 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
         //   回應本體是 { "detail": "..." }，原本漏讀 detail 導致 409/410/404 都顯示同一句
         //   「配對失敗，請檢查配對碼」，使用者無從分辨代碼已被使用／已過期／不存在。
         setState(() {
-          _errorMessage = _readableError(
-            result['error'] ?? result['detail'] ?? data?['message'],
+          _errorMessage = _friendlyPairingError(
+            result['detail'] ?? result['error'] ?? result['message'] ?? data?['message'],
           );
         });
       }
     } catch (e) {
+      debugPrint('⚠️ [CaregiverPairing] confirmPairing 例外: $e');
       if (!mounted) return;
-      setState(() => _errorMessage = '連線失敗，請檢查網路後再試一次');
+      setState(() => _errorMessage = '目前連不上伺服器，請確認網路後再試一次');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -212,7 +232,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '請查看長輩平板/電視上的 4 位數配對碼\n並填寫長輩的資訊開始守護',
+                    '請看長輩手機上的 4 位數配對碼\n並填寫長輩的資訊開始守護',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.notoSansTc(
                       color: c.text2,
@@ -258,10 +278,18 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                         ),
                       );
                       if (result != null && mounted) {
-                        setState(() {
-                          _codeController.text = result;
-                          _errorMessage = null;
-                        });
+                        // ★ 2026-10-06：QR 內容直接 .text= 會繞過 maxLength；
+                        //   只接受剛好 4 位數字，其餘視為不是 Uban 的 QR Code。
+                        final scanned = result.trim();
+                        if (RegExp(r'^\d\{4\}$').hasMatch(scanned)) {
+                          setState(() {
+                            _codeController.text = scanned;
+                            _errorMessage = null;
+                          });
+                        } else {
+                          setState(() => _errorMessage =
+                              '這不是 Uban 的配對 QR Code，請掃描長輩手機上的 QR Code');
+                        }
                       }
                     },
                     icon: const Icon(Icons.qr_code_scanner_rounded),
@@ -288,55 +316,51 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _ageController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(3),
-                    ],
-                    style: GoogleFonts.notoSansTc(fontSize: 18, color: c.text),
-                    cursorColor: c.brandStrong,
-                    onChanged: (_) => setState(() => _errorMessage = null),
-                    decoration: _inputDecoration(Icons.cake_rounded, '年齡（選填）'),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 3,
-                  child: Container(
-                    height: 56,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: c.surface2,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        _genderChoice(
-                          label: '男',
-                          isSelected: _gender == 'M',
-                          onTap: () => setState(() => _gender = 'M'),
-                        ),
-                        _genderChoice(
-                          label: '女',
-                          isSelected: _gender == 'F',
-                          onTap: () => setState(() => _gender = 'F'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            TextField(
+              controller: _ageController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(3),
               ],
+              style: GoogleFonts.notoSansTc(fontSize: 18, color: c.text),
+              cursorColor: c.brandStrong,
+              onChanged: (_) => setState(() => _errorMessage = null),
+              decoration: _inputDecoration(Icons.cake_rounded, '年齡（選填）'),
+            ),
+            const SizedBox(height: 16),
+            // ★ 2026-10-06：性別三選一（男／女／不填），獨立一整列，三格各佔 1/3 不會溢位。
+            Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: c.surface2,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  _genderChoice(
+                    label: '男',
+                    isSelected: _gender == 'M',
+                    onTap: () => setState(() => _gender = 'M'),
+                  ),
+                  _genderChoice(
+                    label: '女',
+                    isSelected: _gender == 'F',
+                    onTap: () => setState(() => _gender = 'F'),
+                  ),
+                  _genderChoice(
+                    label: '不填',
+                    isSelected: _gender == null,
+                    onTap: () => setState(() => _gender = null),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             // 說明文字獨立一行（不放進窄欄位的 hint，避免被截斷／溢位）
             Text(
-              '年齡不確定可留空，長輩登入時會自己填',
+              '年齡、性別不確定都可以不填，長輩登入時會自己填',
               style: GoogleFonts.notoSansTc(fontSize: 13, color: c.text3),
             ),
             const SizedBox(height: 40),
@@ -473,7 +497,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
           child: Text(
             label,
             style: GoogleFonts.notoSansTc(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               color: isSelected
                   ? UbanColors.of(context).brandStrong

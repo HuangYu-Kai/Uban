@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/privacy_policy_content.dart';
@@ -23,7 +24,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  bool _agreedToTerms = true;
+  // ★ 2026-10-06 登入流程審查：同意條款不得預設勾選（需使用者主動同意）。
+  bool _agreedToTerms = false;
+  bool _obscurePassword = true;
   // ★ 持久化錯誤訊息：取代原本的 SnackBar，避免使用者錯過失敗原因（見第 27 輪卡關根因）
   String? _errorMessage;
 
@@ -114,7 +117,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   /// 若直接丟進 Text() 會是執行期型別錯誤，必須先轉字串。
   String _readableError(dynamic raw) {
     if (raw is String && raw.trim().isNotEmpty) {
-      return raw.trim();
+      final msg = raw.trim();
+      debugPrint('⚠️ [Register] 後端回應: $msg');
+      // ★ 2026-10-06：技術／英文字串不直接給使用者看
+      if (msg.toLowerCase().contains('already exists')) {
+        return '這個 Email 已經註冊過了，請直接登入';
+      }
+      if (msg.contains('網路連線失敗') || msg.contains('伺服器回應格式錯誤')) {
+        return '目前連不上伺服器，請確認網路後再試一次';
+      }
+      if (!RegExp(r'[一-鿿]').hasMatch(msg)) {
+        return '註冊失敗，請稍後再試';
+      }
+      return msg;
     }
     if (raw is List && raw.isNotEmpty) {
       final first = raw.first;
@@ -134,6 +149,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   Future<void> _handleRegister() async {
     setState(() => _errorMessage = null);
 
+    if (_isLoading) return;
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -151,6 +167,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     // ★ 後端 schemas/auth.py 要求密碼至少 6 碼，未先檢查會得到不友善的 422 錯誤
     if (password.length < 6) {
       setState(() => _errorMessage = '密碼至少需要 6 個字');
+      return;
+    }
+    // ★ 2026-10-06 登入流程審查：bcrypt 只吃前 72 bytes，後端以 UTF-8 位元組數為準。
+    if (utf8.encode(password).length > 72) {
+      setState(() => _errorMessage = '密碼太長了，請在 72 個字元內');
+      return;
+    }
+    if (name.length > 30) {
+      setState(() => _errorMessage = '名字請在 30 個字以內');
       return;
     }
 
@@ -218,12 +243,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       } else {
         // ★ 顯示持久化錯誤訊息，避免 SnackBar 稍縱即逝導致使用者看不到失敗原因
         setState(() {
-          _errorMessage = _readableError(result['error'] ?? result['detail']);
+          // 後端 detail 現為中文；舊版 message 也一併涵蓋（含網路層錯誤）
+          _errorMessage = _readableError(
+              result['detail'] ?? result['error'] ?? result['message']);
         });
       }
     } catch (e) {
+      debugPrint('⚠️ [Register] 註冊例外: $e');
       if (!mounted) return;
-      setState(() => _errorMessage = '連線失敗，請檢查網路後再試一次');
+      setState(() => _errorMessage = '目前連不上伺服器，請確認網路後再試一次');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -442,9 +470,22 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return UbanTextField(
       controller: controller,
       label: label,
-      obscureText: isPassword,
+      obscureText: isPassword && _obscurePassword,
       keyboardType: keyboardType,
       onChanged: onChanged,
+      suffixIcon: isPassword
+          ? IconButton(
+              tooltip: _obscurePassword ? '顯示密碼' : '隱藏密碼',
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: UbanColors.of(context).text2,
+              ),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
+            )
+          : null,
     );
   }
 }

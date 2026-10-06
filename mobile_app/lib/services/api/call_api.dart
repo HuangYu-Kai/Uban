@@ -43,7 +43,8 @@ class CallApi {
           .timeout(const Duration(seconds: 10));
       return ApiClient.safeDecode(response);
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [call_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 }

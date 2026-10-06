@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -36,7 +37,8 @@ class FamilyInsightApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路後重試'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [family_insight_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -61,7 +63,8 @@ class FamilyInsightApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路後重試'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [family_insight_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -82,7 +85,8 @@ class FamilyInsightApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路後重試'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [family_insight_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -117,7 +121,8 @@ class FamilyInsightApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路後重試'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [family_insight_api] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 }

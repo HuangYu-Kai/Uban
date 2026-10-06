@@ -38,7 +38,8 @@ class AuthApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [AuthApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -58,32 +59,8 @@ class AuthApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> testOidc({
-    required String provider,
-    required String email,
-    required String uid,
-    required String token,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('${ApiClient.baseUrl}/auth/test_oidc'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'provider': provider,
-              'email': email,
-              'uid': uid,
-              'token': token,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-      return ApiClient.safeDecode(response);
-    } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [AuthApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -121,11 +98,15 @@ class AuthApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [AuthApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
-  static Future<Map<String, dynamic>> verifyRecoveryCode(String code) async {
+  static Future<Map<String, dynamic>> verifyRecoveryCode(
+    String code, {
+    bool consume = true,
+  }) async {
     try {
       final response = await http
           .post(
@@ -133,6 +114,9 @@ class AuthApi {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'code': code,
+              // ★ 2026-10-06 登入流程審查：consume=false 只預覽姓名、不用掉代碼、不回 token；
+              //   長輩按下確認後才以 consume=true 真正登入（預設 true，維持舊行為）。
+              'consume': consume,
             }),
           )
           .timeout(ApiClient.timeout);
@@ -140,7 +124,8 @@ class AuthApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [AuthApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 

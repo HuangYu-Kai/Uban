@@ -71,13 +71,6 @@ class ApiService {
 
   static Future<Map<String, dynamic>> login(String email, String password) => AuthApi.login(email, password);
 
-  static Future<Map<String, dynamic>> testOidc({
-    required String provider,
-    required String email,
-    required String uid,
-    required String token,
-  }) => AuthApi.testOidc(provider: provider, email: email, uid: uid, token: token);
-
   static Future<Map<String, dynamic>> checkHealth() => AuthApi.checkHealth();
 
   static Future<Map<String, dynamic>> generateRecoveryLink({
@@ -85,7 +78,8 @@ class ApiService {
     required String elderId,
   }) => AuthApi.generateRecoveryLink(familyId: familyId, elderId: elderId);
 
-  static Future<Map<String, dynamic>> verifyRecoveryCode(String code) => AuthApi.verifyRecoveryCode(code);
+  static Future<Map<String, dynamic>> verifyRecoveryCode(String code, {bool consume = true}) =>
+      AuthApi.verifyRecoveryCode(code, consume: consume);
 
   static Future<bool> releaseSession({
     required String fcmToken,
@@ -115,7 +109,7 @@ class ApiService {
     required int familyId,
     required String code,
     required String elderName,
-    required String gender,
+    String? gender, // ★ 2026-10-06：null＝家屬未填
     int? age, // 選填：家屬不確定時為 null，由長輩補填
   }) => PairingApi.confirmPairing(
         familyId: familyId,
@@ -206,6 +200,8 @@ class ApiService {
   @Deprecated('Use getPairedElders instead')
   static Future<List<dynamic>> getElderData(String userId) => ElderDataApi.getElderData(userId);
   static Future<List<dynamic>> getPairedElders(int userId) => ElderDataApi.getPairedElders(userId);
+  /// ★ 2026-10-06 登入流程審查：null＝讀取失敗，[]＝確定沒有長輩。
+  static Future<List<dynamic>?> getPairedEldersOrNull(int userId) => ElderDataApi.getPairedEldersOrNull(userId);
   static Future<bool> hasCommDevice(String elderId) => ElderDataApi.hasCommDevice(elderId);
   static Future<List<dynamic>> getPairedFamily(int userId) => ElderDataApi.getPairedFamily(userId);
   static Future<Map<String, dynamic>> getElderProfile(int userId) => ElderDataApi.getElderProfile(userId);

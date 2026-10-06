@@ -27,8 +27,7 @@ class AuthService {
       
       // 獲取登入認證資訊 (含 Token)
       final GoogleSignInAuthentication auth = await account.authentication;
-      debugPrint('Google Access Token: ${auth.accessToken}');
-      debugPrint('Google ID Token: ${auth.idToken}');
+      // ★ 2026-10-06 登入流程審查：不再把 Token 印進 log（機敏資料）。
       
       // 通常我們需要 idToken 回傳給後端去 JWT 解析
       return {
@@ -44,7 +43,12 @@ class AuthService {
 
   /// 執行 Google 登出
   static Future<void> signOutGoogle() async {
-    await _googleSignIn.signOut();
+    // ★ 2026-10-06 登入流程審查：登出絕不能卡在第三方 SDK 例外。
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      debugPrint('Google Sign-Out Error: $e');
+    }
   }
 
   // === LINE 登入設定 ===
@@ -68,9 +72,6 @@ class AuthService {
       final result = await LineSDK.instance.login(
         scopes: ['profile', 'openid'],
       );
-      
-      debugPrint('LINE User ID: ${result.userProfile?.userId}');
-      debugPrint('LINE Display Name: ${result.userProfile?.displayName}');
       
       return {
         'token': result.accessToken.value,

@@ -29,7 +29,8 @@ class ElderDataApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ElderDataApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -42,7 +43,8 @@ class ElderDataApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ElderDataApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -69,7 +71,8 @@ class ElderDataApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ElderDataApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -94,13 +97,40 @@ class ElderDataApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ElderDataApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
   @Deprecated('Use getPairedElders instead')
   static Future<List<dynamic>> getElderData(String userId) async {
     return getPairedElders(int.tryParse(userId) ?? 0);
+  }
+
+  /// ★ 2026-10-06 登入流程審查：區分「讀取失敗」與「真的沒有長輩」。
+  /// 回傳 null＝請求失敗（逾時／斷網／伺服器錯誤）；回傳 []＝確定沒有配對長輩。
+  /// 舊的 [getPairedElders] 簽章不變（失敗仍回 []），給不在乎差異的呼叫端用。
+  static Future<List<dynamic>?> getPairedEldersOrNull(int userId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('${ApiClient.baseUrl}/user/$userId/elders'))
+          .timeout(ApiClient.timeout);
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is List) {
+          return decoded;
+        }
+        if (decoded is Map &&
+            decoded['status'] == 'success' &&
+            decoded['data'] is List) {
+          return decoded['data'] as List<dynamic>;
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ getPairedEldersOrNull error: $e');
+      return null;
+    }
   }
 
   static Future<List<dynamic>> getPairedElders(int userId) async {
@@ -167,7 +197,8 @@ class ElderDataApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ElderDataApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 
@@ -220,7 +251,8 @@ class ElderDataApi {
     } on TimeoutException {
       return {'status': 'error', 'message': '連線逾時，請檢查網路'};
     } catch (e) {
-      return {'status': 'error', 'message': '網路連線失敗: $e'};
+      debugPrint('⚠️ [ElderDataApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
   }
 

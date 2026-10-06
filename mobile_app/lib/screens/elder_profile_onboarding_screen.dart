@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/session_manager.dart';
+import 'identification_screen.dart';
 import '../widgets/age_stepper_field.dart';
 import '../widgets/city_district_picker.dart';
 import '../widgets/login_flow_parts.dart';
@@ -124,6 +126,36 @@ class _ElderProfileOnboardingScreenState
           (result['message'] ?? result['error'] ?? result['detail'] ?? '儲存失敗，請稍後再試')
               .toString();
     });
+  }
+
+  /// ★ 2026-10-06 登入流程審查：必填補填畫面擋住返回鍵，但不能讓人被鎖死在
+  /// 錯的帳號上。比照 elder_tabs/elder_profile_tab.dart 長輩登出：
+  /// preserveQuickLogin: true ＋ 回身分辨識頁。
+  Future<void> _confirmLogout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('登出'),
+        content: const Text('確定要登出並換一個帳號嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('登出'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await SessionManager.releaseSession(preserveQuickLogin: true);
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const IdentificationScreen()),
+      (route) => false,
+    );
   }
 
   @override
@@ -250,6 +282,19 @@ class _ElderProfileOnboardingScreenState
                       loading: _isSaving,
                       // ★ 2026-10-06：profile 讀取完成前停用，避免對看不見的年齡欄報錯
                       onPressed: (_isSaving || !_profileLoaded) ? null : _submit,
+                    ),
+                    const SizedBox(height: 12),
+                    // ★ 2026-10-06：次要出口（≥18pt），避免被鎖在錯的帳號
+                    TextButton(
+                      onPressed: _isSaving ? null : _confirmLogout,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                      ),
+                      child: Text(
+                        '登出，換一個帳號',
+                        textAlign: TextAlign.center,
+                        style: ubanText(20, FontWeight.w600, c.text2),
+                      ),
                     ),
                   ],
                 ),

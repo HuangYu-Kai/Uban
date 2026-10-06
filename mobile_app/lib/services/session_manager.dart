@@ -26,6 +26,10 @@ class SessionManager {
     'access_token',
     'elder_room_id',
     'selected_elder_id', 'selected_elder_name',
+    // ★ 2026-10-06 登入流程審查（G58）：main.dart::handleForceLogout 的清單早就有
+    //   selected_elder_room_id，這裡漏了——family_dashboard_view 會讀它去連 signaling，
+    //   換身分／登出後殘留會讓下一個帳號連到上一位長輩的房間。
+    'selected_elder_room_id',
     'pending_accepted_call', 'pending_call_room', 'pending_call_id',
   ];
 
