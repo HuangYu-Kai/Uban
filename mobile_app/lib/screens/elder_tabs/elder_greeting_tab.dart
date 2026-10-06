@@ -22,54 +22,8 @@ import 'elder_layout.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import 'pet/pet_breed_store.dart';
 import 'pet/pet_ear_anchors.dart';
-
-/// 兩種長輩圖模式：
-/// 1. 【經典圖文組合】：1:1 方形、常見風景花卉、嚴格避讓主體之文字安全區、50+精選金句、語音防呆排版
-/// 2. 【AI 智能生圖】：1:1 方形、3D Pixar 風格、3D 立體日曆、萌寵小豬、立體浮雕金字
-enum GreetingCardMode {
-  classic(
-    title: '經典圖文組合',
-    subtitle: '1:1 方形・花卉風景・招牌大字',
-    icon: Icons.local_florist_rounded,
-  ),
-  aiGenerated(
-    title: 'AI 智能生圖',
-    subtitle: '1:1 方形・3D立體日曆・萌寵慶賀',
-    icon: Icons.auto_awesome_rounded,
-  );
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-
-  const GreetingCardMode({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
-}
-
-/// 圖庫分類項目資料結構
-class TemplateCategoryItem {
-  final String id;
-  final String label;
-  final IconData icon;
-
-  const TemplateCategoryItem({
-    required this.id,
-    required this.label,
-    required this.icon,
-  });
-}
-
-const List<TemplateCategoryItem> _templateCategories = [
-  TemplateCategoryItem(id: 'all', label: '🌟 全部精選', icon: Icons.auto_awesome_rounded),
-  TemplateCategoryItem(id: 'flower', label: '🌸 早安花卉', icon: Icons.local_florist_rounded),
-  TemplateCategoryItem(id: 'tea', label: '🍵 晨光茶席', icon: Icons.emoji_food_beverage_rounded),
-  TemplateCategoryItem(id: 'scenery', label: '⛰️ 四季山水', icon: Icons.terrain_rounded),
-  TemplateCategoryItem(id: 'solar_term', label: '🍂 時令節氣', icon: Icons.eco_rounded),
-  TemplateCategoryItem(id: 'festival', label: '🧧 節慶祝賀', icon: Icons.celebration_rounded),
-];
+import 'greeting/greeting_quotes.dart';
+import 'greeting/greeting_template_manifest.dart';
 
 /// 經典圖文成品範例（嚴格以「蓮花早安圖」為標準：定義安全避讓留白區）
 class ClassicPhotoTemplate {
@@ -106,41 +60,80 @@ class ClassicPhotoTemplate {
   });
 }
 
-/// AI 3D 智能生圖主題
-class AiArtTheme {
-  final String id;
-  final String name;
-  final String bgAsset;
-  final IconData icon;
-  final String badgeText;
-  final String defaultMain;
-  final String defaultSub;
-
-  const AiArtTheme({
-    required this.id,
-    required this.name,
-    required this.bgAsset,
-    required this.icon,
-    required this.badgeText,
-    required this.defaultMain,
-    required this.defaultSub,
-  });
+/// manifest 單筆 → 經典範本。`text_position` 決定預設文字落點（沿用既有的
+/// Alignment＋padding 系統，之後仍可拖動），`dark_bg` 決定亮字（深色底）或
+/// 招牌寶藍字＋白光暈（淺色底）。預設句依分類帶一句主題吉祥話。
+ClassicPhotoTemplate classicTemplateFromEntry(GreetingTemplateEntry e,
+    {DateTime? now}) {
+  final Alignment align;
+  final EdgeInsets padding;
+  switch (e.textPosition) {
+    case 'topCenter':
+      align = Alignment.topCenter;
+      padding = const EdgeInsets.only(left: 20, top: 28, right: 20, bottom: 40);
+    case 'topRight':
+      align = Alignment.topRight;
+      padding = const EdgeInsets.only(left: 40, top: 28, right: 24, bottom: 40);
+    case 'bottomLeft':
+      align = Alignment.bottomLeft;
+      padding = const EdgeInsets.only(left: 24, bottom: 26, right: 28, top: 30);
+    default:
+      align = Alignment.topLeft;
+      padding = const EdgeInsets.only(left: 24, top: 28, right: 30, bottom: 40);
+  }
+  final Color color =
+      e.darkBg ? const Color(0xFFFEF08A) : const Color(0xFF0052D4);
+  final List<Shadow> shadows = e.darkBg
+      ? const [
+          Shadow(color: Color(0xFF78350F), blurRadius: 16),
+          Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
+        ]
+      : const [
+          Shadow(color: Colors.white, blurRadius: 26),
+          Shadow(color: Colors.white, blurRadius: 18),
+          Shadow(color: Colors.white, blurRadius: 10),
+          Shadow(color: Colors.white, blurRadius: 4),
+          Shadow(color: Color(0x99000000), blurRadius: 8, offset: Offset(2, 2)),
+        ];
+  return ClassicPhotoTemplate(
+    id: e.id,
+    name: e.title,
+    bgAsset: e.assetPath,
+    icon: _iconForCategory(e.category),
+    categoryTag: kGreetingCategoryLabels[e.category] ?? e.category,
+    category: e.category,
+    textAlign: align,
+    textPadding: padding,
+    defaultColor: color,
+    defaultShadows: shadows,
+    defaultMain:
+        GreetingQuoteGenerator.themedDefault(e.category, e.id, now: now),
+    defaultSub: '心寬福就來，天天好心境。',
+  );
 }
 
-/// 每日精選長輩金句項目
-class GoldenQuote {
-  final String mainTitle;
-  final String subTitle;
-  final String category;
-
-  const GoldenQuote({
-    required this.mainTitle,
-    required this.subTitle,
-    required this.category,
-  });
+IconData _iconForCategory(String c) {
+  switch (c) {
+    case 'lotus':
+    case 'flower':
+      return Icons.local_florist_rounded;
+    case 'koi':
+    case 'lake':
+      return Icons.water_rounded;
+    case 'sunrise':
+      return Icons.wb_twilight_rounded;
+    case 'bamboo':
+      return Icons.grass_rounded;
+    case 'mountain':
+      return Icons.terrain_rounded;
+    case 'tea':
+      return Icons.emoji_food_beverage_rounded;
+    default:
+      return Icons.image_rounded;
+  }
 }
 
-/// 👵 每日吉利長輩祝賀圖分頁（1:1 方形、成品範例主體避讓、50+金句、語音防呆排版）
+/// 👵 每日吉利長輩祝賀圖分頁（1:1 方形、成品範例主體避讓、金句排列組合、語音防呆排版）
 class ElderGreetingTab extends StatefulWidget {
   final int userId;
   final String userName;
@@ -158,6 +151,9 @@ class ElderGreetingTab extends StatefulWidget {
   /// ElderHomeScreen 經 ElderPetTab 傳入。
   final GlobalKey? tutorialKey;
 
+  /// 讀範本清單（manifest）用的 bundle；null＝`rootBundle`。測試用。
+  final AssetBundle? assetBundle;
+
   const ElderGreetingTab({
     super.key,
     required this.userId,
@@ -165,6 +161,7 @@ class ElderGreetingTab extends StatefulWidget {
     this.embedded = false,
     this.refreshSignal,
     this.tutorialKey,
+    this.assetBundle,
   });
 
   @override
@@ -173,9 +170,6 @@ class ElderGreetingTab extends StatefulWidget {
 
 class _ElderGreetingTabState extends State<ElderGreetingTab> {
   final GlobalKey _cardRepaintKey = GlobalKey();
-
-  // 模式切換：經典圖文 vs AI 智能生圖
-  GreetingCardMode _currentMode = GreetingCardMode.classic;
 
   // 狀態資料
   PetGrowthState? _petState;
@@ -188,7 +182,6 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   bool _wasVisible = false;
   late String _customSenderName;
   bool _isSharing = false;
-  bool _isAiGenerating = false;
 
   // 經典模式選中範本
   int _classicTemplateIndex = 0;
@@ -200,6 +193,10 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   // 以比例儲存，換螢幕尺寸與 2.8 倍匯出都不會跑位。
   static const String _kLayoutHintPrefKey = 'greeting_layout_hint_seen';
   Offset? _pigFrac;
+  // 小豬的預設落點（量測文字實際範圍後選出不重疊的角落）；null＝先用版面預設。
+  Alignment? _pigCorner;
+  // 預設落點四角都蓋到字時，把小豬縮小（1.0＝正常大小，最小 0.5）。
+  double _pigScale = 1.0;
   Offset? _textFrac;
   _GreetingDragItem? _draggingItem; // 拖動中才顯示虛線外框（匯出前一定是 null）
   bool _layoutHintSeen = false;
@@ -211,11 +208,10 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   Offset _dragStartTopLeft = Offset.zero; // 方形座標（px）
   Size _dragChildSize = Size.zero;
 
-  // AI 模式選中主題
-  int _aiThemeIndex = 0;
-
-  // 金句索引 (0 ~ 49)
-  int _currentQuoteIndex = 0;
+  // 目前的祝福句（「換句好話」由排列組合產生器產生）
+  final GreetingQuoteGenerator _quoteGen = GreetingQuoteGenerator();
+  late GreetingQuote _currentQuote =
+      GreetingQuote(_classicTemplates[0].defaultMain, GreetingQuoteGenerator.curated[0].subTitle);
 
   // 範本預設文字覆寫
   String? _customTemplateMainText;
@@ -229,7 +225,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   // ════════════════════════════════════════════════════════════════
   // 1. 經典圖文成品範例庫（嚴格定義留白避讓區，1:1 方形標準）
   // ════════════════════════════════════════════════════════════════
-  final List<ClassicPhotoTemplate> _classicTemplates = const [
+  static const List<ClassicPhotoTemplate> _builtinTemplates = [
     // 01 蓮花圖（早安花卉）
     ClassicPhotoTemplate(
       id: 'classic_lotus',
@@ -342,24 +338,6 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
       defaultMain: '靜心常樂\n淡泊明志 福自來',
       defaultSub: '心如止水無憂慮，天天喜樂伴安康。',
     ),
-    // 07 破曉朝陽（四季山水）
-    ClassicPhotoTemplate(
-      id: 'morning_sun',
-      name: '旭日初升・山川吐霞',
-      bgAsset: 'assets/images/morning_bg.png',
-      icon: Icons.wb_twilight_rounded,
-      categoryTag: '晨光破曉',
-      category: 'scenery',
-      textAlign: Alignment.topCenter,
-      textPadding: EdgeInsets.only(left: 20, top: 28, right: 20, bottom: 30),
-      defaultColor: Color(0xFFFFD54F),
-      defaultShadows: [
-        Shadow(color: Color(0xFF92400E), blurRadius: 14),
-        Shadow(color: Colors.black87, blurRadius: 10, offset: Offset(2, 2)),
-      ],
-      defaultMain: '朝陽送暖\n祝好友事事順利',
-      defaultSub: '晨光普照天地闊，吉祥如意迎新朝。',
-    ),
     // 08 白露時令（時令節氣）
     ClassicPhotoTemplate(
       id: 'solar_autumn_cool',
@@ -419,103 +397,9 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     ),
   ];
 
-  // ════════════════════════════════════════════════════════════════
-  // 2. AI 智能 3D 立體主題庫（1:1 方形）
-  // ════════════════════════════════════════════════════════════════
-  final List<AiArtTheme> _aiThemes = const [
-    AiArtTheme(
-      id: 'ai_pig_calendar',
-      name: '3D 萌寵立體日曆',
-      bgAsset: 'assets/images/ai_card_pig_calendar.jpg',
-      icon: Icons.calendar_month_rounded,
-      badgeText: '🤖 AI 3D 實木桌曆・萌寵慶生',
-      defaultMain: '萬事勝意・日日是好日',
-      defaultSub: '元氣小豬伴您天天活力滿滿，福泰安康！',
-    ),
-    AiArtTheme(
-      id: 'ai_pig_fortune',
-      name: '3D 祥瑞捧金元寶',
-      bgAsset: 'assets/images/ai_card_pig_fortune.jpg',
-      icon: Icons.stars_rounded,
-      badgeText: '🤖 AI 3D 金元寶・祥雲宮燈',
-      defaultMain: '招財納福・福星高照',
-      defaultSub: '今日吉星拱照，全家健康平安、財源滾滾來！',
-    ),
-    AiArtTheme(
-      id: 'ai_birthday_3d',
-      name: '3D 歡慶立體祝壽',
-      bgAsset: 'assets/images/ai_card_birthday_3d.jpg',
-      icon: Icons.cake_rounded,
-      badgeText: '🤖 AI 3D 浮雕大日曆・生辰祝壽',
-      defaultMain: '福如東海・壽比南山',
-      defaultSub: '歲月靜好、平安喜樂，祝您天天笑口常開！',
-    ),
-  ];
-
-  // ════════════════════════════════════════════════════════════════
-  // 3. 擴充至 50 句的長輩金句庫（五大分類）
-  // ════════════════════════════════════════════════════════════════
-  final List<GoldenQuote> _quotes = const [
-    // 🌸 一、早安感謝 (10 句)
-    GoldenQuote(category: '早安感謝', mainTitle: '早安\n感謝\n祝您一天順利', subTitle: '心寬福就來，天天好心境，身心安康萬事興。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '晨光送暖\n祝好友事事順心', subTitle: '一縷清風送吉祥，願今天所有的美好都與您相伴。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '早安吉祥\n微笑迎接新的一天', subTitle: '開心度過每一天，心寬病不來，平安是真福。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '清晨問候\n願您喜樂安康', subTitle: '千言萬語道一聲早，深深祝福朋友身體健步如飛！'),
-    GoldenQuote(category: '早安感謝', mainTitle: '早安如意\n心中有愛日日晴', subTitle: '世間萬物皆美好，只要心境寬廣，天天都是艷陽天。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '朝陽迎福\n祝您精神百倍', subTitle: '開啟朝氣滿滿的一天，走走路、喝口茶，逍遙自在。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '早安道好\n天天平安天天好', subTitle: '問候隨晨風而來，願好友健康快樂、笑口常開。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '晨曦微風\n送上滿滿的祝福', subTitle: '走過歲月珍惜緣分，祝願老友生活甜甜、幸福綿綿。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '早晨好心情\n幸福快樂隨身行', subTitle: '感謝生命中的每一位好友，願大家平安喜樂每一天。'),
-    GoldenQuote(category: '早安感謝', mainTitle: '開門見喜\n祝大家順風順水', subTitle: '早起深呼吸，精神好、身體好，好運自然跟著到。'),
-
-    // 🌿 二、平安健康 (10 句)
-    GoldenQuote(category: '平安健康', mainTitle: '知足常樂\n平安就是福', subTitle: '人生最大的財富是健康，最好的境界是平安。'),
-    GoldenQuote(category: '平安健康', mainTitle: '身心安康\n無病無痛樂逍遙', subTitle: '粗茶淡飯皆滋味，健步如飛身骨強，祝好友長壽安康。'),
-    GoldenQuote(category: '平安健康', mainTitle: '走路強身\n日日健步活力旺', subTitle: '每天動一動、心情放輕鬆，小豬伴阿公天天散步去！'),
-    GoldenQuote(category: '平安健康', mainTitle: '健康第一\n平安才是真富貴', subTitle: '不攀比、不焦慮，身心舒暢、兒女爭氣便是好福氣。'),
-    GoldenQuote(category: '平安健康', mainTitle: '心寬壽長\n笑看人生萬事安', subTitle: '萬事隨緣心自在，少生悶氣多歡笑，松柏長青壽綿延。'),
-    GoldenQuote(category: '平安健康', mainTitle: '飲水暖胃\n保重身體迎朝陽', subTitle: '清晨一杯溫開水，滋潤身心氣色好，祝您活力四射。'),
-    GoldenQuote(category: '平安健康', mainTitle: '福壽雙全\n松柏長青樂陶陶', subTitle: '願您福如東海浩瀚長，壽比南山不老松！'),
-    GoldenQuote(category: '平安健康', mainTitle: '神清氣爽\n安泰祥和福氣來', subTitle: '心平氣和百病消，早起活動手腳健，祝您元氣滿分。'),
-    GoldenQuote(category: '平安健康', mainTitle: '歲月靜好\n身體硬朗最快活', subTitle: '粗茶淡飯養天年，逍遙自在心無憂，早安吉祥。'),
-    GoldenQuote(category: '平安健康', mainTitle: '福星高照\n長命百歲喜盈門', subTitle: '家有老者如獲至寶，願長輩身強體健、闔府安泰。'),
-
-    // 🍵 三、知足禪意 (10 句)
-    GoldenQuote(category: '知足禪意', mainTitle: '心寬福就來\n天天順心如意', subTitle: '心有多寬，福有多深。凡事看開，天地自然寬闊。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '一壺清茶\n淡看世事皆美好', subTitle: '品一口清茶，留一片心香，願好友天天順風順水。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '日日是好日\n時時好心情', subTitle: '不為往事憂，只為餘生笑，每一天都是最好的安排。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '隨緣自得\n心中無事勝神仙', subTitle: '春有百花秋有月，若無閒事掛心頭，便是人間好時節。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '看淡得失\n平安知足即是福', subTitle: '少計較多感恩，珍惜眼前擁有的，幸福就在身邊。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '厚德載物\n善心常在福自生', subTitle: '善念如春風，福報自然來，祝好友天天心花怒放。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '花開見佛\n心靜處處有清香', subTitle: '心清神自寧，淡泊名與利，平安吉祥常相伴。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '放下執念\n天地寬廣任逍遙', subTitle: '人生是一場修行，看透得失心自在，祝您喜樂安詳。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '珍惜當下\n平凡日子最溫暖', subTitle: '每天能吃能走能歡笑，就是人間最美好的幸福。'),
-    GoldenQuote(category: '知足禪意', mainTitle: '心善語柔\n廣結善緣納千祥', subTitle: '一言一句皆是福，和顏悅色迎親友，早安大吉。'),
-
-    // 🍂 四、時令節氣 (10 句)
-    GoldenQuote(category: '時令節氣', mainTitle: '時令添衣\n順應天時保安康', subTitle: '節氣轉換早晚涼，記得多添薄衣裳，溫水暖胃保平安。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '秋意漸濃\n早晚溫差多保重', subTitle: '微涼秋風送清爽，出門散步多小心，祝好友順遂。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '立秋納福\n五穀豐收身心泰', subTitle: '秋水長天共一色，祝好友秋日收穫滿滿、吉祥如意。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '白露凝霜\n莫貪清涼多添衣', subTitle: '節氣提醒您多保重，溫潤飲食少寒涼，早安吉祥。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '寒露添暖\n願您溫暖過秋冬', subTitle: '添衣加被保身體，暖心問候傳老友，順心安康。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '霜降平安\n防寒保暖心自寬', subTitle: '秋盡冬來迎新季，祝好友闔家幸福、四季平安。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '冬至安康\n紅白湯圓添歲福', subTitle: '一碗甜湯圓，全家大團圓，祝您福氣滿滿多喜樂。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '春暖花開\n萬物復甦迎好運', subTitle: '春風送暖百花開，新的一季氣象新，萬事勝意。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '清明安泰\n春光明媚順心意', subTitle: '春雨綿綿潤萬物，思親念故享清福，早安安好。'),
-    GoldenQuote(category: '時令節氣', mainTitle: '歲時輪轉\n節氣平安伴身邊', subTitle: '春去秋來四季好，歲月沉澱情意真，祝好友長壽康泰。'),
-
-    // 👨‍👩‍👧‍👦 五、家庭親情 (10 句)
-    GoldenQuote(category: '家庭親情', mainTitle: '一家和睦\n富貴吉祥萬事成', subTitle: '家和萬事興，心中常存感恩心，祝全家老少平安。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '兒孫滿堂\n福祿綿延天賜祥', subTitle: '晚輩孝順、長輩安泰，一家其樂融融是最大福氣。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '感謝有您\n真摯友情長相隨', subTitle: '相遇是緣分，相知是幸福，祝老同學、老朋友天天快樂！'),
-    GoldenQuote(category: '家庭親情', mainTitle: '走過歲月\n珍惜每一位老友', subTitle: '常聯繫心不遠，一杯茶話當年，願彼此長命百歲。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '親情無價\n一家平安樂融融', subTitle: '孩子在外平安工作，長輩在家身體安康，全家美滿。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '心繫晚輩\n願孩子出門皆平安', subTitle: '老父親、老母親的牽掛，祝兒女在外順心、身體強壯。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '老伴同行\n相知相守幸福長', subTitle: '少年夫妻老來伴，平平淡淡才是真，祝天天開心。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '好友同樂\n常常聯繫情意深', subTitle: '天氣好出門走走，泡茶聊天敘舊情，早安順遂。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '福澤子孫\n世代和諧家道昌', subTitle: '言傳身教留美德，一家祥和福澤厚，祝大家富貴安康。'),
-    GoldenQuote(category: '家庭親情', mainTitle: '同舟共濟\n歲月深處有溫情', subTitle: '感恩身邊所有陪伴我們的人，願幸福永遠圍繞您。'),
-  ];
+  /// 目前可選的範本：內建 + manifest 載入的新範本（載入失敗就只有內建）。
+  late List<ClassicPhotoTemplate> _classicTemplates =
+      List.of(_builtinTemplates);
 
   @override
   void initState() {
@@ -529,6 +413,22 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     _checkAndPrioritizeHolidayTemplates();
     unawaited(_loadLayout());
     unawaited(_loadHintFlag());
+    unawaited(_loadManifestTemplates());
+  }
+
+  /// 載入 manifest 的新範本並接在內建範本後面（索引不變、已選範本不受影響）。
+  /// 清單不存在／壞掉／全重複時什麼都不做，維持只有內建範本。
+  Future<void> _loadManifestTemplates() async {
+    final entries =
+        await loadGreetingManifest(widget.assetBundle ?? rootBundle);
+    if (!mounted || entries.isEmpty) return;
+    final existing = {for (final t in _classicTemplates) t.id};
+    final added = [
+      for (final e in entries)
+        if (!existing.contains(e.id)) classicTemplateFromEntry(e),
+    ];
+    if (added.isEmpty) return;
+    setState(() => _classicTemplates = [..._classicTemplates, ...added]);
   }
 
   @override
@@ -606,7 +506,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
       key: const ValueKey('greeting_pig_overlay'),
       child: LayoutBuilder(
         builder: (context, box) {
-          final w = box.maxWidth * 0.22;
+          final w = box.maxWidth * 0.22 * _pigScale;
           final pad = box.maxWidth * 0.04;
           // 白邊半徑：約小豬寬的 3.5%，視覺上與大字標語的白描邊粗細相當
           final r = w * 0.035;
@@ -711,18 +611,23 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
   }
 
   Future<void> _saveLayout() async {
+    // 先在「同步段」取下範本鍵與位置：存檔是非同步的，若 await 之後才讀，
+    // 使用者剛好切了範本就會把 A 範本的拖動寫進（或清掉）B 範本的鍵。
+    final key = _layoutPrefKey;
+    final pig = _pigFrac;
+    final text = _textFrac;
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (!_hasCustomLayout) {
-        await prefs.remove(_layoutPrefKey);
+      if (pig == null && text == null) {
+        await prefs.remove(key);
         return;
       }
       Map<String, double> enc(Offset o) => {'x': o.dx, 'y': o.dy};
       await prefs.setString(
-        _layoutPrefKey,
+        key,
         jsonEncode({
-          if (_pigFrac != null) 'pig': enc(_pigFrac!),
-          if (_textFrac != null) 'text': enc(_textFrac!),
+          if (pig != null) 'pig': enc(pig),
+          if (text != null) 'text': enc(text),
         }),
       );
     } catch (_) {}
@@ -864,7 +769,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
 
   /// 圖下方的拖動提示（拖過一次就不再出現；不在匯出的 RepaintBoundary 內）。
   Widget _buildLayoutHint() {
-    if (_currentMode != GreetingCardMode.classic || _layoutHintSeen) {
+    if (_layoutHintSeen) {
       return const SizedBox.shrink();
     }
     final c = UbanColors.of(context);
@@ -972,14 +877,6 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     }
   }
 
-  void _switchMode(GreetingCardMode mode) {
-    if (_currentMode == mode) return;
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _currentMode = mode;
-    });
-  }
-
   /// 經典模式切換字體發光顏色
   void _cycleClassicFontStyle() {
     HapticFeedback.lightImpact();
@@ -988,69 +885,25 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     });
   }
 
-  /// 循環切換 50+ 句精選金句
+  /// 「換句好話」：排列組合產生新句（問候＋祝福＋結尾，依時段與範本主題）。
   void _nextQuote() {
     HapticFeedback.lightImpact();
+    final tpl = _classicTemplates[_classicTemplateIndex];
+    final shown = _getCurrentMainText();
+    _quoteGen.markShown(shown); // 範本預設句也算「上一句」，不會連續重複
     setState(() {
       _customTemplateMainText = null;
-      _currentQuoteIndex = (_currentQuoteIndex + 1) % _quotes.length;
+      _currentQuote = _quoteGen.next(
+        now: DateTime.now(),
+        themeCategory: tpl.category,
+        termName: _solarTerm,
+      );
     });
   }
 
-  /// AI 模式下重新生成
-  Future<void> _triggerAiRegeneration() async {
-    HapticFeedback.heavyImpact();
-    setState(() => _isAiGenerating = true);
+  String _getCurrentMainText() => _customTemplateMainText ?? _currentQuote.main;
 
-    await Future.delayed(const Duration(milliseconds: 1400));
-
-    if (mounted) {
-      setState(() {
-        _aiThemeIndex = (_aiThemeIndex + 1) % _aiThemes.length;
-        _currentQuoteIndex = (_currentQuoteIndex + 1) % _quotes.length;
-        _isAiGenerating = false;
-      });
-      HapticFeedback.vibrate();
-      final c = UbanColors.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: c.brandFill,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Row(
-            children: [
-              Icon(Icons.auto_awesome_rounded, color: c.warm, size: 24),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '✨ AI 已成功為您繪製全新 3D【${_aiThemes[_aiThemeIndex].name}】！',
-                  style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-  }
-
-  String _getCurrentMainText() {
-    if (_currentMode == GreetingCardMode.classic) {
-      if (_customTemplateMainText != null) return _customTemplateMainText!;
-      return _quotes[_currentQuoteIndex].mainTitle;
-    } else {
-      return _aiThemes[_aiThemeIndex].defaultMain;
-    }
-  }
-
-  String _getCurrentSubText() {
-    if (_currentMode == GreetingCardMode.classic) {
-      return _quotes[_currentQuoteIndex].subTitle;
-    } else {
-      return _aiThemes[_aiThemeIndex].defaultSub;
-    }
-  }
+  String _getCurrentSubText() => _currentQuote.sub;
 
   /// 擷取長輩圖畫布為 PNG
   Future<Uint8List?> _captureCardImage() async {
@@ -1085,7 +938,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     final String subText = _getCurrentSubText();
 
     final shareText =
-        '【$_customSenderName 的早安祝福 (${_currentMode.title})】\n'
+        '【$_customSenderName 的早安祝福】\n'
         '🌸 ${_now.month}月${_now.day}日 ($_lunarDateStr・$_solarTerm)\n'
         '📜 今日宜: ${_almanacInfo.yiList.take(3).join("、")}\n'
         '✨ $mainText\n'
@@ -1331,8 +1184,6 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             padding: EdgeInsets.fromLTRB(24, 16, 16, elderNavClearance(context)),
             child: Column(
               children: [
-                _buildModeSelector(),
-                const SizedBox(height: 16),
                 Center(
                   child: RepaintBoundary(
                     key: _cardRepaintKey,
@@ -1353,19 +1204,12 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_currentMode == GreetingCardMode.classic)
-                  _buildClassicTemplateSelectorBar(),
+                _buildClassicTemplateSelectorBar(),
                 const SizedBox(height: 14),
-                if (_currentMode == GreetingCardMode.classic)
-                  _buildClassicActionTools()
-                else
-                  _buildAiActionTools(),
-                // 小豬開關只在經典模式顯示（AI 圖本身已生成小豬，不疊加）
-                if (_currentMode == GreetingCardMode.classic) ...[
-                  const SizedBox(height: 12),
-                  _buildPigToggle(),
-            _buildResetLayoutButton(),
-                ],
+                _buildClassicActionTools(),
+                const SizedBox(height: 12),
+                _buildPigToggle(),
+                _buildResetLayoutButton(),
                 const SizedBox(height: 18),
                 _buildLineShareButton(),
                 const SizedBox(height: 12),
@@ -1403,8 +1247,6 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     final Widget column = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildModeSelector(),
-          const SizedBox(height: 14),
           Center(
             key: widget.tutorialKey,
             child: RepaintBoundary(
@@ -1414,19 +1256,12 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           ),
           _buildLayoutHint(),
           const SizedBox(height: 14),
-          if (_currentMode == GreetingCardMode.classic)
-            _buildClassicTemplateSelectorBar(),
+          _buildClassicTemplateSelectorBar(),
           const SizedBox(height: 14),
-          if (_currentMode == GreetingCardMode.classic)
-            _buildClassicActionTools()
-          else
-            _buildAiActionTools(),
-          // 小豬開關只在經典模式顯示（AI 圖本身已生成小豬，不疊加）
-          if (_currentMode == GreetingCardMode.classic) ...[
-            const SizedBox(height: 12),
-            _buildPigToggle(),
-            _buildResetLayoutButton(),
-          ],
+          _buildClassicActionTools(),
+          const SizedBox(height: 12),
+          _buildPigToggle(),
+          _buildResetLayoutButton(),
           const SizedBox(height: 16),
           _buildLineShareButton(),
           const SizedBox(height: 10),
@@ -1467,73 +1302,6 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     );
   }
 
-  /// 模式切換按鈕
-  Widget _buildModeSelector() {
-    final c = UbanColors.of(context);
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: c.surface2,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildModeTab(
-              mode: GreetingCardMode.classic,
-              isSelected: _currentMode == GreetingCardMode.classic,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _buildModeTab(
-              mode: GreetingCardMode.aiGenerated,
-              isSelected: _currentMode == GreetingCardMode.aiGenerated,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeTab({
-    required GreetingCardMode mode,
-    required bool isSelected,
-  }) {
-    final c = UbanColors.of(context);
-    return GestureDetector(
-      onTap: () => _switchMode(mode),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? c.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: isSelected ? c.shadows.card : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              mode.icon,
-              size: 20,
-              color: isSelected ? c.brandStrong : c.text2,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              mode.title,
-              style: GoogleFonts.notoSansTc(
-                fontSize: 16,
-                fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                color: isSelected ? c.text : c.text2,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// 1:1 方形預覽卡片
   Widget _buildSquarePreviewCard({double? maxWidth}) {
     final c = UbanColors.of(context);
@@ -1550,19 +1318,19 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: _currentMode == GreetingCardMode.classic
-                ? _buildClassicSquareContent()
-                : _buildAiSquareContent(),
+            child: _buildClassicSquareContent(),
           ),
         ),
       ),
     );
   }
 
-  /// 模式一：經典圖文 1:1 方形內容（純粹大字！嚴格主體避讓排版）
+  /// 經典圖文 1:1 方形內容（純粹大字！嚴格主體避讓排版）
   Widget _buildClassicSquareContent() {
     final tpl = _classicTemplates[_classicTemplateIndex];
     final String mainText = _getCurrentMainText();
+    // 每次重建後量測文字範圍，替小豬挑不蓋到字的角落（只影響預設落點）
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updatePigCorner());
 
     return Stack(
       key: _squareKey,
@@ -1572,6 +1340,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           child: Image.asset(
             tpl.bgAsset,
             fit: BoxFit.cover,
+            cacheWidth: 1200, // 方形最大約 480dp，匯出 2.8 倍；超大原圖不整張解碼
             errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0F766E)),
           ),
         ),
@@ -1607,130 +1376,9 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         ),
 
         // 小豬放在沒有大字的那一側：文字靠下 → 放右上，否則放右下
-        _buildPigOverlay(
-            tpl.textAlign.y > 0 ? Alignment.topRight : Alignment.bottomRight),
+        _buildPigOverlay(_pigCorner ??
+            (tpl.textAlign.y > 0 ? Alignment.topRight : Alignment.bottomRight)),
       ],
-    );
-  }
-
-  /// 模式二：AI 智能生圖 1:1 方形內容
-  Widget _buildAiSquareContent() {
-    final theme = _aiThemes[_aiThemeIndex];
-    final String mainText = _getCurrentMainText();
-
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Image.asset(
-            theme.bgAsset,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF1E1B4B)),
-          ),
-        ),
-        Positioned.fill(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.30),
-                  Colors.transparent,
-                  Colors.black.withValues(alpha: 0.65),
-                  Colors.black.withValues(alpha: 0.88),
-                ],
-                stops: const [0.0, 0.40, 0.70, 1.0],
-              ),
-            ),
-          ),
-        ),
-        if (_isAiGenerating)
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.65),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(color: Colors.amber, strokeWidth: 4),
-                    const SizedBox(height: 14),
-                    Text('🤖 AI 正在渲染 3D 場景…', style: GoogleFonts.notoSansTc(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-        // ★ 純粹 3D 浮雕超大字祝賀（無多餘標籤干擾）
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 28,
-          child: _buildAiTypography(mainText),
-        ),
-
-        // AI 模式不疊小豬：AI 圖本身已生成小豬（匯出圖也因此不含疊圖）
-      ],
-    );
-  }
-
-  /// AI 模式 3D 浮雕大字排版
-  Widget _buildAiTypography(String text) {
-    final cleanText = text.replaceAll('・', '\n');
-    final lines = cleanText.split('\n');
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: lines.map((line) {
-        final trimmed = line.trim();
-        if (trimmed.isEmpty) return const SizedBox.shrink();
-
-        double fontSize = trimmed.length <= 4 ? 54.0 : 44.0;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2.0),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Stack(
-              children: [
-                // 琥珀紅棕立體描邊
-                Text(
-                  trimmed,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w900,
-                    height: 1.15,
-                    letterSpacing: 2.0,
-                    foreground: Paint()
-                      ..style = PaintingStyle.stroke
-                      ..strokeWidth = 8.0
-                      ..strokeCap = StrokeCap.round
-                      ..strokeJoin = StrokeJoin.round
-                      ..color = const Color(0xFF78350F),
-                  ),
-                ),
-                // 3D 金黃實心文字
-                Text(
-                  trimmed,
-                  style: GoogleFonts.notoSansTc(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w900,
-                    height: 1.15,
-                    letterSpacing: 2.0,
-                    color: const Color(0xFFFDE68A),
-                    shadows: const [
-                      Shadow(color: Color(0xFF78350F), offset: Offset(2, 4), blurRadius: 4),
-                      Shadow(color: Colors.black, offset: Offset(0, 5), blurRadius: 10),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
     );
   }
 
@@ -1861,6 +1509,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
+                  cacheWidth: 150,
                   errorBuilder: (_, __, ___) =>
                       Container(width: 48, height: 48, color: c.brandContainer),
                 ),
@@ -1921,11 +1570,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                         child: PressableScale(
                           onTap: () {
                             HapticFeedback.lightImpact();
-                            setState(() {
-                              _classicTemplateIndex = idx;
-                              _customTemplateMainText = t.defaultMain;
-                            });
-                            unawaited(_loadLayout());
+                            _applyTemplate(idx);
                           },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
@@ -1944,6 +1589,7 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                                 width: 60,
                                 height: 60,
                                 fit: BoxFit.cover,
+                                cacheWidth: 180,
                                 errorBuilder: (_, __, ___) => Container(
                                   width: 60,
                                   height: 60,
@@ -1966,7 +1612,78 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
     );
   }
 
-  /// 📖 精選長輩圖庫全覽面板（彈窗式大圖庫，支援 6 大分類、雙排大卡片，專為老花眼設計）
+  /// 依「文字實際範圍」替小豬挑預設角落：文字在上半 → 優先放下方（右、左），
+  /// 文字在下半 → 優先放上方；取第一個完全不重疊的角落，都重疊就取重疊面積最小者。
+  /// 使用者拖過小豬（`_pigFrac` 非 null）時不動。
+  void _updatePigCorner() {
+    if (!mounted || !_showPig || _pigFrac != null) return;
+    final sq = _squareKey.currentContext?.findRenderObject() as RenderBox?;
+    final tb = _textItemKey.currentContext?.findRenderObject() as RenderBox?;
+    if (sq == null || tb == null || !sq.hasSize || !tb.hasSize) return;
+    final side = sq.size.width;
+    if (side <= 0) return;
+    final textRect =
+        (tb.localToGlobal(Offset.zero, ancestor: sq) & tb.size).inflate(4);
+    final pb = _pigItemKey.currentContext?.findRenderObject() as RenderBox?;
+    final w = side * 0.22;
+    final h = (pb != null && pb.hasSize && pb.size.height > 0)
+        ? pb.size.height / _pigScale
+        : w;
+    final pad = side * 0.04;
+    final textOnTop = textRect.center.dy < side / 2;
+    final order = textOnTop
+        ? [Alignment.bottomRight, Alignment.bottomLeft, Alignment.topRight, Alignment.topLeft]
+        : [Alignment.topRight, Alignment.topLeft, Alignment.bottomRight, Alignment.bottomLeft];
+    Rect rectOf(Alignment a, double k) {
+      final pw = w * k, ph = h * k;
+      final left = a.x > 0 ? side - pad - pw : pad;
+      final top = a.y > 0 ? side - pad - ph : pad;
+      return Rect.fromLTWH(left, top, pw, ph);
+    }
+
+    double overlap(Rect r) {
+      final i = r.intersect(textRect);
+      return (i.width <= 0 || i.height <= 0) ? 0.0 : i.width * i.height;
+    }
+
+    // 先試「正常大小」的四個角，都不行再逐步縮小；最後取重疊最小者
+    Alignment best = order.first;
+    double bestScale = 1.0;
+    double bestArea = double.infinity;
+    for (final k in const [1.0, 0.85, 0.7, 0.6, 0.5]) {
+      for (final a in order) {
+        final area = overlap(rectOf(a, k));
+        if (area < bestArea) {
+          bestArea = area;
+          best = a;
+          bestScale = k;
+        }
+      }
+      if (bestArea == 0) break;
+    }
+    if (best != _pigCorner || bestScale != _pigScale) {
+      setState(() {
+        _pigCorner = best;
+        _pigScale = bestScale;
+      });
+    }
+  }
+
+  /// 套用範本：換背景、顯示該範本預設文字、載入該範本記住的拖動位置。
+  void _applyTemplate(int idx) {
+    if (idx < 0 || idx >= _classicTemplates.length) return;
+    final t = _classicTemplates[idx];
+    setState(() {
+      _classicTemplateIndex = idx;
+      _customTemplateMainText = t.defaultMain;
+      _pigCorner = null;
+      _pigScale = 1.0;
+    });
+    _quoteGen.markShown(t.defaultMain);
+    unawaited(_loadLayout());
+  }
+
+  /// 📖 精選長輩圖庫全覽面板：依分類分組（各組有 zh-TW 標題），方形縮圖網格。
   void _openGalleryModal() {
     HapticFeedback.mediumImpact();
     String selectedCategory = 'all';
@@ -1979,14 +1696,17 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             final uc = UbanColors.of(ctx);
-            final filteredTemplates = selectedCategory == 'all'
-                ? _classicTemplates
-                : _classicTemplates.where((t) => t.category == selectedCategory).toList();
+            final sections = groupGalleryByCategory<ClassicPhotoTemplate>(
+                _classicTemplates, (t) => t.category);
+            final visibleSections = selectedCategory == 'all'
+                ? sections
+                : sections.where((s) => s.categoryId == selectedCategory).toList();
 
             final screenHeight = MediaQuery.of(context).size.height;
             final isTablet = MediaQuery.of(context).size.width >= 680;
 
             return Container(
+              key: const ValueKey('greeting_gallery_sheet'),
               height: screenHeight * 0.88,
               decoration: BoxDecoration(
                 color: uc.surface,
@@ -2014,13 +1734,13 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '📖 精選長輩圖庫 (${_classicTemplates.length} 款)',
+                                '精選長輩圖庫 (${_classicTemplates.length} 款)',
                                 style: ubanText(20, FontWeight.w900, uc.text),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
-                                '點選任一範本立即套用・節氣與節慶每週更新',
+                                '點選任一範本立即套用',
                                 style: ubanText(13, FontWeight.w600, uc.text2),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -2044,217 +1764,87 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
                     ),
                   ),
 
-                  // 六大主題橫向滾動分類列（字大、圓角舒適、易點選）
+                  // 分類篩選列（全部 ＋ 實際有範本的分類；字大、圓角舒適、易點選）
                   SizedBox(
                     height: 48,
-                    child: ListView.builder(
+                    child: ListView(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _templateCategories.length,
-                      itemBuilder: (c, idx) {
-                        final cat = _templateCategories[idx];
-                        final isCatSelected = selectedCategory == cat.id;
-
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(
-                              cat.label,
-                              style: ubanText(
-                                14,
-                                isCatSelected ? FontWeight.w900 : FontWeight.w700,
-                                isCatSelected ? uc.onBrand : uc.text2,
+                      children: [
+                        for (final cat in [
+                          ('all', '全部'),
+                          for (final s in sections) (s.categoryId, s.label),
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              key: ValueKey('greeting_gallery_chip_${cat.$1}'),
+                              label: Text(
+                                cat.$2,
+                                style: ubanText(
+                                  15,
+                                  selectedCategory == cat.$1 ? FontWeight.w900 : FontWeight.w700,
+                                  selectedCategory == cat.$1 ? uc.onBrand : uc.text2,
+                                ),
                               ),
+                              selected: selectedCategory == cat.$1,
+                              selectedColor: uc.brandFill,
+                              backgroundColor: uc.surface2,
+                              side: BorderSide(
+                                color: selectedCategory == cat.$1 ? uc.brandFill : uc.line,
+                                width: 1.2,
+                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              onSelected: (val) {
+                                if (val) {
+                                  HapticFeedback.selectionClick();
+                                  setModalState(() => selectedCategory = cat.$1);
+                                }
+                              },
                             ),
-                            selected: isCatSelected,
-                            selectedColor: uc.brandFill,
-                            backgroundColor: uc.surface2,
-                            side: BorderSide(
-                              color: isCatSelected ? uc.brandFill : uc.line,
-                              width: 1.2,
-                            ),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            onSelected: (val) {
-                              if (val) {
-                                HapticFeedback.selectionClick();
-                                setModalState(() {
-                                  selectedCategory = cat.id;
-                                });
-                              }
-                            },
                           ),
-                        );
-                      },
+                      ],
                     ),
                   ),
                   const SizedBox(height: 10),
                   Divider(height: 1, thickness: 1, color: uc.line),
 
-                  // 雙排 / 三排大網格瀏覽
+                  // 依分類分組的方形縮圖網格（lazy sliver，約 40 張也不卡）
                   Expanded(
-                    child: GridView.builder(
+                    child: CustomScrollView(
                       physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: isTablet ? 3 : 2,
-                        childAspectRatio: 0.88,
-                        crossAxisSpacing: 14,
-                        mainAxisSpacing: 14,
-                      ),
-                      itemCount: filteredTemplates.length,
-                      itemBuilder: (c, i) {
-                        final tpl = filteredTemplates[i];
-                        final globalIdx = _classicTemplates.indexOf(tpl);
-                        final isSelected = _classicTemplateIndex == globalIdx;
-
-                        return GestureDetector(
-                          onTap: () {
-                            HapticFeedback.heavyImpact();
-                            setState(() {
-                              _classicTemplateIndex = globalIdx;
-                              _customTemplateMainText = tpl.defaultMain;
-                            });
-                            unawaited(_loadLayout());
-                            Navigator.pop(sheetCtx);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                backgroundColor: uc.brandFill,
-                                behavior: SnackBarBehavior.floating,
-                                duration: const Duration(seconds: 2),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                content: Text(
-                                  '✨ 已套用【${tpl.name}】！',
-                                  style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            );
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            decoration: BoxDecoration(
-                              color: uc.surface,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isSelected ? uc.brand : uc.line,
-                                width: isSelected ? 3.0 : 1.2,
-                              ),
-                              boxShadow: uc.shadows.card,
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(18),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  // 相片大預覽
-                                  Expanded(
-                                    child: Stack(
-                                      children: [
-                                        Positioned.fill(
-                                          child: Image.asset(
-                                            tpl.bgAsset,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => Container(color: uc.brandContainer),
-                                          ),
-                                        ),
-                                        Positioned.fill(
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(
-                                                begin: Alignment.topCenter,
-                                                end: Alignment.bottomCenter,
-                                                colors: [
-                                                  Colors.transparent,
-                                                  Colors.black.withValues(alpha: 0.45),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        // 左上角標籤
-                                        Positioned(
-                                          top: 8,
-                                          left: 8,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: tpl.isHolidaySpecial || tpl.isSolarTermSpecial
-                                                  ? uc.danger
-                                                  : Colors.black.withValues(alpha: 0.65),
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
-                                            child: Text(
-                                              tpl.categoryTag,
-                                              style: GoogleFonts.notoSansTc(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w800,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        // 右上角選中標章
-                                        if (isSelected)
-                                          Positioned(
-                                            top: 8,
-                                            right: 8,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(4),
-                                              decoration: BoxDecoration(
-                                                color: uc.brand,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: Icon(Icons.check_rounded, color: uc.onBrand, size: 18),
-                                            ),
-                                          ),
-                                        // 底部大字小預覽
-                                        Positioned(
-                                          bottom: 6,
-                                          left: 8,
-                                          right: 8,
-                                          child: Text(
-                                            tpl.defaultMain.replaceAll('\n', '・'),
-                                            style: GoogleFonts.notoSansTc(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w900,
-                                              color: Colors.white,
-                                              shadows: const [
-                                                Shadow(color: Colors.black, blurRadius: 4),
-                                              ],
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  // 下方文字說明
-                                  Container(
-                                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                                    color: uc.surface,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          tpl.name,
-                                          style: ubanText(
-                                            14,
-                                            FontWeight.w900,
-                                            isSelected ? uc.brandStrong : uc.text,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                      slivers: [
+                        for (final sec in visibleSections) ...[
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(18, 16, 16, 8),
+                              child: Text(
+                                '${sec.label}（${sec.items.length}）',
+                                key: ValueKey('greeting_gallery_header_${sec.categoryId}'),
+                                style: ubanText(18, FontWeight.w900, uc.text),
                               ),
                             ),
                           ),
-                        );
-                      },
+                          SliverPadding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            sliver: SliverGrid(
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: isTablet ? 4 : 3,
+                                childAspectRatio: 0.72,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                              ),
+                              delegate: SliverChildBuilderDelegate(
+                                (c, i) => _buildGalleryTile(
+                                    sec.items[i], uc, sheetCtx),
+                                childCount: sec.items.length,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                      ],
                     ),
                   ),
                 ],
@@ -2263,6 +1853,108 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
           },
         );
       },
+    );
+  }
+
+  /// 圖庫的一張方形縮圖（縮圖解碼寬度限制 300px，約 40 張也不吃記憶體）。
+  Widget _buildGalleryTile(
+      ClassicPhotoTemplate tpl, UbanColors uc, BuildContext sheetCtx) {
+    final globalIdx = _classicTemplates.indexOf(tpl);
+    final isSelected = _classicTemplateIndex == globalIdx;
+    return GestureDetector(
+      key: ValueKey('greeting_gallery_tile_${tpl.id}'),
+      onTap: () {
+        HapticFeedback.heavyImpact();
+        _applyTemplate(globalIdx);
+        Navigator.pop(sheetCtx);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: uc.brandFill,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            content: Text(
+              '已套用【${tpl.name}】',
+              style: GoogleFonts.notoSansTc(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AspectRatio(
+            aspectRatio: 1,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected ? uc.brand : uc.line,
+                  width: isSelected ? 3.0 : 1.2,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(13),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      tpl.bgAsset,
+                      fit: BoxFit.cover,
+                      cacheWidth: 300,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: uc.brandContainer,
+                        child: Icon(tpl.icon, size: 28, color: uc.brandStrong),
+                      ),
+                    ),
+                    if (tpl.isHolidaySpecial || tpl.isSolarTermSpecial)
+                      Positioned(
+                        top: 4,
+                        left: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: uc.danger,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            tpl.isHolidaySpecial ? '節慶' : '節氣',
+                            style: GoogleFonts.notoSansTc(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (isSelected)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(color: uc.brand, shape: BoxShape.circle),
+                          child: Icon(Icons.check_rounded, color: uc.onBrand, size: 16),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: Text(
+              tpl.name,
+              style: ubanText(13, FontWeight.w800, isSelected ? uc.brandStrong : uc.text),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2290,33 +1982,6 @@ class _ElderGreetingTabState extends State<ElderGreetingTab> {
             variant: UbanButtonVariant.outline,
             onPressed: _cycleClassicFontStyle,
           ),
-        ),
-      ],
-    );
-  }
-
-  /// AI 模式操作工具列
-  Widget _buildAiActionTools() {
-    return Column(
-      children: [
-        UbanButton(
-          label: 'AI 重新繪製 3D 新圖',
-          icon: Icons.auto_awesome_rounded,
-          size: UbanButtonSize.xl,
-          loading: _isAiGenerating,
-          onPressed: _isAiGenerating ? null : _triggerAiRegeneration,
-        ),
-        const SizedBox(height: 10),
-        UbanButton(
-          label: '切換主題 (${_aiThemes[_aiThemeIndex].name})',
-          icon: _aiThemes[_aiThemeIndex].icon,
-          variant: UbanButtonVariant.outline,
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            setState(() {
-              _aiThemeIndex = (_aiThemeIndex + 1) % _aiThemes.length;
-            });
-          },
         ),
       ],
     );

@@ -92,7 +92,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(scrollable.position.pixels, 0);
     // 在圖以外的地方拖，仍然可以捲動頁面
-    await tester.dragFrom(tester.getCenter(find.text('經典圖文組合')), const Offset(0, -150));
+    await tester.dragFrom(tester.getCenter(find.text('每日吉祥祝賀圖')), const Offset(0, -150));
     await tester.pump(const Duration(milliseconds: 100));
     expect(scrollable.position.pixels, greaterThan(0));
   });
@@ -119,13 +119,11 @@ void main() {
     expect(prefs.getString('greeting_layout_classic_lotus'), isNull);
   });
 
-  testWidgets('已拖過旗標：提示不再出現；AI 模式無拖動元素', (tester) async {
+  testWidgets('已拖過旗標：提示不再出現', (tester) async {
     await boot(tester, {'greeting_layout_hint_seen': true});
     expect(hint, findsNothing);
-    await tester.tap(find.text('AI 智能生圖'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(pig, findsNothing);
-    expect(text, findsNothing);
+    expect(pig, findsOneWidget);
+    expect(text, findsOneWidget);
   });
 
   testWidgets('匯出路徑不含拖動外框：未拖動時畫面沒有 highlight', (tester) async {

@@ -1,0 +1,250 @@
+[
+  {
+    "id": "lotus_1",
+    "file": "assets/images/greeting_templates/lotus_1.jpg",
+    "category": "lotus",
+    "title": "出水芙蓉",
+    "text_position": "topLeft",
+    "dark_bg": true
+  },
+  {
+    "id": "lotus_2",
+    "file": "assets/images/greeting_templates/lotus_2.jpg",
+    "category": "lotus",
+    "title": "荷塘清晨",
+    "text_position": "topLeft",
+    "dark_bg": true
+  },
+  {
+    "id": "lotus_3",
+    "file": "assets/images/greeting_templates/lotus_3.jpg",
+    "category": "lotus",
+    "title": "粉荷綻放",
+    "text_position": "topLeft",
+    "dark_bg": true
+  },
+  {
+    "id": "lotus_4",
+    "file": "assets/images/greeting_templates/lotus_4.jpg",
+    "category": "lotus",
+    "title": "荷風送爽",
+    "text_position": "topLeft",
+    "dark_bg": false
+  },
+  {
+    "id": "lotus_5",
+    "file": "assets/images/greeting_templates/lotus_5.jpg",
+    "category": "lotus",
+    "title": "雙蓮並蒂",
+    "text_position": "bottomLeft",
+    "dark_bg": true
+  },
+  {
+    "id": "koi_1",
+    "file": "assets/images/greeting_templates/koi_1.jpg",
+    "category": "koi",
+    "title": "錦鯉戲水",
+    "text_position": "bottomLeft",
+    "dark_bg": true
+  },
+  {
+    "id": "koi_2",
+    "file": "assets/images/greeting_templates/koi_2.jpg",
+    "category": "koi",
+    "title": "魚躍清波",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "koi_3",
+    "file": "assets/images/greeting_templates/koi_3.jpg",
+    "category": "koi",
+    "title": "年年有餘",
+    "text_position": "topCenter",
+    "dark_bg": true
+  },
+  {
+    "id": "koi_4",
+    "file": "assets/images/greeting_templates/koi_4.jpg",
+    "category": "koi",
+    "title": "魚樂悠游",
+    "text_position": "bottomLeft",
+    "dark_bg": true
+  },
+  {
+    "id": "sunrise_1",
+    "file": "assets/images/greeting_templates/sunrise_1.jpg",
+    "category": "sunrise",
+    "title": "旭日東昇",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "sunrise_2",
+    "file": "assets/images/greeting_templates/sunrise_2.jpg",
+    "category": "sunrise",
+    "title": "朝陽映海",
+    "text_position": "topCenter",
+    "dark_bg": true
+  },
+  {
+    "id": "sunrise_3",
+    "file": "assets/images/greeting_templates/sunrise_3.jpg",
+    "category": "sunrise",
+    "title": "金光灑海",
+    "text_position": "bottomLeft",
+    "dark_bg": true
+  },
+  {
+    "id": "sunrise_4",
+    "file": "assets/images/greeting_templates/sunrise_4.jpg",
+    "category": "sunrise",
+    "title": "雲上日出",
+    "text_position": "topRight",
+    "dark_bg": false
+  },
+  {
+    "id": "sunrise_5",
+    "file": "assets/images/greeting_templates/sunrise_5.jpg",
+    "category": "sunrise",
+    "title": "霞光萬丈",
+    "text_position": "topLeft",
+    "dark_bg": false
+  },
+  {
+    "id": "bamboo_1",
+    "file": "assets/images/greeting_templates/bamboo_1.jpg",
+    "category": "bamboo",
+    "title": "竹徑清幽",
+    "text_position": "bottomLeft",
+    "dark_bg": false
+  },
+  {
+    "id": "bamboo_2",
+    "file": "assets/images/greeting_templates/bamboo_2.jpg",
+    "category": "bamboo",
+    "title": "節節高升",
+    "text_position": "topCenter",
+    "dark_bg": true
+  },
+  {
+    "id": "bamboo_3",
+    "file": "assets/images/greeting_templates/bamboo_3.jpg",
+    "category": "bamboo",
+    "title": "竹報平安",
+    "text_position": "topLeft",
+    "dark_bg": false
+  },
+  {
+    "id": "mountain_1",
+    "file": "assets/images/greeting_templates/mountain_1.jpg",
+    "category": "mountain",
+    "title": "雲海群峰",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "mountain_2",
+    "file": "assets/images/greeting_templates/mountain_2.jpg",
+    "category": "mountain",
+    "title": "雲海層峰",
+    "text_position": "topLeft",
+    "dark_bg": false
+  },
+  {
+    "id": "mountain_3",
+    "file": "assets/images/greeting_templates/mountain_3.jpg",
+    "category": "mountain",
+    "title": "雲山如畫",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "mountain_4",
+    "file": "assets/images/greeting_templates/mountain_4.jpg",
+    "category": "mountain",
+    "title": "遠山含黛",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "mountain_5",
+    "file": "assets/images/greeting_templates/mountain_5.jpg",
+    "category": "mountain",
+    "title": "雪嶺雲海",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "tea_1",
+    "file": "assets/images/greeting_templates/tea_1.jpg",
+    "category": "tea",
+    "title": "茶香滿園",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "tea_2",
+    "file": "assets/images/greeting_templates/tea_2.jpg",
+    "category": "tea",
+    "title": "茶園晴空",
+    "text_position": "topCenter",
+    "dark_bg": true
+  },
+  {
+    "id": "tea_3",
+    "file": "assets/images/greeting_templates/tea_3.jpg",
+    "category": "tea",
+    "title": "翠綠茶山",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "plum_1",
+    "file": "assets/images/greeting_templates/plum_1.jpg",
+    "category": "flower",
+    "title": "紅梅報春",
+    "text_position": "topRight",
+    "dark_bg": false
+  },
+  {
+    "id": "plum_2",
+    "file": "assets/images/greeting_templates/plum_2.jpg",
+    "category": "flower",
+    "title": "梅花盛開",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "plum_3",
+    "file": "assets/images/greeting_templates/plum_3.jpg",
+    "category": "flower",
+    "title": "春梅綻放",
+    "text_position": "topRight",
+    "dark_bg": false
+  },
+  {
+    "id": "lake_1",
+    "file": "assets/images/greeting_templates/lake_1.jpg",
+    "category": "lake",
+    "title": "晨霧湖光",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "lake_2",
+    "file": "assets/images/greeting_templates/lake_2.jpg",
+    "category": "lake",
+    "title": "煙波湖島",
+    "text_position": "topCenter",
+    "dark_bg": false
+  },
+  {
+    "id": "lake_3",
+    "file": "assets/images/greeting_templates/lake_3.jpg",
+    "category": "lake",
+    "title": "湖畔晨曦",
+    "text_position": "topLeft",
+    "dark_bg": false
+  }
+]
