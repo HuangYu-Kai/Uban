@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerPhase;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'elder_tabs/elder_home_tab.dart';
 import 'friends_screen.dart';
@@ -10,6 +11,7 @@ import 'elder_tabs/elder_layout.dart';
 import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
 import '../globals.dart';
+import '../utils/stt_locale.dart';
 import 'elder_screen.dart';
 import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -449,32 +451,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       }
 
       bool available = await _wakeWordStt.initialize(
-        onError: (val) {
-          debugPrint('🤖 [WakeWord Error] $val');
-          if (mounted && !_isAssistantShowing && !_isStartingListen) {
-            _wakeWordListening = false;
-            Future.delayed(const Duration(milliseconds: 600), () {
-              if (mounted) _safeRestartWakeWordListening('onError');
-            });
-          }
-        },
-        onStatus: (status) {
-          debugPrint('🤖 [WakeWord Status] $status');
-          if ((status == 'done' || status == 'notListening') && mounted) {
-            _wakeWordListening = false;
-            if (!_isAssistantShowing && !_isStartingListen) {
-              Future.delayed(const Duration(milliseconds: 400), () {
-                if (mounted) _safeRestartWakeWordListening('onStatus');
-              });
-            }
-          }
-        },
+        onError: _onWakeWordError,
+        onStatus: _onWakeWordStatus,
       );
 
       if (available) {
-        final systemLoc = await _wakeWordStt.systemLocale();
-        _preferredLocaleId = systemLoc?.localeId ?? 'zh_TW';
-        debugPrint('🎙️ [WakeWord Locale] 使用系統適配語系: $_preferredLocaleId');
+        // ★ 2026-10-06 喚醒詞修正：與其他畫面一致（第五十一輪），改用
+        //   pickChineseSttLocale 挑裝置實際支援的中文 localeId，不再用
+        //   systemLocale／寫死 'zh_TW'——引擎不認得的 ID 會靜默退回英文。
+        //   initialize 若因單例已初始化而提早返回，locales() 仍然有效。
+        _preferredLocaleId = pickChineseSttLocale(await _wakeWordStt.locales());
+        debugPrint('🎙️ [WakeWord Locale] 選用語系: $_preferredLocaleId');
 
         if (mounted) {
           _safeRestartWakeWordListening('init');
@@ -484,6 +471,31 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     } catch (e) {
       debugPrint('🤖 [WakeWord Init Failed] $e');
       _wakeWordListening = false;
+    }
+  }
+
+  // ★ 2026-10-06 喚醒詞修正：原本寫在 initialize() 的行內回呼，抽成方法，
+  //   讓 _safeRestartWakeWordListening 每次 listen 前都能重新掛回
+  //   （SpeechToText 是單例，只有第一個 initialize 的回呼會生效）。
+  void _onWakeWordError(SpeechRecognitionError val) {
+    debugPrint('🤖 [WakeWord Error] $val');
+    if (mounted && !_isAssistantShowing && !_isStartingListen) {
+      _wakeWordListening = false;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _safeRestartWakeWordListening('onError');
+      });
+    }
+  }
+
+  void _onWakeWordStatus(String status) {
+    debugPrint('🤖 [WakeWord Status] $status');
+    if ((status == 'done' || status == 'notListening') && mounted) {
+      _wakeWordListening = false;
+      if (!_isAssistantShowing && !_isStartingListen) {
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) _safeRestartWakeWordListening('onStatus');
+        });
+      }
     }
   }
 
@@ -545,8 +557,15 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       }
 
       _wakeWordListening = true;
+      // ★ 2026-10-06 喚醒詞修正：speech_to_text 的 SpeechToText() 是單例，
+      //   initialize() 已初始化過就提早返回，只有「第一個」初始化者的
+      //   onError/onStatus 會生效。若別的畫面（助理浮層／長輩聊天）先初始化，
+      //   喚醒詞的回呼就永遠不會被呼叫，只剩 5 秒看門狗救援 → 長時間聽不到。
+      //   所以每次 listen 前都把自己的回呼重新掛回去。
+      _wakeWordStt.errorListener = _onWakeWordError;
+      _wakeWordStt.statusListener = _onWakeWordStatus;
       await _wakeWordStt.listen(
-        localeId: _preferredLocaleId ?? 'zh_TW',
+        localeId: _preferredLocaleId,
         listenOptions: SpeechListenOptions(
           partialResults: true,
           cancelOnError: false,

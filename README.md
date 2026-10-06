@@ -119,7 +119,7 @@ flowchart TD
 - **Ollama（主要）**：使用 `gemma4:e4b-it-q4_K_M` 模型，支援 Tool Calling
 - **Gemini（備用）**：Google Gemini 2.5 Flash / 3.5 Flash API
 - **TTS 語音合成引擎**：支援 `auto` (自動)、`edge` (Edge-TTS)、`piper` (離線模型)、`cosyvoice` (Zero-Shot 音色複製) 及 **`yating` (雅婷台語 TTS 轉發及自動備援)** ⭐ 新增
-- **ASR 語音辨識**：本地端 Faster-Whisper (`large-v3-turbo`) GPU/CUDA 離線即時轉錄
+- **ASR 語音辨識**：App 的語音輸入一律使用手機內建語音辨識（`speech_to_text`），不再上傳伺服器 Whisper；國語／台語切換只影響小嘎的朗讀（台語＝雅婷 TTS）。後端 `/api/voice/transcribe`（Faster-Whisper）僅供其網頁示範使用
 
 #### 2. AI Agent 人格系統 (`server/agent/`)
 
@@ -478,6 +478,15 @@ void initPedometer() {
 > 第一批補於 2026-08-06，第二批補於 2026-08-13（08-06～08-12 落在 `main` 上、
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
+
+### 2026-10-06（深夜後）🎙️ 長輩聊天語音輸入改用手機內建辨識（`fix/elder-chat-device-stt` 分支）
+
+- **「和小嘎聊天」按住說話**改用手機內建語音辨識（`speech_to_text`，Android 為 Google），不再上傳伺服器 Whisper。原因：伺服器 Whisper small 準確度不如手機端，且家中 AI 電腦離線時會整個失效。錄音期間會暫停首頁喚醒詞監聽，放開後還原。
+- 手機辨識器不支援台語輸入，所以**輸入一律是國語**；國語／台語切換仍只控制小嘎的朗讀語言。
+- 移除不再使用的 `transcribeAudio`／`isTranscriptionError` 與其測試；後端不動。
+- **喚醒詞回呼被共用單例搶走**：`speech_to_text` 的 `SpeechToText()` 是單例，只有第一個 `initialize` 的 `onError`／`onStatus` 會生效，別的畫面先初始化時喚醒詞就收不到「結束／錯誤」事件，只剩 5 秒看門狗救援（所以常常沒反應）；反之助理浮層也可能收不到 `done` 而卡在「聆聽中」。現在每個畫面（喚醒詞、助理浮層、長輩聊天、家人 AI 副駕）都在 `listen()` 前重新掛上自己的 `errorListener`／`statusListener`。
+- **喚醒詞語系**改成與其他畫面一致，用 `pickChineseSttLocale` 挑裝置實際支援的中文語系（不再用系統語系／寫死 `zh_TW`）。
+- 注意：Android 不允許 App 在背景或螢幕關閉時錄音，所以**語音喚醒只在 App 位於前景時有效**。
 
 ### 2026-10-06（深夜）🐷 豬種讀後端、各頁導覽重看修正、深色陰影（`ui` 分支）
 
