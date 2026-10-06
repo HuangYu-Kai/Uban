@@ -8,8 +8,8 @@ import 'models/pet_growth_state.dart';
 import '../../services/friend_service.dart';
 import '../elder_home_screen.dart';
 import 'services/garden_ambient_audio_service.dart';
-import 'services/pet_leaderboard_service.dart';
 import 'services/pet_progress_service.dart';
+import 'services/pet_weight_sync.dart';
 import 'widgets/animated_piglet_actor.dart';
 import 'widgets/food_milestone_tray.dart';
 import 'widgets/garden_feeding_sheet.dart';
@@ -220,37 +220,71 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     }
   }
 
-  /// 進入寵物介面時，把體重同步一次到好友排行榜。
+  /// 進入寵物介面時，與伺服器對帳體重一次（不再盲目上傳本機預設值）。
   ///
   /// 刻意等本機存檔（[_loadSavedData]）與 elder_id 解析（[_resolveElderId]）
   /// 都完成才觸發——兩者是互相獨立的非同步流程，先完成的一方在這裡會因為
-  /// 另一項還沒就緒而先行返回，等兩項都到齊時才由後完成的一方補上這一次同步。
-  /// 這樣才不會用還沒套用本機存檔的預設體重（1250g）搶先上傳。
+  /// 另一項還沒就緒而先行返回，等兩項都到齊時才由後完成的一方補上這一次對帳。
   void _maybeSyncInitialWeight() {
     if (_hasSyncedInitialWeight || _isLoading || _myElderId == null) return;
     _hasSyncedInitialWeight = true;
     _syncWeightToLeaderboard();
   }
 
-  /// 把目前體重同步到後端好友排行榜（`POST /api/pet/state`）。
-  ///
-  /// 刻意不拋例外、不阻擋既有寵物養成流程——`PetLeaderboardService` 內部已經
-  /// try/catch 過一層，這裡只是呼叫端，失敗只記 log，不彈錯誤對話框、不影響
-  /// 本機存檔／動畫。同步完成（不論成功失敗）都會遞增 `_leaderboardRefreshTick`
-  /// ，讓目前開著或之後開啟的排行榜面板重新讀取一次最新名次。
+  // 餵食請求進行中的數量；>0 時不做對帳的推送／採用，避免增量重複計算。
+  int _feedsInFlight = 0;
+
+  /// 與伺服器對帳體重：伺服器較重→採用並存檔；本機較重或伺服器沒資料→推上去
+  /// （後端只增不減）；失敗→保留本機。規則見 pet_weight_sync.dart。
+  /// 完成（不論成功失敗）都遞增 `_leaderboardRefreshTick` 讓排行榜重新讀取。
   Future<void> _syncWeightToLeaderboard() async {
     final eid = _myElderId;
     if (eid == null) return;
-    final ok = await PetLeaderboardService.uploadMyState(
+    final r = await PetWeightSync.reconcile(
       elderId: eid,
-      weightGrams: _growthState.weightGrams,
+      readLocal: () => _growthState.weightGrams,
+      canWrite: () => mounted && _feedsInFlight == 0,
     );
-    if (!ok) {
-      debugPrint('⚠️ [PetStudioScreen] 寵物體重同步到排行榜失敗，不影響本機養成功能');
+    if (!r.ok) {
+      debugPrint('⚠️ [PetStudioScreen] 寵物體重對帳失敗，保留本機體重');
     }
+    final adopted = r.adoptedWeight;
+    if (adopted != null) _adoptServerWeight(adopted, force: r.forceAdopt);
     if (mounted) {
       setState(() => _leaderboardRefreshTick++);
     }
+  }
+
+  /// 採用伺服器體重（只在比本機大時採用）並寫回存檔。不彈進化畫面
+  /// （進化只由餵食流程判斷）。
+  void _adoptServerWeight(int serverWeight, {bool force = false}) {
+    if (!mounted) return;
+    final merged = force
+        ? serverWeight
+        : mergeFedWeight(
+            local: _growthState.weightGrams, server: serverWeight);
+    if (merged == _growthState.weightGrams) return;
+    final next = _growthState.copyWith(weightGrams: merged);
+    setState(() => _growthState = next);
+    PetStorageService.saveState(next);
+  }
+
+  /// 餵食改送增量到伺服器（原子累加＋冪等），並採用回傳的伺服器體重。
+  Future<void> _feedToServer(int gramsDelta) async {
+    final eid = _myElderId;
+    if (eid == null) return;
+    _feedsInFlight++;
+    try {
+      final r = await PetWeightSync.feed(elderId: eid, gramsDelta: gramsDelta);
+      if (!r.ok) {
+        debugPrint('⚠️ [PetStudioScreen] 餵食同步失敗，不影響本機養成功能');
+      }
+      final sw = r.serverWeight;
+      if (r.ok && sw != null) _adoptServerWeight(sw, force: r.seasonReset);
+    } finally {
+      _feedsInFlight--;
+    }
+    if (mounted) setState(() => _leaderboardRefreshTick++);
   }
 
   @override
@@ -338,7 +372,7 @@ class _PetStudioScreenState extends State<PetStudioScreen>
     _showSnackToast('小豬大口吃下了【${food.name}】！活力 +${food.vitalityGain} ✨');
     _spawnHearts(const Offset(350, 480), color: food.themeColor, count: 20);
     PetStorageService.saveState(newState);
-    _syncWeightToLeaderboard();
+    unawaited(_feedToServer(food.weightGainGrams));
 
     if (isCarrot) {
       final eid = _myElderId;

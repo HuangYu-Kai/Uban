@@ -1,5 +1,5 @@
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerPhase;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -111,42 +111,66 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// SharedPreferences 完成旗標。
   final Set<int> _tabTutorialAttempted = {};
 
-  // ★ 「怎麼用？」膠囊的捲動讓位（鏡像設計稿 ui.js 的 helppill.scrollaway）：
-  //   往下累積捲 >28px 且 pixels>60 → 滑出；往上累積 24px 或停止捲動 1.1s → 回來。
-  bool _helpPillHidden = false;
-  double _scrollDownAcc = 0;
-  double _scrollUpAcc = 0;
-  Timer? _helpPillReturnTimer;
+  // ★ 「怎麼用？」膠囊：預設縮進右緣只露半圓突起；點突起展開、約 4 秒或開始捲動
+  //   就再縮回；當前分頁捲到底（或內容不可捲）時常駐展開，離開底部再縮回。
+  final ElderBottomTracker _bottomTracker = ElderBottomTracker();
+  bool _helpPillManualOpen = false;
+  Timer? _helpPillTuckTimer;
 
-  void _setHelpPillHidden(bool hidden) {
-    if (_helpPillHidden == hidden) return;
-    setState(() => _helpPillHidden = hidden);
-    elderFloatingChromeHidden.value = hidden;
+  bool get _helpPillExpanded =>
+      _helpPillManualOpen || _bottomTracker.atBottom(_selectedIndex);
+
+  /// setState 的安全版：捲動 metrics 通知可能在 build／layout 期間送達，
+  /// 這時延後到影格結束後再重建。
+  void _refreshHelpPill() {
+    if (!mounted) return;
+    final phase = WidgetsBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.transientCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
   }
 
-  bool _onTabScroll(ScrollNotification n) {
-    if (n.metrics.axis != Axis.vertical || n.depth > 1) return false;
-    if (n is ScrollUpdateNotification) {
-      final d = n.scrollDelta ?? 0;
-      if (d > 0) {
-        _scrollDownAcc += d;
-        _scrollUpAcc = 0;
-        if (_scrollDownAcc > 28 && n.metrics.pixels > 60) {
-          _setHelpPillHidden(true);
-        }
-      } else if (d < 0) {
-        _scrollUpAcc += -d;
-        _scrollDownAcc = 0;
-        if (_scrollUpAcc > 24) _setHelpPillHidden(false);
-      }
-      _helpPillReturnTimer?.cancel();
-      _helpPillReturnTimer = Timer(const Duration(milliseconds: 1100), () {
-        if (!mounted) return;
-        _scrollDownAcc = 0;
-        _scrollUpAcc = 0;
-        _setHelpPillHidden(false);
-      });
+  /// 點突起：暫時展開，4 秒後自動縮回。
+  void _expandHelpPill() {
+    _helpPillManualOpen = true;
+    _helpPillTuckTimer?.cancel();
+    _helpPillTuckTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      _helpPillManualOpen = false;
+      _refreshHelpPill();
+    });
+    setState(() {});
+  }
+
+  void _tuckHelpPill() {
+    _helpPillTuckTimer?.cancel();
+    _helpPillManualOpen = false;
+  }
+
+  /// 接收垂直捲動／metrics 通知（不限深度，水平的忽略；巢狀捲動區由
+  /// [ElderBottomTracker] 只認 viewport 最大者）。
+  bool _onTabScroll(Notification n) {
+    final ScrollMetrics? m = n is ScrollNotification
+        ? n.metrics
+        : (n is ScrollMetricsNotification ? n.metrics : null);
+    if (m == null || _selectedIndex == 3) return false;
+    final BuildContext? src = n is ScrollNotification
+        ? n.context
+        : (n is ScrollMetricsNotification ? n.context : null);
+    final accepted = _bottomTracker.update(_selectedIndex, m, src ?? 0);
+    if (!accepted) return false;
+    // 使用者真的在捲動：先把手動展開的膠囊縮回（若在底部則由底部規則維持展開）。
+    if (n is ScrollStartNotification ||
+        (n is ScrollUpdateNotification && (n.scrollDelta ?? 0) != 0)) {
+      _tuckHelpPill();
     }
+    _refreshHelpPill();
     return false;
   }
 
@@ -811,16 +835,26 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   Future<void> _applyRemoteReminderCompletion(dynamic data) async {
     try {
       if (data is! Map) return;
-      if ((data['action'] ?? '').toString() != 'complete') return;
+      final action = (data['action'] ?? '').toString();
+      if (action != 'complete' && action != 'uncomplete') return;
       final rid = data['reminderId'];
       if (rid == null) return;
 
-      final prefs = await SharedPreferences.getInstance();
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      // 後端可能帶 local_date（打卡那台裝置的本機日期）；不是今天就不動今天的清單。
+      final ld = data['local_date']?.toString();
+      if (ld != null && ld.isNotEmpty && ld != today) return;
+
+      final prefs = await SharedPreferences.getInstance();
       final key = 'completed_tasks_$today';
       final done = prefs.getStringList(key) ?? <String>[];
       final id = rid.toString();
-      if (!done.contains(id)) {
+      if (action == 'uncomplete') {
+        if (done.remove(id)) {
+          await prefs.setStringList(key, done);
+          debugPrint('↩️ [ElderHomeScreen] 遠端取消打卡已同步至本機清單: $id');
+        }
+      } else if (!done.contains(id)) {
         done.add(id);
         await prefs.setStringList(key, done);
         debugPrint('✅ [ElderHomeScreen] 遠端打卡已同步至本機清單: $id');
@@ -984,7 +1018,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   @override
   void dispose() {
-    _helpPillReturnTimer?.cancel();
+    _helpPillTuckTimer?.cancel();
     scheduleMicrotask(() {
       elderFloatingChromeHidden.value = false;
       elderChatTabActive.value = false;
@@ -1115,12 +1149,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 頁」——這正是為什麼判斷邏輯放在這裡（nav 的 onTap），而不是放進各分頁
   /// 自己的檔案。
   void _onNavTap(int index) {
-    _scrollDownAcc = 0;
-    _helpPillReturnTimer?.cancel();
-    if (_helpPillHidden) {
-      _helpPillHidden = false;
-      elderFloatingChromeHidden.value = false;
-    }
+    // 切分頁：先縮回，再依該分頁最後已知的捲動位置決定是否展開（見 _helpPillExpanded）。
+    _tuckHelpPill();
     setState(() => _selectedIndex = index);
     if (_tabTutorialAttempted.add(index)) {
       // 等下一影格畫出（IndexedStack 切換後的新 index 已經 paint）再嘗試，
@@ -1356,7 +1386,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         body: Stack(
         children: [
           // 頁面內容切換（外包 NotificationListener：捲動時讓「怎麼用？」膠囊讓位）
-          NotificationListener<ScrollNotification>(
+          NotificationListener<Notification>(
             onNotification: _onTabScroll,
             child: IndexedStack(
             index: _selectedIndex,
@@ -1417,24 +1447,16 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           ),
           // 🛟 長輩隨身救生圈：「❓ 怎麼用」隨叫隨到求助按鈕（在導覽列上方）
           Positioned(
-            right: 16,
+            left: 0,
+            right: 0,
             bottom: UbanGlassNavBar.totalHeight +
                 MediaQuery.paddingOf(context).bottom +
                 14,
-            child: IgnorePointer(
-              ignoring: _helpPillHidden || _selectedIndex == 3,
-              child: AnimatedSlide(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOut,
-                offset: (_helpPillHidden || _selectedIndex == 3)
-                    ? const Offset(0, 1.5)
-                    : Offset.zero,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 260),
-                  opacity: (_helpPillHidden || _selectedIndex == 3) ? 0 : 1,
-                  child: _buildHelpButton(),
-                ),
-              ),
+            child: ElderHelpPill(
+              expanded: _helpPillExpanded,
+              visible: _selectedIndex != 3,
+              onTap: _showHelpSheet,
+              onExpand: _expandHelpPill,
             ),
           ),
         ],
@@ -1442,53 +1464,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     ),
   );
 }
-
-  /// 設計稿 `.helppill`：玻璃膠囊（blur 20、glass 底、glassLine 邊框）。
-  Widget _buildHelpButton() {
-    final c = UbanColors.of(context);
-    final radius = BorderRadius.circular(999);
-    return Semantics(
-      button: true,
-      label: '怎麼用？',
-      excludeSemantics: true,
-      child: PressableScale(
-        onTap: _showHelpSheet,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            boxShadow: c.shadows.glass,
-          ),
-          child: ClipRRect(
-            borderRadius: radius,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
-                decoration: BoxDecoration(
-                  color: c.glass,
-                  borderRadius: radius,
-                  border: Border.all(color: c.glassLine, width: 1),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.help_outline_rounded,
-                        size: 20, color: c.brandStrong),
-                    const SizedBox(width: 6),
-                    Text(
-                      '怎麼用？',
-                      maxLines: 1,
-                      style: ubanText(16, FontWeight.w700, c.brandStrong),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   void _showHelpSheet() {
     showUbanSheet<void>(

@@ -240,8 +240,13 @@ ThemeData buildAppDarkTheme(BuildContext context) {
     useMaterial3: true,
     scaffoldBackgroundColor: c.bg,
     extensions: const <ThemeExtension<dynamic>>[UbanColors.dark],
+    // 與淺色主題一致：淺色用 Theme.of(context)（= ThemeData.localize 結果，inherit:false），
+    // 深色也走 localize，否則 AnimatedTheme 插值 TextStyle 會因 inherit 不同而擲例外。
     textTheme: GoogleFonts.notoSansTcTextTheme(
-      ThemeData(brightness: Brightness.dark).textTheme,
+      ThemeData.localize(
+        ThemeData(brightness: Brightness.dark),
+        Theme.of(context).textTheme,
+      ).textTheme,
     ),
     appBarTheme: AppBarTheme(
       backgroundColor: c.surface,

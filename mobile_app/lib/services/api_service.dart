@@ -415,11 +415,17 @@ class ApiService {
           {String? requesterRole, int? requesterUserId}) =>
       ReminderApi.deleteElderReminder(reminderId,
           requesterRole: requesterRole, requesterUserId: requesterUserId);
-  static Future<Map<String, dynamic>> getTodayProgress(String elderId) =>
-      ReminderApi.getTodayProgress(elderId);
+  static Future<Map<String, dynamic>> getTodayProgress(String elderId, {String? date}) =>
+      ReminderApi.getTodayProgress(elderId, date: date);
+  static Future<List<String>> getAllDoneDates(String elderId,
+          {required String until, int days = 60}) =>
+      ReminderApi.getAllDoneDates(elderId, until: until, days: days);
   static Future<bool> updateElderReminder(int reminderId, Map<String, dynamic> body) =>
       ReminderApi.updateElderReminder(reminderId, body);
-  static Future<bool> completeElderReminder(int reminderId) => ReminderApi.completeElderReminder(reminderId);
+  static Future<bool> completeElderReminder(int reminderId, {String? localDate}) =>
+      ReminderApi.completeElderReminder(reminderId, localDate: localDate);
+  static Future<bool> uncompleteElderReminder(int reminderId, {String? localDate}) =>
+      ReminderApi.uncompleteElderReminder(reminderId, localDate: localDate);
 
   // --- Community ---
   /// null＝呼叫失敗（離線／伺服器錯誤），空清單＝真的沒有貼文。

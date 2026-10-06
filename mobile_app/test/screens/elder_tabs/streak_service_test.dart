@@ -177,4 +177,43 @@ void main() {
       expect(StreakService.changes.value, greaterThan(before));
     });
   });
+
+  group('load 與後端聯集', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    test('後端日期與本機取聯集並寫回本機', () async {
+      SharedPreferences.setMockInitialValues({'all_done_2026-09-30': true});
+      final snap = await StreakService.load(
+        now: _thu,
+        elderId: '1234',
+        fetchServerDates: (id, until) async {
+          expect(id, '1234');
+          expect(until, '2026-10-01');
+          return ['2026-09-29', '2026-09-28', 'bad-date'];
+        },
+      );
+      expect(snap.days, 3);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('all_done_2026-09-29'), isTrue);
+      expect(prefs.containsKey('all_done_bad-date'), isFalse);
+    });
+
+    test('後端失敗：只用本機、不丟例外', () async {
+      SharedPreferences.setMockInitialValues({'all_done_2026-09-30': true});
+      final snap = await StreakService.load(
+        now: _thu,
+        elderId: '1234',
+        fetchServerDates: (id, until) async => throw Exception('offline'),
+      );
+      expect(snap.days, 1);
+    });
+
+    test('mergeServerDates 只回傳本機沒有且格式合法者', () {
+      expect(
+        StreakService.mergeServerDates(
+            {'2026-09-30'}, ['2026-09-30', '2026-09-29', 'x']),
+        {'2026-09-29'},
+      );
+    });
+  });
 }

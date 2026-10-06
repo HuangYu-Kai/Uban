@@ -17,8 +17,8 @@ import '../../utils/error_handler.dart';
 import '../../widgets/ui/ui.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/models/pet_food_item.dart';
-import '../pet_companion_studio/services/pet_leaderboard_service.dart';
 import '../pet_companion_studio/services/pet_progress_service.dart';
+import '../pet_companion_studio/services/pet_weight_sync.dart';
 import '../pet_companion_studio/widgets/pet_evolution_dialog.dart';
 import '../pet_companion_studio/widgets/pet_leaderboard_card.dart';
 
@@ -168,6 +168,9 @@ class _ElderPetTabState extends State<ElderPetTab>
         _refreshCarrotLedger(),
         _loadPetGrowthState(),
       ]);
+      // 本機存檔載入後再與伺服器體重對帳（換機／重裝時採用伺服器值，
+      // 本機較重則推上去；見 PetWeightSync）。
+      await _reconcileWeight();
       if (mounted) setState(() => _leaderboardTick++);
     } finally {
       _refreshing = false;
@@ -264,19 +267,16 @@ class _ElderPetTabState extends State<ElderPetTab>
     }
   }
 
-  /// 進入小豬之家時做一次初次體重同步，讓「從沒餵過食」的長輩也會出現在
-  /// 好友排行榜——否則 `my_rank` 永遠是 null（見
-  /// `pet_leaderboard_card.dart:223` 的空狀態文案「你的寵物體重還沒同步上榜」）。
+  /// 進入小豬之家時做一次初次體重對帳。
   ///
-  /// 比照 `pet_studio_screen.dart` 的 `_maybeSyncInitialWeight`：本機存檔
-  /// （[_loadPetGrowthState]）與好友 elder_id 解析（[_loadMyFriendElderId]）
-  /// 是兩個互相獨立的非同步流程，哪個先完成都在這裡因為另一項還沒就緒而
-  /// 先行返回，等兩者都到齊時才由後完成的一方補上這一次同步——這樣才不會
-  /// 用還沒套用本機存檔的預設體重（1250g）搶先上傳。
+  /// 本機存檔（[_loadPetGrowthState]）與好友 elder_id 解析（[_loadMyFriendElderId]）
+  /// 是兩個互相獨立的非同步流程，哪個先完成都在這裡因為另一項還沒就緒而先行
+  /// 返回，等兩者都到齊時才由後完成的一方補上這一次對帳。
   ///
-  /// 刻意只做背景同步、不彈訊息——被動進場同步失敗不像主動餵食（見
-  /// [_handleFeedFood]）那樣需要長輩立刻注意，下次餵食或重新整理時會自然
-  /// 再試一次，此處若也跳警示只會讓長輩一打開畫面就看到看不懂的錯誤提示。
+  /// ★ 不再盲目上傳本機預設體重（1250g）：先讀伺服器體重再決定——伺服器較重
+  /// 就採用（換機／重裝不會歸零）、本機較重或伺服器沒資料才推上去（見
+  /// [_reconcileWeight]）。刻意只做背景同步、不彈訊息，失敗保留本機值，
+  /// 下次重新整理或餵食會自然再試。
   void _maybeSyncInitialWeight() {
     if (_hasSyncedInitialWeight ||
         _petGrowthState == null ||
@@ -284,10 +284,8 @@ class _ElderPetTabState extends State<ElderPetTab>
       return;
     }
     _hasSyncedInitialWeight = true;
-    unawaited(_syncWeightToLeaderboard(_petGrowthState!.weightGrams).then((ok) {
-      if (!ok) {
-        debugPrint('⚠️ [ElderProfileTab] 初次寵物體重同步到排行榜失敗，不影響既有寵物養成功能');
-      }
+    unawaited(_reconcileWeight().then((_) {
+      if (mounted) setState(() => _leaderboardTick++);
     }));
   }
 
@@ -368,27 +366,51 @@ class _ElderPetTabState extends State<ElderPetTab>
     }
   }
 
-  /// 把目前體重同步到後端好友排行榜（`POST /api/pet/state`）。
-  ///
-  /// 比照 `pet_studio_screen.dart::_syncWeightToLeaderboard`：
-  /// `PetLeaderboardService.uploadMyState` 內部已經 try/catch 過一層，這裡
-  /// 再包一層防禦性 try/catch 只是避免未來改版又開始拋例外，回傳
-  /// bool 讓呼叫端（[_handleFeedFood] 主動餵食／[_maybeSyncInitialWeight]
-  /// 被動進場）各自決定要不要提示使用者。
-  Future<bool> _syncWeightToLeaderboard(int weightGrams) async {
+  // 餵食請求進行中的數量。>0 時不做體重對帳的採用／推送，避免「本機樂觀值
+  // 被 POST /pet/state 推上去之後，餵食增量又在伺服器加一次」的重複計算。
+  int _feedsInFlight = 0;
+  bool _reconcilingWeight = false;
+
+  /// 與伺服器對帳體重（GET /pet/state/{id}）：伺服器較重→採用並存檔；
+  /// 本機較重或伺服器沒資料→推上去（後端只增不減）；失敗→保留本機。
+  /// 不拋例外、不跳訊息。
+  Future<void> _reconcileWeight() async {
     final eid = _myFriendElderId;
-    if (eid == null) return false;
+    if (eid == null || _petGrowthState == null || _reconcilingWeight) return;
+    _reconcilingWeight = true;
     try {
-      final r = await PetLeaderboardService.syncMyState(
+      final r = await PetWeightSync.reconcile(
         elderId: eid,
-        weightGrams: weightGrams,
+        readLocal: () => _effectiveGrowthState.weightGrams,
+        canWrite: () => mounted && _feedsInFlight == 0,
       );
+      if (!r.ok) {
+        debugPrint('⚠️ [ElderProfileTab] 寵物體重與伺服器對帳失敗，保留本機體重');
+      }
       _applyServerBreed(r.breed);
-      return r.ok;
+      final adopted = r.adoptedWeight;
+      if (adopted != null) _adoptServerWeight(adopted, force: r.forceAdopt);
     } catch (e) {
-      debugPrint('⚠️ [ElderProfileTab] 寵物體重同步到排行榜例外: $e');
-      return false;
+      debugPrint('⚠️ [ElderProfileTab] 寵物體重對帳例外: $e');
+    } finally {
+      _reconcilingWeight = false;
     }
+  }
+
+  /// 採用伺服器體重（預設只在比目前本機大時採用，本機領先不倒退；賽季更新
+  /// [force]＝true 時無條件採用，讓賽季重置不被本機較重的舊體重蓋回去）並寫回存檔。
+  /// 不觸發進化對話框：進化畫面只由「餵食動畫結束」比較餵食前後階段時顯示
+  /// （[_stageBeforeFeed]），換機還原體重不是餵食，不應彈出慶祝。
+  void _adoptServerWeight(int serverWeight, {bool force = false}) {
+    if (!mounted) return;
+    final cur = _effectiveGrowthState;
+    final merged = force
+        ? serverWeight
+        : mergeFedWeight(local: cur.weightGrams, server: serverWeight);
+    if (merged == cur.weightGrams) return;
+    final next = cur.copyWith(weightGrams: merged);
+    setState(() => _petGrowthState = next);
+    unawaited(PetStorageService.saveState(next));
   }
 
   @override
@@ -795,7 +817,27 @@ class _ElderPetTabState extends State<ElderPetTab>
       }
     }
 
-    final bool synced = await _syncWeightToLeaderboard(newState.weightGrams);
+    // 餵食改送「增量」到伺服器（伺服器原子累加、client_event_id 冪等），並採用
+    // 回傳的伺服器體重（只在較大時採用，避免本機因離線餵食領先時倒退）。
+    // 採用不影響進化判斷：[_onFeedAnimationDone] 只比較餵食前階段與當下階段。
+    final eid = _myFriendElderId;
+    bool synced = false;
+    if (eid != null) {
+      _feedsInFlight++;
+      try {
+        final r = await PetWeightSync.feed(
+          elderId: eid,
+          gramsDelta: food.weightGainGrams,
+        );
+        synced = r.ok;
+        final sw = r.serverWeight;
+        if (r.ok && sw != null) {
+          _adoptServerWeight(sw, force: r.seasonReset);
+        }
+      } finally {
+        _feedsInFlight--;
+      }
+    }
     if (!mounted) return;
 
     // 排行榜卡依 refreshTick 重新讀取（上傳是非同步的，所以放在同步完成之後）。
@@ -920,7 +962,7 @@ class _ElderPetTabState extends State<ElderPetTab>
           child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics()),
-          padding: EdgeInsets.only(bottom: elderNavClearance(context)),
+          padding: EdgeInsets.only(bottom: elderNavClearanceWithPill(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

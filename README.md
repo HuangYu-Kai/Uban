@@ -475,6 +475,13 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-06（夜）☁️ 打卡與小豬體重改以後端為準、長輩深色模式切換、「怎麼用？」側邊收合（`ui` 分支）
+
+- **打卡寫回後端**：打卡送 `local_date`、取消打卡呼叫 `DELETE /api/reminder/{id}/complete`；讀清單時合併後端 `today-progress` 的 `completed_ids` 與本機；連勝合併後端 `all-done-dates`。後端未上線時自動退回本機，不會壞。
+- **小豬體重同步**：進頁／刷新時讀 `GET /api/pet/state/{elder_id}` 對帳，餵食改呼叫 `POST /api/pet/feed`（後端累加、冪等）；賽季結算重設優先（本機存 `uban_pet_season_no`）；讀回伺服器體重不會跳進化畫面。
+- **長輩外觀切換**：「我的」加「外觀：跟隨系統／淺色／深色」（`elder_theme_mode`，本機存）；`main.dart` 只改 `themeMode`。修正淺↔深切換時 `TextStyle` lerp 例外導致閃紅畫面、App 重跑 Splash 的問題（深色主題文字樣式改與淺色同法建構）。
+- **「怎麼用？」**：平常收在右緣只露半圓凸起（點了展開、4 秒後收回）；捲到分頁最底自動展開，坐在底部預留空白上；聊天頁不顯示。麥克風浮鈕不再隨捲動滑出。
+
 ### 2026-10-06（晚）🔄 打卡跨裝置同步、全面下拉／切頁刷新、卡通胡蘿蔔（`ui` 分支）
 
 - **另一台打卡、這台要重開才更新**：`ElderHomeScreen._ownReminderSync` 原本沒等 `_applyRemoteReminderCompletion` 寫完本機清單就叫 `syncReminders()`，畫面先重讀到舊值。改為先 await 再同步。

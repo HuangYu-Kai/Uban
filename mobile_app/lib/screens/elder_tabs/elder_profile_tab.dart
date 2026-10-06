@@ -24,6 +24,7 @@ import '../../widgets/policy_detail_dialog.dart';
 import 'profile/models/pet_mood.dart'; // ⚠️ 只借用 PetHeartParticle，PetMood 列舉本身在小豬之家改版後已不再使用
 import 'profile/dialogs/family_pairing_dialog.dart';
 import 'profile/dialogs/ai_assistant_settings_dialog.dart';
+import 'profile/widgets/profile_appearance_card.dart';
 import 'profile/widgets/profile_greet_row.dart';
 import 'profile/widgets/profile_location_hint.dart';
 import 'profile/widgets/profile_task_card.dart';
@@ -142,6 +143,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       // 出的 elder_id（見該函式說明）。initState 呼叫 _loadElderReminders 時
       // 本欄位通常還沒載入完成而被暫緩，這裡載入完成後補發一次真正的讀取。
       _loadElderReminders();
+      // 連勝要用 elder_id 向後端合併其他裝置的「全部完成」日期。
+      _loadStreak();
     }
   }
 
@@ -239,7 +242,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   }
 
   Future<void> _loadStreak() async {
-    final snap = await StreakService.load();
+    final snap = await StreakService.load(elderId: _myFriendElderId);
     if (mounted) setState(() => _streak = snap);
   }
 
@@ -426,7 +429,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (!isAlreadyDone) {
       bool success;
       try {
-        success = await ApiService.completeElderReminder(reminderId);
+        success = await ApiService.completeElderReminder(reminderId,
+            localDate: today);
       } catch (e) {
         debugPrint('⚠️ [ElderProfileTab] completeElderReminder 例外: $e');
         success = false;
@@ -464,6 +468,43 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       // ★ 連勝紀錄（新功能）：打卡「成功之後」才檢查，上面的樂觀更新／回退邏輯不變。
       if (success) unawaited(_checkStreak());
     } else {
+      // ★ 取消打卡：後端現在有 DELETE /reminder/{id}/complete，比照上面的
+      // 樂觀更新＋失敗回退——否則別台裝置／家屬端仍看到已完成，下次同步又把
+      // 這筆聯集回來。失敗時把 id 加回記憶體與本機清單，並提示再按一次。
+      bool success;
+      try {
+        success = await ApiService.uncompleteElderReminder(reminderId,
+            localDate: today);
+      } catch (e) {
+        debugPrint('⚠️ [ElderProfileTab] uncompleteElderReminder 例外: $e');
+        success = false;
+      }
+      if (!mounted) return;
+      if (!success) {
+        setState(() => _completedReminderIds.add(reminderId));
+        await prefs.setStringList(
+          'completed_tasks_$today',
+          _completedReminderIds.map((e) => e.toString()).toList(),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '取消打卡沒有送出成功，請確認網路後再按一次',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: const Color(0xFFB91C1C),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            margin: const EdgeInsets.all(20),
+          ),
+        );
+      }
       // 取消打卡：今天就不再是「全部完成」，讓連勝紀錄同步（不會觸發慶祝）。
       unawaited(_checkStreak());
     }
@@ -722,6 +763,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                     subtitle: '忘記功能怎麼用？點這裡',
                     onTap: _replayTutorial,
                   ),
+                  gap,
+
+                  // 外觀：跟隨系統／淺色／深色
+                  const ProfileAppearanceCard(),
                   gap,
 
                   // 服務條款與隱私權政策

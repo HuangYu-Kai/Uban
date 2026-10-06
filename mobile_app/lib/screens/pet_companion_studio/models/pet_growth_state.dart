@@ -182,6 +182,22 @@ class PetStorageService {
   static const String _keyFedFoods = 'uban_pet_fed_foods_json';
   static const String _keyCrownUnlocked = 'uban_pet_crown_unlocked';
 
+  // 本機體重所屬的賽季序號（伺服器 `season_no`）。賽季結算會把伺服器體重重置，
+  // 本機靠它判斷「自己的體重是不是上一季的」——見 pet_weight_sync.dart。
+  // 獨立於 [PetGrowthState]（理由同食物庫存：避免值物件多一個必填欄位）。
+  static const String _keySeasonNo = 'uban_pet_season_no';
+
+  /// 讀取本機體重所屬賽季；從未同步過為 null（未知）。
+  static Future<int?> loadSeasonNo() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keySeasonNo);
+  }
+
+  static Future<void> saveSeasonNo(int seasonNo) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keySeasonNo, seasonNo);
+  }
+
   // ★ 第五十輪：食物庫存持久化——過去 `elder_profile_tab.dart` 的
   // `_feedingInventory` 純活在記憶體，重開 App 或該分頁 State 重建就補滿，
   // 「食物有限」形同虛設。這裡新增一組獨立的鍵，與上面體重/活力/日期/
