@@ -82,7 +82,8 @@ class FamilyDataTab extends StatefulWidget {
   State<FamilyDataTab> createState() => _FamilyDataTabState();
 }
 
-class _FamilyDataTabState extends State<FamilyDataTab> {
+class _FamilyDataTabState extends State<FamilyDataTab>
+    with WidgetsBindingObserver {
   // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
   // 取色與開 dialog／sheet／SnackBar 都用它，才吃得到家屬色票；每次 build 更新。
   BuildContext? _themed;
@@ -110,6 +111,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _caregiverName = widget.userName;
     _loadCaregiverName();
     _loadSubscriptionInfo();
@@ -118,8 +120,52 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     _loadMemoirs();
   }
 
+  // ── 重新整理三種觸發（下拉／切回此分頁／App 回前景）共用 ──
+  // 本分頁在家屬主畫面的 IndexedStack 底下被保活；離屏時 TickerMode 為 false，
+  // 用它判斷「目前是否可見」。父層另有 refreshToken（切分頁時遞增），同樣導向
+  // _refreshAll，由 _isRefreshing 擋掉同時抵達的重複請求。
+  /// 上一次記錄的可見狀態；null 代表第一次 didChangeDependencies（initState 已載入，不重複載）。
+  bool? _wasVisible;
+  bool _visible = true;
+  bool _isRefreshing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _visible = TickerMode.valuesOf(context).enabled;
+    final was = _wasVisible;
+    _wasVisible = _visible;
+    // 不可見 → 可見：切回此分頁就重讀（不節流）
+    if (was == false && _visible) _refreshAll();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 回前景時只刷新目前可見的分頁
+    if (state == AppLifecycleState.resumed && _visible && mounted) {
+      _refreshAll();
+    }
+  }
+
+  /// 統一的重新整理入口：只呼叫本分頁既有的四個載入函式。
+  Future<void> _refreshAll() async {
+    if (_isRefreshing || !mounted) return;
+    _isRefreshing = true;
+    try {
+      await Future.wait([
+        _loadCaregiverName(),
+        _loadSubscriptionInfo(),
+        _loadAiProfile(),
+        _loadMemoirs(),
+      ]);
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     MemoirService.instance.removeListener(_onMemoirsChanged);
     super.dispose();
   }
@@ -140,10 +186,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
     //   用 `!=` 比對而不是每次 build 都重載——只有父層真的判定「這是一次
     //   分頁切換」才會遞增該 token，2.5 秒輪詢造成的其餘重建不會誤觸發。
     if (widget.refreshToken != oldWidget.refreshToken) {
-      _loadCaregiverName();
-      _loadSubscriptionInfo();
-      _loadAiProfile();
-      _loadMemoirs();
+      _refreshAll();
     }
   }
 
@@ -556,7 +599,11 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
 
   Widget _buildScreen(BuildContext context) {
     _themed = context;
-    return CustomScrollView(
+    return RefreshIndicator(
+      color: _c.brandFill,
+      backgroundColor: _c.surface,
+      onRefresh: _refreshAll,
+      child: CustomScrollView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
@@ -743,6 +790,7 @@ class _FamilyDataTabState extends State<FamilyDataTab> {
           ),
         ),
       ],
+      ),
     );
   }
 

@@ -83,7 +83,8 @@ class FamilyHomeTab extends StatefulWidget {
   State<FamilyHomeTab> createState() => _FamilyHomeTabState();
 }
 
-class _FamilyHomeTabState extends State<FamilyHomeTab> {
+class _FamilyHomeTabState extends State<FamilyHomeTab>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? _moodInsightData;
   List<dynamic> _realLogs = [];
   List<dynamic> _emergencyAlerts = [];
@@ -92,7 +93,50 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadDynamicData();
+  }
+
+  // ── 切回此分頁／App 回前景的重新整理（下拉刷新沿用同一個入口）──
+  // 本分頁在 IndexedStack 底下被保活；離屏時 TickerMode 為 false，用它判斷可見性。
+  // _loadDynamicData 開頭會遞增 _checkinRefresh，今日打卡卡片的 refreshToken
+  // 因此一併重讀（與下拉刷新走同一條路）。
+  /// null 代表第一次 didChangeDependencies（initState 已載入，不重複載）。
+  bool? _wasVisible;
+  bool _visible = true;
+  bool _isRefreshing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _visible = TickerMode.valuesOf(context).enabled;
+    final was = _wasVisible;
+    _wasVisible = _visible;
+    // 不可見 → 可見：切回就重讀（不節流，由 _isRefreshing 擋重複請求）
+    if (was == false && _visible) _refreshAll();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _visible && mounted) {
+      _refreshAll();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _refreshAll() async {
+    if (_isRefreshing || !mounted) return;
+    _isRefreshing = true;
+    try {
+      await _loadDynamicData();
+    } finally {
+      _isRefreshing = false;
+    }
   }
 
   @override
@@ -154,7 +198,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
           return RefreshIndicator(
             color: c.brandFill,
             backgroundColor: c.surface,
-            onRefresh: _loadDynamicData,
+            onRefresh: _refreshAll,
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
               padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPad),
@@ -254,7 +298,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab> {
         return RefreshIndicator(
           color: c.brandFill,
           backgroundColor: c.surface,
-          onRefresh: _loadDynamicData,
+          onRefresh: _refreshAll,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),

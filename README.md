@@ -475,6 +475,15 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-06（晚）🔄 打卡跨裝置同步、全面下拉／切頁刷新、卡通胡蘿蔔（`ui` 分支）
+
+- **另一台打卡、這台要重開才更新**：`ElderHomeScreen._ownReminderSync` 原本沒等 `_applyRemoteReminderCompletion` 寫完本機清單就叫 `syncReminders()`，畫面先重讀到舊值。改為先 await 再同步。
+- **刷新機制**：長輩首頁（任務＋新聞）、我的（任務＋連勝）、小豬（胡蘿蔔來源／帳本、小豬狀態、排行榜），家屬首頁、互動、資料三分頁，一律支援**下拉刷新、切到該分頁就重讀（`TickerMode` 可見性，無節流）、App 回前景重讀**；小豬頁另在打卡事件後即時更新胡蘿蔔數。
+- **胡蘿蔔圖**改用設計稿卡通版（`assets/images/pet_foods/carrot_cartoon.png`，由 `design_prototype/img/carrot.svg` 轉檔 1x/2x/3x），用於小豬頁餵食鈕、舞台、連勝慶祝。
+- **提醒標題不顯示彩色 emoji**：`utils/display_text.dart::stripEmoji` 只處理畫面顯示，資料不變。
+- 已驗證家屬新增／刪除提醒，長輩端即時跟著變（`reminder-sync`）。
+- 已知限制：裝置離線時漏收的 `reminder-sync` 仍會遺失（打卡完成狀態只存在各裝置本機）；家屬「今日打卡」卡呼叫的 `today-progress` 端點後端尚未實作。
+
 ### 2026-10-06（下午）🐾 模擬器回報：社群爪印、雙欄卡片、身心分數（`ui` 分支）
 
 - **爪印後按鈕變兩顆、離開社群紅畫面（`_dependents.isEmpty`）**：根因是 `PolaroidPostCard` 的爪印彈跳用 `Curves.easeInOutBack` 驅動 `TweenSequence`，曲線超出 0～1 使每一幀丟斷言、元素樹錯亂。改用 `Curves.easeInOut`。

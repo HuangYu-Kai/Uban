@@ -96,7 +96,8 @@ class ElderHomeTab extends StatefulWidget {
   State<ElderHomeTab> createState() => _ElderHomeTabState();
 }
 
-class _ElderHomeTabState extends State<ElderHomeTab> {
+class _ElderHomeTabState extends State<ElderHomeTab>
+    with WidgetsBindingObserver {
   late String _lunarDate;
   late String _solarTerm;
   late String _dayName;
@@ -139,8 +140,45 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
     super.dispose();
+  }
+
+  // ── 重新同步機制（本頁在 IndexedStack 下保活，initState 只跑一次）──
+  // 三種觸發共用 [_refreshAll]：下拉刷新、切回本分頁（TickerMode 由不可見→可見）、
+  // App 回前景（僅在本分頁可見時）。
+  bool _refreshing = false;
+  bool? _wasVisible;
+  bool _isVisible = true;
+
+  /// 重新讀取「今日任務」與「新聞」。進行中不重複發，避免連點／多觸發疊加請求。
+  Future<void> _refreshAll() async {
+    if (_refreshing || !mounted) return;
+    _refreshing = true;
+    try {
+      await Future.wait([
+        if (widget.debugInitialRemindersForTest == null) _loadNextDoseData(),
+        if (widget.debugInitialNewsItemsForTest == null) _fetchNews(),
+      ]);
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 第一次進來 initState 已經載過，只記錄狀態；之後由不可見→可見才刷新。
+    final visible = TickerMode.valuesOf(context).enabled;
+    _isVisible = visible;
+    if (_wasVisible == false && visible) _refreshAll();
+    _wasVisible = visible;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isVisible) _refreshAll();
   }
 
   /// 「帶我回家」的目的地；null 代表尚未設定家——入口卡仍顯示（見
@@ -150,6 +188,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _updateTime();
     // ⚠️ 見 `widget.debugInitialNewsItemsForTest` 欄位說明：僅供 widget
     // test 注入假資料，production 呼叫端恆為 null，行為與原本完全相同。
@@ -536,8 +575,13 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       color: c.bg,
       child: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
+        child: RefreshIndicator(
+          color: c.brandFill,
+          backgroundColor: c.surface,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
           padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearanceWithPill(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -557,6 +601,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               GemIn(index: 3, child: _buildFeaturedNewsCard(c)),
             ],
           ),
+        ),
         ),
       ),
     );

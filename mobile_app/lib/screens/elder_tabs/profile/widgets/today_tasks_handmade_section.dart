@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../utils/reminder_schedule.dart';
+import '../../../../utils/display_text.dart';
 
 /// 📋 今日生活排程與用藥打卡手帳（直接呈現在卡片上，支援大字體打卡）
 ///
@@ -474,7 +475,7 @@ class _TodayTasksHandmadeSectionState
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            r['title'] ?? '',
+                            stripEmoji((r['title'] ?? '').toString()),
                             style: GoogleFonts.notoSansTc(
                               fontSize: isLandscape ? 13.5 : 16.5,
                               fontWeight: FontWeight.w900,

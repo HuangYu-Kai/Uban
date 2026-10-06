@@ -187,6 +187,39 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (state == AppLifecycleState.resumed && _locationSharingEnabled) {
       unawaited(ElderLocationService.instance.recheckDeviceStatus());
     }
+    // 回前景時，若本分頁正在顯示就重新同步任務與連勝。
+    if (state == AppLifecycleState.resumed && _isVisible) {
+      unawaited(_refreshAll());
+    }
+  }
+
+  // ── 重新同步機制（本頁在 IndexedStack 下保活，initState 只跑一次）──
+  // 三種觸發共用 [_refreshAll]：下拉刷新、切回本分頁（TickerMode 由不可見→可見）、
+  // App 回前景（僅在本分頁可見時）。
+  bool _refreshing = false;
+  bool? _wasVisible;
+  bool _isVisible = true;
+
+  /// 重新讀取「任務清單」與「連勝」。進行中不重複發。
+  Future<void> _refreshAll() async {
+    if (_refreshing || !mounted) return;
+    if (widget.debugInitialRemindersForTest != null) return; // 測試注入模式不連網
+    _refreshing = true;
+    try {
+      await Future.wait([_loadElderReminders(), _loadStreak()]);
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 第一次進來 initState 已載過，只記錄狀態；之後由不可見→可見才刷新。
+    final visible = TickerMode.valuesOf(context).enabled;
+    _isVisible = visible;
+    if (_wasVisible == false && visible) unawaited(_refreshAll());
+    _wasVisible = visible;
   }
 
   /// 頁首年齡／地區：沿用既有的 `ApiService.getElderProfile`（聊天頁也在用），
@@ -587,8 +620,13 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       color: c.bg,
       child: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
+        child: RefreshIndicator(
+          color: c.brandFill,
+          backgroundColor: c.surface,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
           padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearanceWithPill(context)),
           child: Align(
             alignment: Alignment.topCenter,
@@ -707,6 +745,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               ),
             ),
           ),
+        ),
         ),
       ),
     );

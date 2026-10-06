@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../../services/elder_reminder_manager.dart';
 import '../../services/friend_service.dart';
 import '../../services/game_service.dart';
 import '../../services/weather_service.dart';
@@ -31,6 +32,7 @@ import 'pet/pet_season_chip.dart';
 import 'pet/pet_stat_card.dart';
 import 'profile/utils/coordinate_kalman_filter.dart';
 import 'profile/widgets/pet_corner_actions.dart';
+import 'streak/streak_service.dart';
 
 /// 長輩端「小豬」分頁（v3 分頁重排新增）：上半是元氣小豬之家（原本在「我的」
 /// 分頁最上方），下半嵌入每日祝福圖（[ElderGreetingTab] 的 embedded 模式）。
@@ -56,7 +58,8 @@ class ElderPetTab extends StatefulWidget {
   State<ElderPetTab> createState() => _ElderPetTabState();
 }
 
-class _ElderPetTabState extends State<ElderPetTab> {
+class _ElderPetTabState extends State<ElderPetTab>
+    with WidgetsBindingObserver {
   static const double _maxAccuracyMeters = 35.0;
   static const double _minPointDistanceMeters = 2.0;
   static const double _maxReasonableJumpMeters = 120.0;
@@ -151,22 +154,48 @@ class _ElderPetTabState extends State<ElderPetTab> {
   // 餵食前的階段：餵食動畫播完後與新階段比較，升階才呼叫 PetEvolutionDialog。
   PetGrowthStage? _stageBeforeFeed;
   bool _wasVisible = false;
-  DateTime? _lastVisibleRefresh;
+  bool _refreshing = false;
+
+  /// 重新同步：食物解鎖來源、胡蘿蔔帳本、小豬成長狀態、排行榜。進行中不重複發。
+  /// 三種觸發共用：下拉刷新、切回本分頁（TickerMode 由不可見→可見，不節流）、
+  /// App 回前景（僅本分頁可見時）。
+  Future<void> _refreshAll() async {
+    if (_refreshing || !mounted) return;
+    _refreshing = true;
+    try {
+      await Future.wait([
+        _refreshFoodUnlocks(),
+        _refreshCarrotLedger(),
+        _loadPetGrowthState(),
+      ]);
+      if (mounted) setState(() => _leaderboardTick++);
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  /// 打卡後（提醒同步／連勝變動）立刻更新胡蘿蔔數，不必切分頁。
+  void _onCheckinChanged() {
+    if (!mounted) return;
+    unawaited(_refreshFoodUnlocks());
+    unawaited(_refreshCarrotLedger());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _wasVisible) {
+      unawaited(_refreshAll());
+    }
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 小豬分頁由不可見變可見（IndexedStack 以 TickerMode 開關）時，重新讀一次
-    // 解鎖來源與胡蘿蔔帳本，否則在別的分頁打卡後這裡仍是舊的 0。5 秒內不重複。
-    final visible = TickerMode.of(context);
+    // 小豬分頁由不可見變可見（IndexedStack 以 TickerMode 開關）時重新同步，
+    // 否則在別的分頁打卡後這裡仍是舊的數字。
+    final visible = TickerMode.valuesOf(context).enabled;
     if (visible && !_wasVisible) {
-      final now = DateTime.now();
-      if (_lastVisibleRefresh == null ||
-          now.difference(_lastVisibleRefresh!) > const Duration(seconds: 5)) {
-        _lastVisibleRefresh = now;
-        unawaited(_refreshFoodUnlocks());
-        unawaited(_refreshCarrotLedger());
-      }
+      unawaited(_refreshAll());
     }
     _wasVisible = visible;
     precacheImage(
@@ -365,6 +394,9 @@ class _ElderPetTabState extends State<ElderPetTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ElderReminderManager.instance.addListener(_onCheckinChanged);
+    StreakService.changes.addListener(_onCheckinChanged);
 
     _autoStartTracking();
     _startStepTracking();
@@ -399,6 +431,9 @@ class _ElderPetTabState extends State<ElderPetTab> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ElderReminderManager.instance.removeListener(_onCheckinChanged);
+    StreakService.changes.removeListener(_onCheckinChanged);
     _positionStream?.cancel();
     _stepCountStream?.cancel();
     super.dispose();
@@ -878,8 +913,13 @@ class _ElderPetTabState extends State<ElderPetTab> {
       height: double.infinity,
       child: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
+        child: RefreshIndicator(
+          color: UbanColors.of(context).brandFill,
+          backgroundColor: UbanColors.of(context).surface,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
           padding: EdgeInsets.only(bottom: elderNavClearance(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -892,6 +932,7 @@ class _ElderPetTabState extends State<ElderPetTab> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

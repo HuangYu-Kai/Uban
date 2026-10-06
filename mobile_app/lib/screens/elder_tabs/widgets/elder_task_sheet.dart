@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/reminder_schedule.dart';
+import '../../../utils/display_text.dart';
 import '../../../widgets/ui/ui.dart';
 import 'elder_goal_form.dart';
 
@@ -301,7 +302,7 @@ class ElderTaskRow extends StatelessWidget {
     final st =
         reminderCategoryStyle(c, (reminder['category'] ?? '').toString());
     final time = (reminder['time_str'] ?? '').toString();
-    final title = (reminder['title'] ?? '提醒').toString();
+    final title = stripEmoji((reminder['title'] ?? '提醒').toString());
     return GestureDetector(
       onLongPress: onEdit,
       child: Container(

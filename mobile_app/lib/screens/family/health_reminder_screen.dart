@@ -4,6 +4,7 @@ import '../../services/api_service.dart';
 import '../../theme/family_theme.dart';
 import '../../widgets/ui/ui.dart';
 import 'widgets/fam_ui.dart';
+import '../../utils/display_text.dart';
 
 class HealthReminderScreen extends StatefulWidget {
   final String elderId;
@@ -406,7 +407,8 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
   Widget _buildReminderCard(dynamic r) {
     final c = _c;
     final reminderId = r['id'] as int;
-    final title = r['title']?.toString() ?? '未命名提醒';
+    // 只影響顯示（卡片標題與刪除確認），編輯表單另從 r['title'] 取原文
+    final title = stripEmoji(r['title']?.toString() ?? '未命名提醒');
     final category = r['category']?.toString() ?? 'custom';
     final timeStr = r['time_str']?.toString() ?? '00:00';
     final repeatDays = r['repeat_days']?.toString() ?? '每天';

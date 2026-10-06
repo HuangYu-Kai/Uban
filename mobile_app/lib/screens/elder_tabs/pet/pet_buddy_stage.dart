@@ -826,7 +826,7 @@ class PetBuddyStageState extends State<PetBuddyStage>
   }
 
   Widget _carrotImg(double size) => Image.asset(
-        'assets/images/pet_foods/food_carrot.png',
+        'assets/images/pet_foods/carrot_cartoon.png',
         width: size,
         height: size,
         fit: BoxFit.contain,

@@ -788,14 +788,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       }
     };
     Signaling().onRemoteReminder = _ownRemoteReminder;
-    _ownReminderSync = (data) {
+    _ownReminderSync = (data) async {
       if (mounted) {
         debugPrint('🔄 [ElderHomeScreen] 收到 onReminderSync 信令: $data');
         // ★ 2026-09-15：action='complete' 時把該筆寫進本機當日完成清單。
         //   「我的」分頁與首頁「下一包藥」讀的都是本機 completed_tasks_<date>，
         //   後端只寫 activity_log、UI 從來不讀。少了這段，透過提醒 API 或
         //   語音（「我吃過藥了」）完成的打卡，長輩畫面上永遠不會變。
-        _applyRemoteReminderCompletion(data);
+        // ★ 必須先 await 寫完本機再 syncReminders()：後者會通知首頁／我的頁重讀
+        //   completed_tasks_<date>，不等的話會讀到舊值（兩台裝置進度不同步的根因）。
+        await _applyRemoteReminderCompletion(data);
+        if (!mounted) return;
         ElderReminderManager.instance.syncReminders();
       }
     };

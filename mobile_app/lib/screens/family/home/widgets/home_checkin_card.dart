@@ -6,6 +6,7 @@ import '../../../../models/elder.dart';
 import '../../../../services/api_service.dart';
 import '../../../../widgets/ui/ui.dart';
 import '../../widgets/fam_ui.dart';
+import '../../../../utils/display_text.dart';
 
 /// 家屬首頁「今日打卡」卡：長輩今天的目標／提醒完成進度（含長輩自建目標）。
 ///
@@ -136,7 +137,7 @@ class _HomeCheckinCardState extends State<HomeCheckinCard> {
                   else ...[
                     Text('下一件', style: famText(c.text3, 12.5)),
                     Text(
-                      '${pending.first['time_str']}　${pending.first['title']}',
+                      '${pending.first['time_str']}　${stripEmoji(pending.first['title'].toString())}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: famText(c.text, 15.5, weight: FontWeight.w800, height: 1.3),
@@ -153,7 +154,7 @@ class _HomeCheckinCardState extends State<HomeCheckinCard> {
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                i['title'].toString(),
+                                stripEmoji(i['title'].toString()),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: famText(c.text2, 13),
@@ -226,7 +227,7 @@ class _CheckinListSheet extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      i['title'].toString(),
+                      stripEmoji(i['title'].toString()),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: famText(
