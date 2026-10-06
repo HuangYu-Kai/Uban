@@ -429,11 +429,12 @@ class _ElderPetTabState extends State<ElderPetTab>
     _loadWeather();
   }
 
-  /// 套用後端指派的品種並寫回離線快取；null／未知值一律忽略（沿用現有顯示）。
+  /// 套用後端指派的品種並寫回離線快取（伺服器為權威）。
+  /// null（舊版後端／請求失敗）→ 沿用現有顯示；未知 key → [PetBreed.fromId] 退回粉紅豬。
+  /// 品種改變只換 sprite，不彈任何對話框。
   void _applyServerBreed(String? id) {
     if (id == null) return;
     final b = PetBreed.fromId(id);
-    if (b.id != id) return; // fromId 對未知值會退回粉紅，這裡不當作伺服器指派
     unawaited(PetBreedStore.save(b));
     if (mounted && b != _breed) setState(() => _breed = b);
   }
@@ -830,6 +831,8 @@ class _ElderPetTabState extends State<ElderPetTab>
           gramsDelta: food.weightGainGrams,
         );
         synced = r.ok;
+        // 餵食回應也帶品種（換季／管理員覆寫時直接換圖，不彈對話框）。
+        _applyServerBreed(r.breed);
         final sw = r.serverWeight;
         if (r.ok && sw != null) {
           _adoptServerWeight(sw, force: r.seasonReset);

@@ -1231,140 +1231,45 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 分頁教學的分派：只在 `_onNavTap` 判定「第一次切到這個分頁」時呼叫一次。
   void _maybeShowTabTutorial(int index) {
     if (!mounted) return;
-    switch (index) {
-      case 0:
-        _showHomeTutorial();
-        break;
-      case 1:
-        _showPhoneTutorial();
-        break;
-      case 2:
-        _showPetTutorial();
-        break;
-      case 3:
-        _showChatTutorial();
-        break;
-      case 4:
-        _showProfileTutorial();
-        break;
-    }
+    if (index < 0 || index >= _tabTutorialIds.length) return;
+    _showTabTutorial(index);
   }
 
-  void _showHomeTutorial() {
-    SpotlightTutorial.showIfNeeded(
-      context,
-      tutorialId: 'elder_home_v1',
-      steps: [
-        TutorialStep(
-          targetKey: _homeDateCardKey,
-          title: '今日日期',
-          body: '這裡會顯示今天的日期、農民曆和節氣，按下去還能看更多內容。',
-        ),
-        TutorialStep(
-          targetKey: _homeNewsCardKey,
-          title: '今日頭條',
-          body: '每天都會更新新聞，按下去可以用聽的，不用自己看小字。',
-        ),
-        TutorialStep(
-          targetKey: _homeMoreNewsKey,
-          title: '看更多新聞',
-          body: '想看其他新聞的話，按這裡就可以看到更多則。',
-        ),
-      ],
-    );
-  }
+  /// 各分頁導覽的 tutorialId（沿用既有 id，已看過旗標才不會失效）。
+  static const List<String> _tabTutorialIds = [
+    'elder_home_v1',
+    'elder_phone_v1',
+    'elder_pet_v1',
+    'elder_chat_v1',
+    'elder_profile_v1',
+  ];
 
-  void _showPhoneTutorial() {
-    SpotlightTutorial.showIfNeeded(
-      context,
-      tutorialId: 'elder_phone_v1',
-      steps: [
-        const TutorialStep(
-          title: '打電話給家人',
-          body: '這裡列出您的家人，想聯絡的時候可以打電話，也可以用視訊看到對方。',
+  /// 取得某分頁的導覽步驟：首次進入（showIfNeeded）與救生圈「觀看本頁功能導覽」
+  /// （showForce）共用同一份，避免兩處文案漂移、也避免某分頁重播時退回通用歡迎頁。
+  List<TutorialStep> _tabTutorialSteps(int index) => elderTabTutorialSteps(
+        index,
+        ElderTutorialKeys(
+          homeDateCard: _homeDateCardKey,
+          homeNewsCard: _homeNewsCardKey,
+          homeMoreNews: _homeMoreNewsKey,
+          phoneTabBar: _phoneTabBarKey,
+          phoneCall: _phoneCallKey,
+          phoneVideo: _phoneVideoKey,
+          pet: _petKey,
+          chatVoiceToggle: _chatVoiceToggleKey,
+          chatInputArea: _chatInputAreaKey,
+          chatLanguageToggle: _chatLanguageToggleKey,
+          profileTasks: _profileTasksKey,
+          profileFamilyPairing: _profileFamilyPairingKey,
+          profileAiAssistant: _profileAiAssistantKey,
         ),
-        TutorialStep(
-          targetKey: _phoneTabBarKey,
-          title: '家人／朋友',
-          body: '上面可以切換看「家人」或「朋友」名單。',
-        ),
-        TutorialStep(
-          targetKey: _phoneCallKey,
-          title: '電話鍵',
-          body: '按這裡是打一般電話，只有聲音、沒有畫面。',
-        ),
-        TutorialStep(
-          targetKey: _phoneVideoKey,
-          title: '視訊鍵',
-          body: '按這裡是打視訊電話，可以看到對方的畫面。',
-        ),
-      ],
-    );
-  }
+      );
 
-  void _showPetTutorial() {
+  void _showTabTutorial(int index) {
     SpotlightTutorial.showIfNeeded(
       context,
-      tutorialId: 'elder_pet_v1',
-      steps: [
-        TutorialStep(
-          targetKey: _petKey,
-          title: '您的小豬夥伴',
-          body: '這是陪伴您的小豬，按一下摸摸牠，牠會陪您一起變健康。',
-        ),
-        const TutorialStep(
-          title: '每日吉利祝賀圖',
-          body: '每天早上這裡會自動為您準備喜氣的早安祝賀圖，點一下就能傳到 LINE 給朋友！',
-        ),
-      ],
-    );
-  }
-
-  void _showChatTutorial() {
-    SpotlightTutorial.showIfNeeded(
-      context,
-      tutorialId: 'elder_chat_v1',
-      steps: [
-        TutorialStep(
-          targetKey: _chatVoiceToggleKey,
-          title: '說話或打字',
-          body: '按這裡可以切換成用「說」的，或是用打字的，跟小嘎聊天。',
-        ),
-        TutorialStep(
-          targetKey: _chatInputAreaKey,
-          title: '開始聊天',
-          body: '按住這裡說話，或是打字，小嘎都會回應您。',
-        ),
-        TutorialStep(
-          targetKey: _chatLanguageToggleKey,
-          title: '國語／台語',
-          body: '這裡可以切換小嘎用國語還是台語跟您說話。',
-        ),
-      ],
-    );
-  }
-
-  void _showProfileTutorial() {
-    SpotlightTutorial.showIfNeeded(
-      context,
-      tutorialId: 'elder_profile_v1',
-      steps: [
-        TutorialStep(
-          targetKey: _profileTasksKey,
-          title: '今日任務',
-          body: '這裡看家人幫您安排的小任務，完成了記得來打勾。',
-        ),
-        TutorialStep(
-          targetKey: _profileFamilyPairingKey,
-          title: '家人綁定',
-          body: '要讓新的家人跟您配對時，按這裡出示配對碼。',
-        ),
-        TutorialStep(
-          targetKey: _profileAiAssistantKey,
-          title: '語音助理設定',
-          body: '這裡可以設定「Hey 嘎蛙」語音喚醒的相關功能。',
-        ),
-      ],
+      tutorialId: _tabTutorialIds[index],
+      steps: _tabTutorialSteps(index),
     );
   }
 
@@ -1476,7 +1381,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '👵 阿公阿嬤安心救生圈',
+              '阿公阿嬤安心救生圈',
               style: ubanText(22, FontWeight.w900, c.text),
               textAlign: TextAlign.center,
             ),
@@ -1493,7 +1398,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 _triggerGoogleAssistantOverlay('請告訴我這個畫面怎麼用');
               },
               icon: Icons.mic_rounded,
-              label: '🎙️ 聽小嘎說話（語音幫忙）',
+              label: '聽小嘎說話（語音幫忙）',
             ),
             const SizedBox(height: 12),
             UbanButton(
@@ -1503,7 +1408,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 _replayCurrentTabTutorial();
               },
               icon: Icons.menu_book_rounded,
-              label: '📖 觀看本頁功能導覽',
+              label: '觀看本頁功能導覽',
             ),
             const SizedBox(height: 12),
             UbanButton(
@@ -1513,7 +1418,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 _onNavTap(1);
               },
               icon: Icons.phone_rounded,
-              label: '📞 撥打電話給家人',
+              label: '撥打電話給家人',
             ),
           ],
         );
@@ -1522,66 +1427,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   }
 
   void _replayCurrentTabTutorial() {
-    switch (_selectedIndex) {
-      case 0:
-        SpotlightTutorial.showForce(
-          context,
-          tutorialId: 'elder_home_v1',
-          steps: [
-            TutorialStep(
-              targetKey: _homeDateCardKey,
-              title: '今日日期',
-              body: '這裡會顯示今天的日期、農民曆和節氣，按下去還能看更多內容。',
-            ),
-            TutorialStep(
-              targetKey: _homeNewsCardKey,
-              title: '今日頭條',
-              body: '每天都會更新新聞，按下去可以用聽的，不用自己看小字。',
-            ),
-            TutorialStep(
-              targetKey: _homeMoreNewsKey,
-              title: '更多新聞',
-              body: '想看更多各類新聞，按這裡就可以挑選有興趣的主題。',
-            ),
-          ],
-        );
-        break;
-      case 1:
-        SpotlightTutorial.showForce(
-          context,
-          tutorialId: 'elder_phone_v1',
-          steps: [
-            TutorialStep(
-              targetKey: _phoneTabBarKey,
-              title: '聯絡人類別',
-              body: '可以在這裡切換家人或朋友的電話名冊。',
-            ),
-            TutorialStep(
-              targetKey: _phoneCallKey,
-              title: '撥打電話',
-              body: '按綠色按鈕可以直接撥語音電話給家人。',
-            ),
-            TutorialStep(
-              targetKey: _phoneVideoKey,
-              title: '視訊通話',
-              body: '按藍色按鈕可以看著家人的臉聊天喔！',
-            ),
-          ],
-        );
-        break;
-      default:
-        SpotlightTutorial.showForce(
-          context,
-          tutorialId: 'elder_main_v1',
-          steps: [
-            const TutorialStep(
-              title: '歡迎使用 UBan',
-              body: '最下面的五個按鈕是主要功能，點擊任一個都可以切換喔！',
-            ),
-          ],
-        );
-        break;
-    }
+    final index = _selectedIndex;
+    if (index < 0 || index >= _tabTutorialIds.length) return;
+    SpotlightTutorial.showForce(
+      context,
+      tutorialId: _tabTutorialIds[index],
+      steps: _tabTutorialSteps(index),
+    );
   }
 
   Widget _buildFloatingNavBar() {
@@ -1591,4 +1443,134 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       onTap: _onNavTap,
     );
   }
+}
+
+/// 長輩端各分頁導覽用到的高光目標 key（由 [_ElderHomeScreenState] 持有並傳入）。
+class ElderTutorialKeys {
+  final GlobalKey homeDateCard,
+      homeNewsCard,
+      homeMoreNews,
+      phoneTabBar,
+      phoneCall,
+      phoneVideo,
+      pet,
+      chatVoiceToggle,
+      chatInputArea,
+      chatLanguageToggle,
+      profileTasks,
+      profileFamilyPairing,
+      profileAiAssistant;
+
+  const ElderTutorialKeys({
+    required this.homeDateCard,
+    required this.homeNewsCard,
+    required this.homeMoreNews,
+    required this.phoneTabBar,
+    required this.phoneCall,
+    required this.phoneVideo,
+    required this.pet,
+    required this.chatVoiceToggle,
+    required this.chatInputArea,
+    required this.chatLanguageToggle,
+    required this.profileTasks,
+    required this.profileFamilyPairing,
+    required this.profileAiAssistant,
+  });
+}
+
+/// 純函式：組出某分頁（0 首頁／1 電話／2 小豬／3 聊天／4 我的）的導覽步驟。
+/// 抽成頂層函式以便單元測試；超出範圍回傳空清單。
+@visibleForTesting
+List<TutorialStep> elderTabTutorialSteps(int index, ElderTutorialKeys k) {
+  switch (index) {
+    case 0:
+      return [
+        TutorialStep(
+          targetKey: k.homeDateCard,
+          title: '今日日期',
+          body: '這裡會顯示今天的日期、農民曆和節氣，按下去還能看更多內容。',
+        ),
+        TutorialStep(
+          targetKey: k.homeNewsCard,
+          title: '今日頭條',
+          body: '每天都會更新新聞，按下去可以用聽的，不用自己看小字。',
+        ),
+        TutorialStep(
+          targetKey: k.homeMoreNews,
+          title: '更多新聞',
+          body: '想看更多各類新聞，按這裡就可以挑選有興趣的主題。',
+        ),
+      ];
+    case 1:
+      return [
+        const TutorialStep(
+          title: '打電話給家人',
+          body: '這裡列出您的家人，想聯絡的時候可以打電話，也可以用視訊看到對方。',
+        ),
+        TutorialStep(
+          targetKey: k.phoneTabBar,
+          title: '聯絡人類別',
+          body: '可以在這裡切換家人或朋友的電話名冊。',
+        ),
+        TutorialStep(
+          targetKey: k.phoneCall,
+          title: '撥打電話',
+          body: '按綠色按鈕可以直接撥語音電話給家人。',
+        ),
+        TutorialStep(
+          targetKey: k.phoneVideo,
+          title: '視訊通話',
+          body: '按藍色按鈕可以看著家人的臉聊天喔！',
+        ),
+      ];
+    case 2:
+      return [
+        TutorialStep(
+          targetKey: k.pet,
+          title: '您的小豬夥伴',
+          body: '這是陪伴您的小豬，按一下摸摸牠，牠會陪您一起變健康。',
+        ),
+        const TutorialStep(
+          title: '每日吉利祝賀圖',
+          body: '每天早上這裡會自動為您準備喜氣的早安祝賀圖，點一下就能傳到 LINE 給朋友！',
+        ),
+      ];
+    case 3:
+      return [
+        TutorialStep(
+          targetKey: k.chatVoiceToggle,
+          title: '說話或打字',
+          body: '按這裡可以切換成用「說」的，或是用打字的，跟小嘎聊天。',
+        ),
+        TutorialStep(
+          targetKey: k.chatInputArea,
+          title: '開始聊天',
+          body: '按住這裡說話，或是打字，小嘎都會回應您。',
+        ),
+        TutorialStep(
+          targetKey: k.chatLanguageToggle,
+          title: '國語／台語',
+          body: '這裡可以切換小嘎用國語還是台語跟您說話。',
+        ),
+      ];
+    case 4:
+      return [
+        TutorialStep(
+          targetKey: k.profileTasks,
+          title: '今日任務',
+          body: '這裡看家人幫您安排的小任務，完成了記得來打勾。',
+        ),
+        TutorialStep(
+          targetKey: k.profileFamilyPairing,
+          title: '家人綁定',
+          body: '要讓新的家人跟您配對時，按這裡出示配對碼。',
+        ),
+        TutorialStep(
+          targetKey: k.profileAiAssistant,
+          title: '語音助理設定',
+          body: '這裡可以設定「Hey 嘎蛙」語音喚醒的相關功能。',
+        ),
+      ];
+  }
+  return const [];
 }

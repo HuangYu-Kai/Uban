@@ -475,6 +475,13 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-06（深夜）🐷 豬種讀後端、各頁導覽重看修正、深色陰影（`ui` 分支）
+
+- **豬種以後端為準**：讀 `GET /api/pet/state` 的 `breed`（或 `skin.breed_key`）、`pet/feed`、`pet/state` 回應的 `breed`，未知值退回粉紅豬，`PetBreedStore` 只當離線快取；換賽季或管理端指定後小豬直接換外觀、不跳對話框。排行榜每位好友顯示自己的豬種。（後端：賽季豬種池與逐位指定，見 uban-api readme。）
+- **「觀看本頁功能導覽」**：原本只有首頁、電話有內容，小豬／聊天／我的都退回一步的「歡迎使用 UBan」。改為各分頁導覽步驟只定義一份（`elderTabTutorialSteps`），首次進入與重看共用，`tutorialId` 不變（已看過的旗標仍有效）。電話導覽重看時會多開頭一步「打電話給家人」。
+- **救生圈視窗**拿掉標題與按鈕的 emoji（已有圖示）。
+- **深色模式玻璃陰影**調淡（alpha .22、blur 20）：Flutter 的陰影會透過毛玻璃顯示成一圈黑暈；淺色不變。影響「怎麼用？」、導覽列等所有 `shadows.glass`。
+
 ### 2026-10-06（夜）☁️ 打卡與小豬體重改以後端為準、長輩深色模式切換、「怎麼用？」側邊收合（`ui` 分支）
 
 - **打卡寫回後端**：打卡送 `local_date`、取消打卡呼叫 `DELETE /api/reminder/{id}/complete`；讀清單時合併後端 `today-progress` 的 `completed_ids` 與本機；連勝合併後端 `all-done-dates`。後端未上線時自動退回本機，不會壞。

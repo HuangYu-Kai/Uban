@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../elder_tabs/pet/pet_ear_anchors.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/ui/uban_text.dart';
 import '../../widgets/friend_avatar.dart';
@@ -319,7 +320,8 @@ class _PetLeaderboardCardState extends State<PetLeaderboardCard> {
         : '長輩 ${entry['elder_id'] ?? ''}';
     final int stage = PetGrowthStage.fromWeight(weight).index + 1;
     // 每位的品種由後端回傳（entry['breed']）；缺漏或未知值退回粉紅豬。
-    final String breed = entry['breed'] == 'black' ? 'black' : 'pink';
+    final rawBreed = entry['breed'];
+    final String breed = PetBreed.fromId(rawBreed is String ? rawBreed : null).id;
 
     final (Color rankBg, Color rankFg) = switch (rank) {
       1 => (const Color(0xFFF5C542), const Color(0xFF5A4300)),

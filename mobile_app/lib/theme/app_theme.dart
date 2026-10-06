@@ -300,11 +300,15 @@ class UbanShadows {
           blurRadius: 20,
           offset: Offset(0, 6)),
     ],
+    // 深色玻璃陰影刻意比 ui.css 的 --glass-shadow（0 10px 30px .45）更淡：
+    // CSS 的 box-shadow 不會畫在元素底下，但 Flutter 的陰影會被毛玻璃
+    // BackdropFilter 透出來，同樣數值在實機上變成一圈沉重的黑暈（「怎麼用？」膠囊、
+    // 導覽列）。淺色模式不動。
     glass: [
       BoxShadow(
-          color: Color.fromRGBO(0, 0, 0, .45),
-          blurRadius: 30,
-          offset: Offset(0, 10)),
+          color: Color.fromRGBO(0, 0, 0, .22),
+          blurRadius: 20,
+          offset: Offset(0, 6)),
     ],
   );
 

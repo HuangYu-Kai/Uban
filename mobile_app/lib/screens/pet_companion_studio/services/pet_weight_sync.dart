@@ -62,7 +62,7 @@ class PetWeightReconcileResult {
   /// 採用伺服器體重時是否為「賽季更新」造成——此時必須無條件採用（即使本機較重）。
   final bool forceAdopt;
 
-  /// 推送時後端若有回傳小豬品種則帶回（舊版後端不回，為 null）。
+  /// 後端指派的小豬品種（GET /pet/state 或推送回應；舊版後端不回則為 null）。
   final String? breed;
 
   const PetWeightReconcileResult({
@@ -85,8 +85,14 @@ class PetFeedResult {
   /// 呼叫端必須無條件採用（即使本機較重）。
   final bool seasonReset;
 
+  /// 餵食回應帶回的品種（後端換季／管理員覆寫時會變；舊版後端為 null）。
+  final String? breed;
+
   const PetFeedResult(
-      {required this.ok, this.serverWeight, this.seasonReset = false});
+      {required this.ok,
+      this.serverWeight,
+      this.seasonReset = false,
+      this.breed});
 }
 
 /// 寵物體重與伺服器同步（伺服器為權威，本機為離線快取）。
@@ -114,8 +120,9 @@ class PetWeightSync {
     try {
       final fetched = await PetLeaderboardService.getServerWeight(elderId);
       if (!fetched.ok) return const PetWeightReconcileResult(ok: false);
+      final serverBreed = fetched.breed;
       if (canWrite != null && !canWrite()) {
-        return const PetWeightReconcileResult(ok: true);
+        return PetWeightReconcileResult(ok: true, breed: serverBreed);
       }
       final local = readLocal();
       final localSeason = await PetStorageService.loadSeasonNo();
@@ -132,12 +139,13 @@ class PetWeightSync {
       }
       switch (action) {
         case PetWeightAction.keepLocal:
-          return const PetWeightReconcileResult(ok: true);
+          return PetWeightReconcileResult(ok: true, breed: serverBreed);
         case PetWeightAction.adoptServer:
           return PetWeightReconcileResult(
             ok: true,
             adoptedWeight: fetched.weight,
             forceAdopt: isNewerSeason(local: localSeason, server: serverSeason),
+            breed: serverBreed,
           );
         case PetWeightAction.pushLocal:
           final r = await PetLeaderboardService.syncMyState(
@@ -148,7 +156,7 @@ class PetWeightSync {
             seasonNo: fetched.weight == null ? serverSeason : localSeason,
           );
           return PetWeightReconcileResult(
-              ok: r.ok, pushed: r.ok && !r.stale, breed: r.breed);
+              ok: r.ok, pushed: r.ok && !r.stale, breed: r.breed ?? serverBreed);
       }
     } catch (e) {
       debugPrint('⚠️ [PetWeightSync] reconcile error: $e');
@@ -178,6 +186,7 @@ class PetWeightSync {
         ok: true,
         serverWeight: w.weight,
         seasonReset: isNewerSeason(local: localSeason, server: sn),
+        breed: w.breed,
       );
     } catch (e) {
       debugPrint('⚠️ [PetWeightSync] feed error: $e');

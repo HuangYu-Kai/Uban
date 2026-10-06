@@ -74,11 +74,8 @@ class PetLeaderboardService {
           .timeout(_timeout);
       final data = _decode(response);
       final ok = response.statusCode == 200 && data['status'] == 'success';
-      String? breed;
       final payload = data['data'];
-      if (ok && payload is Map && payload['breed'] is String) {
-        breed = payload['breed'] as String;
-      }
+      final String? breed = ok ? extractBreed(payload) : null;
       final sn = payload is Map ? payload['season_no'] : null;
       final stale = payload is Map && payload['stale_season'] == true;
       return (
@@ -93,10 +90,26 @@ class PetLeaderboardService {
     }
   }
 
+  /// 從後端回應的 `data` 取出品種 id：優先 `breed`，其次 `skin.breed_key`。
+  /// 沒有（舊版後端）回 null；有值但未知的 key 原樣回傳，由 `PetBreed.fromId`
+  /// 統一退回粉紅豬。
+  static String? extractBreed(Object? payload) {
+    if (payload is! Map) return null;
+    final b = payload['breed'];
+    if (b is String && b.isNotEmpty) return b;
+    final skin = payload['skin'];
+    if (skin is Map) {
+      final k = skin['breed_key'];
+      if (k is String && k.isNotEmpty) return k;
+    }
+    return null;
+  }
+
   /// 讀取伺服器上的寵物體重（`GET /api/pet/state/{elder_id}`）。
   /// `ok` 代表請求成功；`weight` 為 null 代表伺服器尚無此長輩的體重列。
   /// 失敗不拋例外（ok=false），呼叫端保留本機值。
-  static Future<({bool ok, int? weight, int? seasonNo})> getServerWeight(
+  static Future<({bool ok, int? weight, int? seasonNo, String? breed})>
+      getServerWeight(
       String elderId) async {
     try {
       final response = await http
@@ -111,18 +124,19 @@ class PetLeaderboardService {
           ok: true,
           weight: w is num ? w.toInt() : null,
           seasonNo: sn is num ? sn.toInt() : null,
+          breed: extractBreed(payload),
         );
       }
-      return (ok: false, weight: null, seasonNo: null);
+      return (ok: false, weight: null, seasonNo: null, breed: null);
     } catch (e) {
       debugPrint('⚠️ [PetLeaderboardService] getServerWeight error: $e');
-      return (ok: false, weight: null, seasonNo: null);
+      return (ok: false, weight: null, seasonNo: null, breed: null);
     }
   }
 
   /// 餵食（`POST /api/pet/feed`）：送增量，伺服器原子累加並回傳新體重；
   /// 同一個 [clientEventId] 重送不會重複加。回傳新體重與現行賽季；失敗回傳 null。
-  static Future<({int weight, int? seasonNo})?> feedPet({
+  static Future<({int weight, int? seasonNo, String? breed})?> feedPet({
     required String elderId,
     required int gramsDelta,
     required String clientEventId,
@@ -145,7 +159,11 @@ class PetLeaderboardService {
         final w = payload is Map ? payload['weight_grams'] : null;
         final sn = payload is Map ? payload['season_no'] : null;
         if (w is! num) return null;
-        return (weight: w.toInt(), seasonNo: sn is num ? sn.toInt() : null);
+        return (
+          weight: w.toInt(),
+          seasonNo: sn is num ? sn.toInt() : null,
+          breed: extractBreed(payload),
+        );
       }
       return null;
     } catch (e) {
