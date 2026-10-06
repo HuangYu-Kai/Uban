@@ -29,7 +29,7 @@ class PetCarrotButton extends StatelessWidget {
     Widget icon = Transform.rotate(
       angle: -20 * 3.1415926535 / 180,
       child: Image.asset(
-        'assets/images/pet_foods/food_carrot.png',
+        'assets/images/pet_foods/carrot_cartoon.png',
         width: 46,
         height: 46,
         fit: BoxFit.contain,

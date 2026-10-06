@@ -181,6 +181,7 @@ class CommunityService {
         final res = await ApiService.toggleCommunityPostLike(
           postId: intPostId,
           userId: userId,
+          userName: userName,
         );
         if (res != null) {
           remoteSuccess = true;
@@ -200,7 +201,15 @@ class CommunityService {
     if (postIndex == -1) return posts;
 
     final post = posts[postIndex];
+    // 同步更新「誰按過爪印」名單
+    final likedBy = List<String>.from(post.likedBy);
+    if (post.isLiked) {
+      likedBy.remove(userName);
+    } else if (!likedBy.contains(userName)) {
+      likedBy.add(userName);
+    }
     posts[postIndex] = post.copyWith(
+      likedBy: likedBy,
       isLiked: !post.isLiked,
       likeCount: post.isLiked
           ? (post.likeCount - 1).clamp(0, 999999)

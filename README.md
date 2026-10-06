@@ -119,7 +119,7 @@ flowchart TD
 - **Ollama（主要）**：使用 `gemma4:e4b-it-q4_K_M` 模型，支援 Tool Calling
 - **Gemini（備用）**：Google Gemini 2.5 Flash / 3.5 Flash API
 - **TTS 語音合成引擎**：支援 `auto` (自動)、`edge` (Edge-TTS)、`piper` (離線模型)、`cosyvoice` (Zero-Shot 音色複製) 及 **`yating` (雅婷台語 TTS 轉發及自動備援)** ⭐ 新增
-- **ASR 語音辨識**：本地端 Faster-Whisper (`large-v3-turbo`) GPU/CUDA 離線即時轉錄
+- **ASR 語音辨識**：App 的語音輸入一律使用手機內建語音辨識（`speech_to_text`），不再上傳伺服器 Whisper；國語／台語切換只影響小嘎的朗讀（台語＝雅婷 TTS）。後端 `/api/voice/transcribe`（Faster-Whisper）僅供其網頁示範使用
 
 #### 2. AI Agent 人格系統 (`server/agent/`)
 
@@ -188,6 +188,7 @@ flowchart TD
   - 提供仿 Google 助理 4 色炫彩聲波波浪動畫 BottomSheet，支援 ASR 語音輸入、即時 LLM 對話串流回傳與快捷選單卡片，並可隨時在「我的」頁面進行名稱設定與喚醒測試。
   - 具備全域音訊焦點共存模式 (`AndroidAudioFocus.none`)，全時語音監聽不會中斷長輩聆聽新聞、音樂或廣播，實現音訊播放與背景喚醒 100% 平行運作。
 - **福氣小豬健康陪伴寵物系統** ⭐ 升級：採用組員親繪的「溫暖手作繪本厚塗油畫風（Handcrafted Storybook Impasto Oil & Gouache）」，將長輩每日散步步數、按時服藥與優質睡眠直接轉化為小豬的健康增重（純重量 kg 制，0~120+ kg），支援 5 階段正面手繪體態演進與生動物理動態（呼吸、進食咀嚼、開心跳躍、睡覺浮動 Zzz、戳肚肚回彈、金光光環）。詳細美術規範與 AI Prompt 生成指南見 [`docs/general/ART_STYLE_GUIDE_PIGLET.md`](docs/general/ART_STYLE_GUIDE_PIGLET.md)。
+  - **小豬品種（粉紅豬／黑豬）由後端隨機指派**：App 內已移除品種切換；小豬第一次建立時依後台「新小豬粉紅機率」指派並存於 `elder_pet_state.breed`，開發者主控台可調機率、可個別覆寫；App 以 `POST /api/pet/state` 回應取得品種，`pet_breed_store`（SharedPreferences）僅作離線快取，排行榜每位長輩的品種取自 API。
 - **快捷問題卡片**：一鍵發問常見問題
 - **自動提醒聲光語音接收**：當遠端提醒時間到達，觸發長輩端預警音效（"喔！"）與全自動 TTS 語音朗讀提醒標題與內文。
 - **用藥打卡三路一致** ⭐ 第四十七輪：清單點擊、提醒彈窗、對小嘎說「我吃過藥了」三條路徑，
@@ -210,6 +211,12 @@ flowchart TD
   - 支援 DatePicker 日期選擇 (`start_date`)、分類（用藥/看診/飲水/運動/叮嚀）、時間與重複頻率。
   - 三層式卡片視覺佈局，右側整合垂直居中且放大 120% 的控制 Switch 與刪除按鈕。
   - 前端 `ApiService` 支援從 Tailscale (`ts.net` 404/異常) 自動降級備援至 `http://10.0.2.2:8000` 本地伺服器。
+  - **長輩自建目標**（批次六）：長輩在「今天要做的事」抽屜按「新增我的目標」（預設選項散步／喝水／量血壓／做運動，時間，每天或只有今天），與家人提醒分兩區顯示；與家人提醒走同一條打卡路徑（進度環、胡蘿蔔、連續天數計算完全相同），只能修改／刪除自己建的。
+  - **家屬「今日打卡」卡**（批次六）：家屬首頁顯示長輩今日完成進度環、下一件待辦與最近完成項目，點開看全部（含「長輩自訂」標籤）；資料來自 `GET /api/reminder/elder/{id}/today-progress`，下拉重整與每 60 秒更新。家屬提醒管理頁也會標示「長輩自訂」。
+- **AI 照護秘書錯誤處理** ⭐ 新增：
+  - `/api/ai/family_copilot/chat` 請求逾時提高為 45 秒（後端串接 Ollama→Gemini，其餘 API 仍維持 15 秒）。
+  - 伺服器錯誤（回應非 success，如 404 未綁定／500）與網路失敗／逾時分開顯示；伺服器錯誤會帶出伺服器訊息並提示確認是否已完成綁定。
+  - 離線時絕不編造近況（`status_summary` 為 null）；伺服器失敗時仍會在本機解析排程草稿。
 
 ### 五、視訊通話（雙軌制 WebRTC + 完整優化）
 
@@ -471,6 +478,72 @@ void initPedometer() {
 > 第一批補於 2026-08-06，第二批補於 2026-08-13（08-06～08-12 落在 `main` 上、
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
+
+### 2026-10-06（深夜後）🎙️ 長輩聊天語音輸入改用手機內建辨識（`fix/elder-chat-device-stt` 分支）
+
+- **「和小嘎聊天」按住說話**改用手機內建語音辨識（`speech_to_text`，Android 為 Google），不再上傳伺服器 Whisper。原因：伺服器 Whisper small 準確度不如手機端，且家中 AI 電腦離線時會整個失效。錄音期間會暫停首頁喚醒詞監聽，放開後還原。
+- 手機辨識器不支援台語輸入，所以**輸入一律是國語**；國語／台語切換仍只控制小嘎的朗讀語言。
+- 移除不再使用的 `transcribeAudio`／`isTranscriptionError` 與其測試；後端不動。
+- **喚醒詞回呼被共用單例搶走**：`speech_to_text` 的 `SpeechToText()` 是單例，只有第一個 `initialize` 的 `onError`／`onStatus` 會生效，別的畫面先初始化時喚醒詞就收不到「結束／錯誤」事件，只剩 5 秒看門狗救援（所以常常沒反應）；反之助理浮層也可能收不到 `done` 而卡在「聆聽中」。現在每個畫面（喚醒詞、助理浮層、長輩聊天、家人 AI 副駕）都在 `listen()` 前重新掛上自己的 `errorListener`／`statusListener`。
+- **喚醒詞語系**改成與其他畫面一致，用 `pickChineseSttLocale` 挑裝置實際支援的中文語系（不再用系統語系／寫死 `zh_TW`）。
+- 注意：Android 不允許 App 在背景或螢幕關閉時錄音，所以**語音喚醒只在 App 位於前景時有效**。
+
+### 2026-10-06（深夜）🐷 豬種讀後端、各頁導覽重看修正、深色陰影（`ui` 分支）
+
+- **條款／隱私權視窗**（`policy_detail_dialog.dart`）改用 `UbanColors`：深色模式不再白字壓淺底；品牌色上的標題、按鈕文字改 `onBrand`。視窗以呼叫端的 Theme 包住，家屬端主題也正確。
+- **每日吉祥祝賀圖疊上自己的小豬**：依豬種（`PetBreedStore`）與階段疊在圖角（文字在下時放右上、否則右下），預覽與「保存到相簿／傳 LINE」輸出同一張；小豬外緣加白邊（貼紙式，依透明輪廓、半徑約小豬寬 3.5%，由 16 份純白剪影位移疊成，淡陰影在白邊外側），與大字白描邊呼應。新增「放上我的小豬」開關（本機 `greeting_show_pig`，預設開）。小豬頁刷新時祝賀圖一併重讀。
+- **祝賀圖小豬只在經典模式**：AI 智能生圖模式不疊小豬（AI 圖本身已生成小豬），開關只在經典模式顯示。
+- **祝賀圖可拖動小豬與文字（經典模式）**：觸碰即拖（不用長按；自訂 `_ImmediateDragRecognizer` 在手勢競技場立即勝出，不會把頁面捲走，圖上其他地方仍可捲動），拖動時白色虛線外框＋放大 1.03＋輕震動，整個元素夾限在圖內。位置以「佔方形邊長的比例」依範本存 `SharedPreferences`（`greeting_layout_<範本id>`），換範本載入該範本自己的位置、換句好話／字體只重新夾限；匯出（2.8 倍）反映拖動位置且不含虛線外框。範本有自訂位置時出現「還原位置」鈕（回預設並清除儲存）；圖下方「可以用手指拖動小豬和文字」提示拖過一次即消失（`greeting_layout_hint_seen`）。AI 模式不變。另：按鈕「換句好話 (分類)」改為「換句好話」、「換字體發光」改為「換字體款式」。
+- **語音輸入失敗**：辨識結果為空或整串 `[...]`（後端錯誤字串）時不再塞進聊天輸入框，改提示「語音辨識暫時無法使用，請改用打字」（`AiChatApi.isTranscriptionError`）。後端遠端 ASR 失敗改用本機模型，見 uban-api readme。
+
+- **天氣精準到區（本機、不新增後端呼叫）**：長輩開啟位置分享且定位權限已授予時，`WeatherService` 取最近一次定位（位置服務最近接受點 → 系統最後已知 → 現場低精度最多 5 秒；只收 6 小時內）、座標四捨五入到小數 2 位（約 1 公里）後直接查 Open-Meteo，快取鍵 `cached_weather_geo_<lat>_<lon>`；任何條件不符或失敗就靜默退回原本的縣市邏輯。畫面地名仍只顯示縣市（居住地未填時以最近縣市推定）。天氣路徑不會跳權限對話框。
+- **豬種以後端為準**：讀 `GET /api/pet/state` 的 `breed`（或 `skin.breed_key`）、`pet/feed`、`pet/state` 回應的 `breed`，未知值退回粉紅豬，`PetBreedStore` 只當離線快取；換賽季或管理端指定後小豬直接換外觀、不跳對話框。排行榜每位好友顯示自己的豬種。（後端：賽季豬種池與逐位指定，見 uban-api readme。）
+- **「觀看本頁功能導覽」**：原本只有首頁、電話有內容，小豬／聊天／我的都退回一步的「歡迎使用 UBan」。改為各分頁導覽步驟只定義一份（`elderTabTutorialSteps`），首次進入與重看共用，`tutorialId` 不變（已看過的旗標仍有效）。電話導覽重看時會多開頭一步「打電話給家人」。
+- **救生圈視窗**拿掉標題與按鈕的 emoji（已有圖示）。
+- **小豬頁導覽第 2 步「每日吉利祝賀圖」補上高光目標**：原本沒有 `targetKey`，不會捲動也不挖洞。現掛在祝賀圖預覽卡（`ElderGreetingTab.tutorialKey` → `ElderPetTab.greetingKey` → `ElderTutorialKeys.petGreeting`）；`SpotlightTutorial` 本就先 `await Scrollable.ensureVisible` 再量測，對齊由 0.3 改 0.2，較高的卡片不會跨過中線讓指引卡片翻到上方遮住它。
+- **深色模式玻璃陰影**調淡（alpha .22、blur 20）：Flutter 的陰影會透過毛玻璃顯示成一圈黑暈；淺色不變。影響「怎麼用？」、導覽列等所有 `shadows.glass`。
+
+### 2026-10-06（夜）☁️ 打卡與小豬體重改以後端為準、長輩深色模式切換、「怎麼用？」側邊收合（`ui` 分支）
+
+- **打卡寫回後端**：打卡送 `local_date`、取消打卡呼叫 `DELETE /api/reminder/{id}/complete`；讀清單時合併後端 `today-progress` 的 `completed_ids` 與本機；連勝合併後端 `all-done-dates`。後端未上線時自動退回本機，不會壞。
+- **小豬體重同步**：進頁／刷新時讀 `GET /api/pet/state/{elder_id}` 對帳，餵食改呼叫 `POST /api/pet/feed`（後端累加、冪等）；賽季結算重設優先（本機存 `uban_pet_season_no`）；讀回伺服器體重不會跳進化畫面。
+- **長輩外觀切換**：「我的」加「外觀：跟隨系統／淺色／深色」（`elder_theme_mode`，本機存）；`main.dart` 只改 `themeMode`。修正淺↔深切換時 `TextStyle` lerp 例外導致閃紅畫面、App 重跑 Splash 的問題（深色主題文字樣式改與淺色同法建構）。
+- **「怎麼用？」**：平常收在右緣只露半圓凸起（點了展開、4 秒後收回）；捲到分頁最底自動展開，坐在底部預留空白上；聊天頁不顯示。麥克風浮鈕不再隨捲動滑出。
+
+### 2026-10-06（晚）🔄 打卡跨裝置同步、全面下拉／切頁刷新、卡通胡蘿蔔（`ui` 分支）
+
+- **另一台打卡、這台要重開才更新**：`ElderHomeScreen._ownReminderSync` 原本沒等 `_applyRemoteReminderCompletion` 寫完本機清單就叫 `syncReminders()`，畫面先重讀到舊值。改為先 await 再同步。
+- **刷新機制**：長輩首頁（任務＋新聞）、我的（任務＋連勝）、小豬（胡蘿蔔來源／帳本、小豬狀態、排行榜），家屬首頁、互動、資料三分頁，一律支援**下拉刷新、切到該分頁就重讀（`TickerMode` 可見性，無節流）、App 回前景重讀**；小豬頁另在打卡事件後即時更新胡蘿蔔數。
+- **胡蘿蔔圖**改用設計稿卡通版（`assets/images/pet_foods/carrot_cartoon.png`，由 `design_prototype/img/carrot.svg` 轉檔 1x/2x/3x），用於小豬頁餵食鈕、舞台、連勝慶祝。
+- **提醒標題不顯示彩色 emoji**：`utils/display_text.dart::stripEmoji` 只處理畫面顯示，資料不變。
+- 已驗證家屬新增／刪除提醒，長輩端即時跟著變（`reminder-sync`）。
+- 已知限制：裝置離線時漏收的 `reminder-sync` 仍會遺失（打卡完成狀態只存在各裝置本機）；家屬「今日打卡」卡呼叫的 `today-progress` 端點後端尚未實作。
+
+### 2026-10-06（下午）🐾 模擬器回報：社群爪印、雙欄卡片、身心分數（`ui` 分支）
+
+- **爪印後按鈕變兩顆、離開社群紅畫面（`_dependents.isEmpty`）**：根因是 `PolaroidPostCard` 的爪印彈跳用 `Curves.easeInOutBack` 驅動 `TweenSequence`，曲線超出 0～1 使每一幀丟斷言、元素樹錯亂。改用 `Curves.easeInOut`。
+- **社群拿掉「親密度＋活力幣」彈窗**（`PetRewardDialog`，該功能目前沒有用途）：按讚不再跳窗；發文／留言改用 SnackBar。
+- **貼文顯示誰送了爪印**：貼文下方一行「🐾 A、B 送了爪印」（超過 3 人顯示「等 N 人」）；按讚時多送 `user_name`，後端回 `liked_by`（需 uban-api 同步部署，舊按讚沒有名字則不列）。
+- **雙欄卡片沒撐滿**（健康／外出趨勢、視訊／語音大卡）：`BlobRipple` 的 `Stack` 改 `StackFit.passthrough`，不再把 `Expanded` 的寬度放鬆。
+- **家屬首頁身心卡**：後端今天沒紀錄時回 `insufficient_data`，分數顯示 `--`、標題「今天還沒有紀錄」並顯示後端說明（原本公式沒紀錄也至少 73 分）。
+- **家屬通話畫面**：頂端「語音通話／視訊通話／緊急通話」膠囊只留文字、拿掉小圖示（純顯示）。
+
+### 2026-10-06 🧹 UI 改版後實機回報 19 項修正（`ui` 分支）
+
+- **字型**：`assets/fonts/` 的 NotoSansTC／Inter 原檔其實全是改名的標楷體（DFKai-SB，微軟授權字型），已換成 Google Fonts 正版靜態檔 400–900。
+- **AI 逾時**：後端 `/ai/chat_stream` 原本在 event loop 上同步跑 DB 與 Ollama，會連帶卡住 Socket.IO；已改走執行緒池，Ollama 加逾時，家屬 AI 秘書設 20 秒預算。App 端串流等待 15→40 秒，語音助理不再顯示原始例外。
+- 其餘：農民曆選日期閃退（補 `flutter_localizations`）、「怎麼用？」與語音鈕在聊天頁隱藏且捲動滑出、新手導覽真正挖洞並可重播回首頁、我的頁與身分選擇頁可看條款（字級放大）、首頁／我的打卡數同源、新聞分段、天氣小圖置中、基本資料頁自動定位、配對頁深色模式字色、電話分頁空狀態可出示配對碼、小豬品種改後端隨機指派（後台可調機率與個別覆寫）、家屬端心情卡與 AI 偏好卡改真資料、長輩可自訂目標、家屬首頁今日打卡進度卡。
+
+#### ⚠️ 已知問題（未處理）
+
+- **通話兩端互相接不到（由其他組員處理，本輪未動任何通話程式碼）**：router log 有 socket 活動但兩端都收不到來電。已逐段比對 `34e0ebc5`／`327de4b2`／`3fdb6dec`／`525f984b`，沒有刪到任何信令、監聽或按鈕閉包。可能原因由高到低：
+  1. 後端 `/ai/chat_stream` 卡住 event loop、Socket 轉發延遲（本輪已修，部署後請重測）。
+  2. 接收端靜默丟棄：手機 log grep `🩺 [CallDiag] CALL-IN dropped:`（same-role／expired／onCallRequest=NULL）。
+  3. 後端找不到轉發目標：伺服器 log grep `[Call Request] 轉發決策：Socket N 個`，N=0 代表對方沒 join（看 `🩺 [CallDiag] JOIN`）。
+- `test/screens/elder_tabs/elder_home_tab_news_visibility_test.dart` 有 3 則量測失敗（529/532/862 對上限 526/801），是「帶我回家」入口讓首頁變高之後就有的，與本輪無關。
+- 家屬端 `ai_suggestion_card.dart` 在 API 無資料時仍會顯示 `AiSuggestionService` 的 mock 建議，待決定空狀態文案。
+- 深色模式下仍寫死淺色底的輸入框：`elder_pairing_display_screen.dart:585`、`family_scripts_view.dart:401`、`family_elder_chat_screen.dart:226`、`redesigned_family_agent_view.dart:636`、`pet_stats_sheet.dart:136`。
+- 家屬端今日打卡卡片是下拉重整＋60 秒輪詢，不是即時（`Signaling().onReminderSync` 是單一回呼，已被長輩畫面佔用）。
 
 ### 2026-10-03 📵 定位權限沒開時，長輩與家屬都看得到原因
 

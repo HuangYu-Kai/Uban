@@ -4,6 +4,7 @@ import '../../services/api_service.dart';
 import '../../theme/family_theme.dart';
 import '../../widgets/ui/ui.dart';
 import 'widgets/fam_ui.dart';
+import '../../utils/display_text.dart';
 
 class HealthReminderScreen extends StatefulWidget {
   final String elderId;
@@ -51,7 +52,12 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
 
   Future<void> _loadReminders() async {
     setState(() => _isLoading = true);
-    final list = await ApiService.getElderReminders(widget.elderId);
+    List<dynamic> list = _reminders;
+    try {
+      list = await ApiService.getElderReminders(widget.elderId);
+    } catch (_) {
+      // 讀取失敗：維持原本清單（getElderReminders 現在失敗會丟例外）。
+    }
     if (mounted) {
       setState(() {
         _reminders = list;
@@ -401,7 +407,8 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
   Widget _buildReminderCard(dynamic r) {
     final c = _c;
     final reminderId = r['id'] as int;
-    final title = r['title']?.toString() ?? '未命名提醒';
+    // 只影響顯示（卡片標題與刪除確認），編輯表單另從 r['title'] 取原文
+    final title = stripEmoji(r['title']?.toString() ?? '未命名提醒');
     final category = r['category']?.toString() ?? 'custom';
     final timeStr = r['time_str']?.toString() ?? '00:00';
     final repeatDays = r['repeat_days']?.toString() ?? '每天';
@@ -451,6 +458,8 @@ class _HealthReminderScreenState extends State<HealthReminderScreen> {
                             label: '$catName・$repeatDays',
                             tone: isActive ? FamTone.brand : FamTone.neutral,
                           ),
+                          if (r['created_by_role'] == 'elder')
+                            const FamChip(label: '長輩自訂', tone: FamTone.info),
                         ],
                       ),
                       const SizedBox(height: 6),

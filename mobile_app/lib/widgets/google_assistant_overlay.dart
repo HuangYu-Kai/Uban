@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -148,29 +149,38 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     }
   }
 
+  // ★ 2026-10-06 喚醒詞修正：由 initialize 的行內回呼抽成方法。SpeechToText
+  //   是單例，若首頁喚醒詞先初始化，這裡傳給 initialize 的回呼不會生效，
+  //   所以 _startListening 每次 listen 前都會重新掛回。
+  void _onAsrError(SpeechRecognitionError val) {
+    debugPrint('🤖 [ASR Error] $val');
+  }
+
+  void _onAsrStatus(String status) {
+    debugPrint('🤖 [ASR Status] $status');
+    if (status == 'done' || status == 'notListening') {
+      if (mounted && _isListening) {
+        setState(() => _isListening = false);
+        // ⚠️ 第五十三輪：這裡是「引擎自行判定聆聽結束」的路徑（例如
+        // pauseFor 逾時、長輩停頓過久），跟 onResult 的 finalResult
+        // 分支是兩條各自獨立的觸發路徑——先前兩條都直接呼叫
+        // _processUserQuery，只堵住其中一條，語音精度不足時仍會從
+        // 這裡自動送出、繞過確認畫面。統一改走 _enterVoiceConfirm()，
+        // 交給長輩看過文字、按下「送出」才會真的問 AI。
+        final text = _textController.text.trim();
+        if (text.isNotEmpty && !_isThinking) {
+          _enterVoiceConfirm();
+        }
+      }
+    }
+  }
+
   /// 初始化 ASR 語音辨識
   Future<void> _initSpeech() async {
     try {
       _speechReady = await _speechToText.initialize(
-        onError: (val) => debugPrint('🤖 [ASR Error] $val'),
-        onStatus: (status) {
-          debugPrint('🤖 [ASR Status] $status');
-          if (status == 'done' || status == 'notListening') {
-            if (mounted && _isListening) {
-              setState(() => _isListening = false);
-              // ⚠️ 第五十三輪：這裡是「引擎自行判定聆聽結束」的路徑（例如
-              // pauseFor 逾時、長輩停頓過久），跟 onResult 的 finalResult
-              // 分支是兩條各自獨立的觸發路徑——先前兩條都直接呼叫
-              // _processUserQuery，只堵住其中一條，語音精度不足時仍會從
-              // 這裡自動送出、繞過確認畫面。統一改走 _enterVoiceConfirm()，
-              // 交給長輩看過文字、按下「送出」才會真的問 AI。
-              final text = _textController.text.trim();
-              if (text.isNotEmpty && !_isThinking) {
-                _enterVoiceConfirm();
-              }
-            }
-          }
-        },
+        onError: _onAsrError,
+        onStatus: _onAsrStatus,
       );
 
       // ★ 第五十一輪：列舉裝置實際支援的語系，挑出可用的中文 localeId
@@ -194,7 +204,10 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
     // 說的話（見 _speakAndWait 的對稱防呆）。
     await _flutterTts.stop();
     if (!_speechReady) {
-      _speechReady = await _speechToText.initialize();
+      _speechReady = await _speechToText.initialize(
+        onError: _onAsrError,
+        onStatus: _onAsrStatus,
+      );
     }
     if (_speechReady && !_isListening) {
       setState(() {
@@ -203,6 +216,10 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
         // 舊的辨識文字跟新一輪的聆聽狀態同時顯示、讓長輩搞不清楚在確認哪句話。
         _awaitingVoiceConfirm = false;
       });
+      // ★ 2026-10-06 喚醒詞修正：單例的 SpeechToText 只認第一個初始化者的
+      //   回呼，listen 前先把本浮層的回呼掛回去，才收得到 'done'。
+      _speechToText.errorListener = _onAsrError;
+      _speechToText.statusListener = _onAsrStatus;
       await _speechToText.listen(
         // 使用 _initSpeech() 掃描裝置語系後選出的 ID；找不到中文語系時為
         // null，交給系統預設（見 utils/stt_locale.dart）。
@@ -362,6 +379,12 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       // 呼叫 ApiService.aiChatStream (Stream<String>)
       await for (final token in ApiService.aiChatStream(widget.userId, query)) {
         if (!mounted) return;
+        // 後端／網路錯誤以 `[ERROR] ...` 開頭的 token 回報，不可把原始例外
+        // 顯示給長輩；丟給下方 catch 走同一句友善說明。
+        if (token.startsWith('[ERROR]')) {
+          debugPrint("🤖 [UbanAssistant] Stream error token: $token");
+          throw Exception('aiChatStream error');
+        }
         setState(() {
           if (firstChunk) {
             _isThinking = false;

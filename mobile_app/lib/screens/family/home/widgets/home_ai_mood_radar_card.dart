@@ -29,47 +29,26 @@ class HomeAiMoodRadarCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = UbanColors.of(context);
     final name = currentElder?.displayName ?? '長輩';
-    final moodTitle = moodInsightData?['mood_title'] ?? '溫馨平穩';
-    final moodScore = moodInsightData?['mood_score'] ?? 88;
+    // 沒資料（請求失敗）或後端回報樣本不足 → 不顯示分數，避免假資料
+    final insufficient = moodInsightData == null ||
+        moodInsightData!['insufficient_data'] == true ||
+        moodInsightData!['mood_score'] == null;
+    // 有回應但今天沒紀錄 → 「今天還沒有紀錄」；請求失敗（無資料）→ 「資料不足」
+    final moodTitle = insufficient
+        ? (moodInsightData != null ? '今天還沒有紀錄' : '資料不足')
+        : '${moodInsightData!['mood_title'] ?? ''}';
+    final moodScore = insufficient ? '--' : '${moodInsightData!['mood_score']}';
 
-    final String summaryText;
-    final String icebreakerTopic;
+    // 不足時後端仍會回說明文字（例如最近一次紀錄日期），有就優先顯示
+    final backendSummary = moodInsightData?['summary']?.toString() ?? '';
+    final summaryText = insufficient
+        ? (backendSummary.isNotEmpty ? backendSummary : '資料不足，多和小嘎聊幾天就會出現')
+        : backendSummary;
+    final icebreakerTopic = (moodInsightData?['icebreaker_topic']?.toString().isNotEmpty ?? false)
+        ? moodInsightData!['icebreaker_topic'].toString()
+        : '$name！今天過得好嗎？撥個電話聽聽長輩的聲音關心一下吧！';
 
-    final now = DateTime.now();
-    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-    final todayLogs = realLogs.where((log) => (log['timestamp']?.toString() ?? '').startsWith(todayStr)).toList();
-
-    if (moodInsightData != null && moodInsightData!['summary'] != null && moodInsightData!['summary'].toString().isNotEmpty) {
-      summaryText = moodInsightData!['summary'].toString();
-      icebreakerTopic = moodInsightData!['icebreaker_topic']?.toString() ?? '$name！今天過得好嗎？撥個電話聽聽長輩的聲音關心一下吧！';
-    } else if (todayLogs.isNotEmpty) {
-      final hasWalk = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('散步') || (l['content']?.toString() ?? '').contains('步數'));
-      final hasMed = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('藥'));
-      final hasNews = todayLogs.any((l) => (l['content']?.toString() ?? '').contains('新聞'));
-
-      List<String> acts = [];
-      if (hasMed) acts.add('按時完成了晨間用藥打卡');
-      if (hasWalk) acts.add('完成了公園散步運動');
-      if (hasNews) acts.add('點閱收聽了熱門新聞');
-
-      final actStr = acts.isNotEmpty ? acts.join('，且') : '作息非常規律';
-      summaryText = '$name 今天情緒非常穩定愉快，$actStr！';
-      icebreakerTopic = hasNews
-          ? '$name！我今天看到熱門賽事新聞，感覺超精彩的！您最近也有在關注戰況嗎？'
-          : '$name！聽說您今天有出門散步，公園空氣感覺怎麼樣呢？';
-    } else {
-      final lastLogDate = realLogs.isNotEmpty ? (realLogs.first['timestamp']?.toString() ?? '').substring(0, 10) : '';
-      if (lastLogDate.length >= 10) {
-        final m = lastLogDate.substring(5, 7);
-        final d = lastLogDate.substring(8, 10);
-        summaryText = '$name 今天尚未產生新的動態紀錄。最近一次紀錄於 $m/$d，作息狀況平穩！';
-      } else {
-        summaryText = '$name 今日尚無活動紀錄，撥個電話問候關心一下長輩吧！';
-      }
-      icebreakerTopic = '$name！今天過得好嗎？已有段時間沒聽到您的聲音，撥個電話問候關心您！';
-    }
-
-    final double? scoreNum = double.tryParse('$moodScore');
+    final double? scoreNum = insufficient ? null : double.tryParse(moodScore);
     final double meter = ((scoreNum ?? 0) / 100).clamp(0.0, 1.0);
 
     return FamCard(
@@ -89,7 +68,7 @@ class HomeAiMoodRadarCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
-                  '$moodScore',
+                  moodScore,
                   maxLines: 1,
                   style: famText(c.brandStrong, 22, weight: FontWeight.w700, tabular: true),
                 ),
@@ -106,7 +85,7 @@ class HomeAiMoodRadarCard extends StatelessWidget {
                         style: famText(c.text3, 12, weight: FontWeight.w700, letterSpacing: 1.2)),
                     const SizedBox(height: 2),
                     Text(
-                      '$moodTitle',
+                      moodTitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: famText(c.text, 18, weight: FontWeight.w900, height: 1.3),
@@ -130,7 +109,7 @@ class HomeAiMoodRadarCard extends StatelessWidget {
           const SizedBox(height: 14),
 
           // 情緒分析描述
-          Text(
+          if (summaryText.isNotEmpty) Text(
             summaryText,
             style: famText(c.text, 15, height: 1.6),
           ),

@@ -5,6 +5,8 @@ import 'login_screen.dart';
 import 'monitor_pairing_screen.dart'; // ★ issue 7：監視器角色
 import '../widgets/login_flow_parts.dart';
 import '../widgets/ui/ui.dart';
+import '../widgets/policy_detail_dialog.dart';
+import '../data/privacy_policy_content.dart';
 
 class IdentificationScreen extends StatefulWidget {
   const IdentificationScreen({super.key});
@@ -89,6 +91,22 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                         MaterialPageRoute(
                           builder: (context) => const MonitorPairingScreen(),
                         ),
+                      );
+                    },
+                  ),
+                  UbanButton(
+                    label: '閱讀完整服務條款',
+                    variant: UbanButtonVariant.ghost,
+                    onPressed: () {
+                      PolicyDetailDialog.show(
+                        context,
+                        title: PrivacyPolicyContent.title,
+                        introText: PrivacyPolicyContent.introText,
+                        headerIcon: Icons.privacy_tip_outlined,
+                        primaryColor: UbanColors.of(context).brandStrong,
+                        secondaryColor: UbanColors.of(context).brandFill,
+                        sections: PrivacyPolicyContent.sections,
+                        lastUpdated: '最後更新：${PrivacyPolicyContent.lastUpdated}',
                       );
                     },
                   ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/privacy_policy_content.dart';
+import '../theme/app_theme.dart';
 
 /// ★ 2026-09-11 第四十五輪第五項需求：從 `registration_screen.dart` 抽出的
 /// 共用政策詳情彈窗（原私有類別 `_ModernPolicyDialog` / `_SectionData`）。
@@ -47,6 +48,10 @@ class PolicyDetailDialog extends StatefulWidget {
     required IconData headerIcon,
     String? lastUpdated,
   }) {
+    // showGeneralDialog 的路由掛在根 Navigator 之下、呼叫端頁面的 Theme 之外——
+    // 家屬端頁面（FamilyThemeScope）與全域主題的深淺可能不同，所以把「呼叫端看到的
+    // 主題」帶進彈窗，色票（UbanColors）才會與呼叫端畫面一致。
+    final callerTheme = Theme.of(context);
     return showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -61,14 +66,17 @@ class PolicyDetailDialog extends StatefulWidget {
           ).value,
           child: Opacity(
             opacity: anim1.value,
-            child: PolicyDetailDialog(
-              title: title,
-              introText: introText,
-              headerIcon: headerIcon,
-              primaryColor: primaryColor,
-              secondaryColor: secondaryColor,
-              sections: sections,
-              lastUpdated: lastUpdated ?? '最後更新：2026 年 6 月 4 日',
+            child: Theme(
+              data: callerTheme,
+              child: PolicyDetailDialog(
+                title: title,
+                introText: introText,
+                headerIcon: headerIcon,
+                primaryColor: primaryColor,
+                secondaryColor: secondaryColor,
+                sections: sections,
+                lastUpdated: lastUpdated ?? '最後更新：2026 年 6 月 4 日',
+              ),
             ),
           ),
         );
@@ -123,6 +131,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
   @override
   Widget build(BuildContext context) {
     final bool isRead = _isFullyRead;
+    // 2026-10-06：底色／卡片／文字一律走設計系統色票，深色模式才不會白字壓淺底
+    // （標題列漸層與按鈕的白字是壓在品牌色上，保留）。
+    final c = UbanColors.of(context);
 
     return Dialog(
       elevation: 0,
@@ -130,9 +141,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       child: Container(
         width: double.infinity,
-        height: MediaQuery.of(context).size.height * 0.75,
+        height: MediaQuery.of(context).size.height * 0.9,
         decoration: BoxDecoration(
-          color: const Color(0xFFF9FAFB),
+          color: c.bg,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
@@ -163,12 +174,12 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: c.onBrand.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       widget.headerIcon,
-                      color: Colors.white,
+                      color: c.onBrand,
                       size: 24,
                     ),
                   ),
@@ -181,7 +192,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                         Text(
                           widget.title,
                           style: GoogleFonts.notoSansTc(
-                            color: Colors.white,
+                            color: c.onBrand,
                             fontWeight: FontWeight.w800,
                             fontSize: 18,
                           ),
@@ -190,15 +201,15 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                         Text(
                           widget.lastUpdated,
                           style: GoogleFonts.notoSansTc(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 11,
+                            color: c.onBrand.withValues(alpha: 0.7),
+                            fontSize: 14,
                           ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Colors.white, size: 26),
+                    icon: Icon(Icons.close_rounded, color: c.onBrand, size: 26),
                     tooltip: '關閉說明',
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -262,9 +273,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                               child: Text(
                                 widget.introText,
                                 style: GoogleFonts.notoSansTc(
-                                  fontSize: 12.5,
+                                  fontSize: 17,
                                   color: widget.primaryColor.withValues(alpha: 0.85),
-                                  height: 1.5,
+                                  height: 1.6,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -287,7 +298,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: c.surface,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.05),
@@ -350,7 +361,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                             children: [
                               Icon(
                                 isRead ? Icons.check_circle_outline : Icons.arrow_downward_rounded,
-                                color: Colors.white,
+                                color: c.onBrand,
                                 size: 18,
                               ),
                               const SizedBox(width: 8),
@@ -359,7 +370,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                                 style: GoogleFonts.notoSansTc(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
-                                  color: Colors.white,
+                                  color: c.onBrand,
                                 ),
                               ),
                             ],
@@ -378,10 +389,11 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
   }
 
   Widget _buildSectionCard(PrivacyPolicySection section, int index) {
+    final c = UbanColors.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -391,7 +403,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
           ),
         ],
         border: Border.all(
-          color: Colors.grey.withValues(alpha: 0.12),
+          color: c.line,
           width: 1,
         ),
       ),
@@ -434,9 +446,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
                           child: Text(
                             section.title,
                             style: GoogleFonts.notoSansTc(
-                              fontSize: 14.5,
+                              fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: const Color(0xFF1E293B),
+                              color: c.text,
                             ),
                           ),
                         ),
@@ -478,6 +490,7 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
   }
 
   TextSpan _parseFormattedText(String text) {
+    final c = UbanColors.of(context);
     final List<TextSpan> children = [];
     final RegExp regExp = RegExp(r'\*\*(.*?)\*\*');
     int start = 0;
@@ -487,19 +500,19 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
         children.add(TextSpan(
           text: text.substring(start, match.start),
           style: GoogleFonts.notoSansTc(
-            fontSize: 13,
-            color: const Color(0xFF4B5563),
-            height: 1.5,
+            fontSize: 18,
+            color: c.text2,
+            height: 1.7,
           ),
         ));
       }
       children.add(TextSpan(
         text: match.group(1),
         style: GoogleFonts.notoSansTc(
-          fontSize: 13,
+          fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: const Color(0xFF0F172A),
-          height: 1.5,
+          color: c.text,
+          height: 1.7,
         ),
       ));
       start = match.end;
@@ -509,9 +522,9 @@ class _PolicyDetailDialogState extends State<PolicyDetailDialog> {
       children.add(TextSpan(
         text: text.substring(start),
         style: GoogleFonts.notoSansTc(
-          fontSize: 13,
-          color: const Color(0xFF4B5563),
-          height: 1.5,
+          fontSize: 18,
+          color: c.text2,
+          height: 1.7,
         ),
       ));
     }

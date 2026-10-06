@@ -68,6 +68,12 @@ class ElderLocationService {
 
   bool get isRunning => _isRunning;
 
+  /// 長輩是否開啟位置分享（唯讀；供天氣等「本機消費端」判斷能否使用定位）。
+  bool get sharingEnabled => _sharingEnabled;
+
+  /// 串流最近一次通過品質過濾的定位點（唯讀；串流停止後為 null）。
+  Position? get lastAcceptedFix => _lastAccepted;
+
   /// 供 `ElderHomeScreen.initState` 呼叫：讀取後端分享開關狀態，開啟時才
   /// 啟動背景串流；關閉時什麼都不做（不會憑空索取定位權限）。
   Future<void> startIfEnabled({required int userId}) async {

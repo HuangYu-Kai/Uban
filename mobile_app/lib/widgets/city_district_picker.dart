@@ -53,6 +53,21 @@ class _CityDistrictPickerState extends State<CityDistrictPicker> {
     }
   }
 
+  @override
+  void didUpdateWidget(covariant CityDistrictPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 父層傳入新的初始值（例如自動定位完成）時同步；不呼叫 onChanged，
+    // 由父層自己已持有該值。
+    if ((widget.initialCity != oldWidget.initialCity ||
+            widget.initialDistrict != oldWidget.initialDistrict) &&
+        isValidCityDistrict(widget.initialCity, widget.initialDistrict)) {
+      setState(() {
+        _city = widget.initialCity;
+        _district = widget.initialDistrict;
+      });
+    }
+  }
+
   void _onCityChanged(String? city) {
     setState(() {
       _city = city;
@@ -130,6 +145,7 @@ class _CityDistrictPickerState extends State<CityDistrictPicker> {
         const SizedBox(height: 6),
         Container(
           constraints: BoxConstraints(minHeight: elderMode ? 68 : 58),
+          alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: BoxDecoration(
             color: c.surface,

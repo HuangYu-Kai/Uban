@@ -8,7 +8,8 @@ import '../../../services/api_service.dart';
 /// 好友寵物排行榜服務。
 ///
 /// 對應後端 `uban-api/routers/pet.py` 的兩個端點：
-/// - `POST /api/pet/state`：上傳／更新自己的寵物體重（UPSERT）。
+/// - `POST /api/pet/state`：上傳本機體重（後端只增不減）；`GET /api/pet/state/{id}`
+///   讀伺服器體重、`POST /api/pet/feed` 餵食增量（見 pet_weight_sync.dart 的對帳規則）。
 /// - `GET /api/pet/leaderboard/{elder_id}`：取得「自己 + 已接受好友」的完整
 ///   排行榜（後端已經算好名次與跟上一名的差距，本服務不重算）。
 ///
@@ -46,6 +47,19 @@ class PetLeaderboardService {
     required String elderId,
     required int weightGrams,
   }) async {
+    final r = await syncMyState(elderId: elderId, weightGrams: weightGrams);
+    return r.ok;
+  }
+
+  /// 同 [uploadMyState]，另外帶回後端指派的小豬品種（`pink`／`black`）。
+  /// 品種由系統在小豬第一次建立時隨機指派、開發者可覆寫，App 不能自行切換。
+  /// 失敗或後端舊版沒回 `breed` 時 `breed` 為 null（呼叫端沿用本機快取）。
+  static Future<({bool ok, String? breed, int? seasonNo, bool stale})>
+      syncMyState({
+    required String elderId,
+    required int weightGrams,
+    int? seasonNo,
+  }) async {
     try {
       final response = await http
           .post(
@@ -54,14 +68,107 @@ class PetLeaderboardService {
             body: jsonEncode({
               'elder_id': elderId,
               'weight_grams': weightGrams,
+              if (seasonNo != null) 'season_no': seasonNo,
             }),
           )
           .timeout(_timeout);
       final data = _decode(response);
-      return response.statusCode == 200 && data['status'] == 'success';
+      final ok = response.statusCode == 200 && data['status'] == 'success';
+      final payload = data['data'];
+      final String? breed = ok ? extractBreed(payload) : null;
+      final sn = payload is Map ? payload['season_no'] : null;
+      final stale = payload is Map && payload['stale_season'] == true;
+      return (
+        ok: ok,
+        breed: breed,
+        seasonNo: sn is num ? sn.toInt() : null,
+        stale: stale,
+      );
     } catch (e) {
       debugPrint('⚠️ [PetLeaderboardService] uploadMyState error: $e');
-      return false;
+      return (ok: false, breed: null, seasonNo: null, stale: false);
+    }
+  }
+
+  /// 從後端回應的 `data` 取出品種 id：優先 `breed`，其次 `skin.breed_key`。
+  /// 沒有（舊版後端）回 null；有值但未知的 key 原樣回傳，由 `PetBreed.fromId`
+  /// 統一退回粉紅豬。
+  static String? extractBreed(Object? payload) {
+    if (payload is! Map) return null;
+    final b = payload['breed'];
+    if (b is String && b.isNotEmpty) return b;
+    final skin = payload['skin'];
+    if (skin is Map) {
+      final k = skin['breed_key'];
+      if (k is String && k.isNotEmpty) return k;
+    }
+    return null;
+  }
+
+  /// 讀取伺服器上的寵物體重（`GET /api/pet/state/{elder_id}`）。
+  /// `ok` 代表請求成功；`weight` 為 null 代表伺服器尚無此長輩的體重列。
+  /// 失敗不拋例外（ok=false），呼叫端保留本機值。
+  static Future<({bool ok, int? weight, int? seasonNo, String? breed})>
+      getServerWeight(
+      String elderId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('${ApiService.baseUrl}/pet/state/$elderId'))
+          .timeout(_timeout);
+      final data = _decode(response);
+      if (response.statusCode == 200 && data['status'] == 'success') {
+        final payload = data['data'];
+        final w = payload is Map ? payload['weight_grams'] : null;
+        final sn = payload is Map ? payload['season_no'] : null;
+        return (
+          ok: true,
+          weight: w is num ? w.toInt() : null,
+          seasonNo: sn is num ? sn.toInt() : null,
+          breed: extractBreed(payload),
+        );
+      }
+      return (ok: false, weight: null, seasonNo: null, breed: null);
+    } catch (e) {
+      debugPrint('⚠️ [PetLeaderboardService] getServerWeight error: $e');
+      return (ok: false, weight: null, seasonNo: null, breed: null);
+    }
+  }
+
+  /// 餵食（`POST /api/pet/feed`）：送增量，伺服器原子累加並回傳新體重；
+  /// 同一個 [clientEventId] 重送不會重複加。回傳新體重與現行賽季；失敗回傳 null。
+  static Future<({int weight, int? seasonNo, String? breed})?> feedPet({
+    required String elderId,
+    required int gramsDelta,
+    required String clientEventId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/pet/feed'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'elder_id': elderId,
+              'grams_delta': gramsDelta,
+              'client_event_id': clientEventId,
+            }),
+          )
+          .timeout(_timeout);
+      final data = _decode(response);
+      if (response.statusCode == 200 && data['status'] == 'success') {
+        final payload = data['data'];
+        final w = payload is Map ? payload['weight_grams'] : null;
+        final sn = payload is Map ? payload['season_no'] : null;
+        if (w is! num) return null;
+        return (
+          weight: w.toInt(),
+          seasonNo: sn is num ? sn.toInt() : null,
+          breed: extractBreed(payload),
+        );
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ [PetLeaderboardService] feedPet error: $e');
+      return null;
     }
   }
 

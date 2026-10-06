@@ -8,6 +8,7 @@ import '../identification_screen.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
+import '../../services/today_tasks_loader.dart';
 import '../../services/elder_location_service.dart';
 import 'elder_layout.dart';
 import '../../services/api/location_api.dart';
@@ -16,11 +17,14 @@ import '../../utils/reminder_schedule.dart';
 import '../../widgets/ui/ui.dart';
 import '../../services/elder_reminder_manager.dart';
 import '../../widgets/spotlight_tutorial.dart';
+import '../../data/privacy_policy_content.dart';
+import '../../widgets/policy_detail_dialog.dart';
 
 // 模組化子元件與彈窗
 import 'profile/models/pet_mood.dart'; // ⚠️ 只借用 PetHeartParticle，PetMood 列舉本身在小豬之家改版後已不再使用
 import 'profile/dialogs/family_pairing_dialog.dart';
 import 'profile/dialogs/ai_assistant_settings_dialog.dart';
+import 'profile/widgets/profile_appearance_card.dart';
 import 'profile/widgets/profile_greet_row.dart';
 import 'profile/widgets/profile_location_hint.dart';
 import 'profile/widgets/profile_task_card.dart';
@@ -28,6 +32,7 @@ import 'streak/streak_celebration.dart';
 import 'streak/streak_service.dart';
 import 'streak/streak_widgets.dart';
 import 'widgets/elder_task_sheet.dart';
+import 'widgets/elder_goal_form.dart';
 
 class ElderProfileTab extends StatefulWidget {
   final int userId;
@@ -41,6 +46,10 @@ class ElderProfileTab extends StatefulWidget {
 
   /// 連勝慶祝畫面的「去餵小豬」：由 `ElderHomeScreen` 傳入，轉成既有的 `_onNavTap(2)`。
   final VoidCallback? onGoFeedPig;
+
+  /// 「重新觀看新手導覽」：由 `ElderHomeScreen` 傳入（重設進度、切回首頁並重播）。
+  /// 為 null 時退回只重設進度並顯示 SnackBar。
+  final Future<void> Function()? onReplayTutorial;
 
   /// ⚠️ 僅供 widget test 注入假提醒（正式呼叫端恆為 null）。非 null 時不讀 SharedPreferences、
   /// 不打 API（提醒、好友 id、位置分享狀態、年齡地區都跳過），畫面直接用這份資料。
@@ -59,6 +68,7 @@ class ElderProfileTab extends StatefulWidget {
     this.familyPairingKey,
     this.aiAssistantKey,
     this.onGoFeedPig,
+    this.onReplayTutorial,
     this.debugInitialRemindersForTest,
     this.debugInitialCompletedIdsForTest,
   });
@@ -133,6 +143,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       // 出的 elder_id（見該函式說明）。initState 呼叫 _loadElderReminders 時
       // 本欄位通常還沒載入完成而被暫緩，這裡載入完成後補發一次真正的讀取。
       _loadElderReminders();
+      // 連勝要用 elder_id 向後端合併其他裝置的「全部完成」日期。
+      _loadStreak();
     }
   }
 
@@ -178,6 +190,39 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (state == AppLifecycleState.resumed && _locationSharingEnabled) {
       unawaited(ElderLocationService.instance.recheckDeviceStatus());
     }
+    // 回前景時，若本分頁正在顯示就重新同步任務與連勝。
+    if (state == AppLifecycleState.resumed && _isVisible) {
+      unawaited(_refreshAll());
+    }
+  }
+
+  // ── 重新同步機制（本頁在 IndexedStack 下保活，initState 只跑一次）──
+  // 三種觸發共用 [_refreshAll]：下拉刷新、切回本分頁（TickerMode 由不可見→可見）、
+  // App 回前景（僅在本分頁可見時）。
+  bool _refreshing = false;
+  bool? _wasVisible;
+  bool _isVisible = true;
+
+  /// 重新讀取「任務清單」與「連勝」。進行中不重複發。
+  Future<void> _refreshAll() async {
+    if (_refreshing || !mounted) return;
+    if (widget.debugInitialRemindersForTest != null) return; // 測試注入模式不連網
+    _refreshing = true;
+    try {
+      await Future.wait([_loadElderReminders(), _loadStreak()]);
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 第一次進來 initState 已載過，只記錄狀態；之後由不可見→可見才刷新。
+    final visible = TickerMode.valuesOf(context).enabled;
+    _isVisible = visible;
+    if (_wasVisible == false && visible) unawaited(_refreshAll());
+    _wasVisible = visible;
   }
 
   /// 頁首年齡／地區：沿用既有的 `ApiService.getElderProfile`（聊天頁也在用），
@@ -197,7 +242,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
   }
 
   Future<void> _loadStreak() async {
-    final snap = await StreakService.load();
+    final snap = await StreakService.load(elderId: _myFriendElderId);
     if (mounted) setState(() => _streak = snap);
   }
 
@@ -304,14 +349,10 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     }
 
     setState(() => _isLoadingReminders = true);
-    final prefs = await SharedPreferences.getInstance();
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-    final completedList = prefs.getStringList('completed_tasks_$today') ?? [];
-    _completedReminderIds =
-        completedList.map((e) => int.tryParse(e) ?? -1).toSet();
-
     try {
-      final list = await ApiService.getElderReminders(elderKey);
+      final data = await TodayTasksLoader.load(elderKey);
+      _completedReminderIds = data.completedIds;
+      final list = data.reminders;
       if (mounted) {
         // ★ 第四十六輪（E3）：API 回空清單時，過去會塞入 3 筆假提醒
         // （id 101/102/103：服藥／溫開水／散步），讓真的沒設提醒的長輩
@@ -388,7 +429,8 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     if (!isAlreadyDone) {
       bool success;
       try {
-        success = await ApiService.completeElderReminder(reminderId);
+        success = await ApiService.completeElderReminder(reminderId,
+            localDate: today);
       } catch (e) {
         debugPrint('⚠️ [ElderProfileTab] completeElderReminder 例外: $e');
         success = false;
@@ -426,6 +468,43 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       // ★ 連勝紀錄（新功能）：打卡「成功之後」才檢查，上面的樂觀更新／回退邏輯不變。
       if (success) unawaited(_checkStreak());
     } else {
+      // ★ 取消打卡：後端現在有 DELETE /reminder/{id}/complete，比照上面的
+      // 樂觀更新＋失敗回退——否則別台裝置／家屬端仍看到已完成，下次同步又把
+      // 這筆聯集回來。失敗時把 id 加回記憶體與本機清單，並提示再按一次。
+      bool success;
+      try {
+        success = await ApiService.uncompleteElderReminder(reminderId,
+            localDate: today);
+      } catch (e) {
+        debugPrint('⚠️ [ElderProfileTab] uncompleteElderReminder 例外: $e');
+        success = false;
+      }
+      if (!mounted) return;
+      if (!success) {
+        setState(() => _completedReminderIds.add(reminderId));
+        await prefs.setStringList(
+          'completed_tasks_$today',
+          _completedReminderIds.map((e) => e.toString()).toList(),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '取消打卡沒有送出成功，請確認網路後再按一次',
+              style: GoogleFonts.notoSansTc(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: const Color(0xFFB91C1C),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            margin: const EdgeInsets.all(20),
+          ),
+        );
+      }
       // 取消打卡：今天就不再是「全部完成」，讓連勝紀錄同步（不會觸發慶祝）。
       unawaited(_checkStreak());
     }
@@ -526,11 +605,45 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         readGroups: () =>
             groupByStatus(_reminders, _completedReminderIds, DateTime.now()),
         onCheckIn: _checkIn,
+        onAddGoal: () => _editGoal(null),
+        onEditGoal: _editGoal,
+        onDeleteGoal: (g) async {
+          if (await confirmDeleteElderGoal(context, g, userId: widget.userId)) {
+            await _loadElderReminders();
+          }
+        },
       ),
     ).whenComplete(() => _taskSheetOpen = false);
   }
 
+  /// 長輩自建目標：新增（[goal]＝null）或修改；成功後重讀清單。
+  Future<void> _editGoal(Map<String, dynamic>? goal) async {
+    final elderId = _myFriendElderId;
+    if (elderId == null || elderId.isEmpty || !mounted) return;
+    final ok = await runElderGoalForm(context,
+        elderId: elderId, userId: widget.userId, existing: goal);
+    if (ok) await _loadElderReminders();
+  }
+
+  void _openPolicy() {
+    PolicyDetailDialog.show(
+      context,
+      title: PrivacyPolicyContent.title,
+      introText: PrivacyPolicyContent.introText,
+      headerIcon: Icons.privacy_tip_outlined,
+      primaryColor: UbanColors.of(context).brandStrong,
+      secondaryColor: UbanColors.of(context).brandFill,
+      sections: PrivacyPolicyContent.sections,
+      lastUpdated: '最後更新：${PrivacyPolicyContent.lastUpdated}',
+    );
+  }
+
   Future<void> _replayTutorial() async {
+    final replay = widget.onReplayTutorial;
+    if (replay != null) {
+      await replay();
+      return;
+    }
     await SpotlightTutorial.resetAllTutorials();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -548,9 +661,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
       color: c.bg,
       child: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearance(context)),
+        child: RefreshIndicator(
+          color: c.brandFill,
+          backgroundColor: c.surface,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
+          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearanceWithPill(context)),
           child: Align(
             alignment: Alignment.topCenter,
             // 平板橫放時不要讓卡片拉成整排，限制最大寬度。
@@ -647,6 +765,19 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                   ),
                   gap,
 
+                  // 外觀：跟隨系統／淺色／深色
+                  const ProfileAppearanceCard(),
+                  gap,
+
+                  // 服務條款與隱私權政策
+                  UbanActionTile(
+                    icon: Icons.privacy_tip_outlined,
+                    title: '查看服務條款與隱私權政策',
+                    subtitle: '了解我們如何使用與保護您的資料',
+                    onTap: _openPolicy,
+                  ),
+                  gap,
+
                   // 切換身分（登出）
                   UbanActionTile(
                     icon: Icons.swap_horiz_rounded,
@@ -659,6 +790,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
               ),
             ),
           ),
+        ),
         ),
       ),
     );

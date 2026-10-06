@@ -128,10 +128,12 @@ class _WeatherGlyphState extends State<WeatherGlyph>
                     ),
                   ),
                 Positioned(
-                  right: 0,
-                  bottom: 5,
-                  width: 21,
-                  height: 11,
+                  // 雨天沒有太陽：雲置中、放大並抬高，雨滴落在雲的正下方。
+                  left: widget.rainy ? 4.5 : null,
+                  right: widget.rainy ? null : 0,
+                  bottom: widget.rainy ? 9 : 5,
+                  width: widget.rainy ? 27 : 21,
+                  height: widget.rainy ? 13 : 11,
                   child: AnimatedBuilder(
                     animation: _drift,
                     builder: (_, child) => Transform.translate(
@@ -175,12 +177,12 @@ class _WeatherGlyphState extends State<WeatherGlyph>
                   ),
                 ),
                 if (widget.rainy)
-                  for (final x in const [8.0, 15.0, 22.0])
+                  for (final x in const [10.0, 16.0, 22.0])
                     Positioned(
                       left: x,
-                      bottom: 0,
+                      bottom: 1,
                       width: 2.5,
-                      height: 7,
+                      height: 6,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: c.info,

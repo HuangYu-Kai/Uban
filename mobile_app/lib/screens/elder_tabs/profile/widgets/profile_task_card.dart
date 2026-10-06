@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../utils/reminder_schedule.dart';
+import '../../../../utils/display_text.dart';
 import '../../../../widgets/ui/ui.dart';
 
 /// 「我的」分頁的任務卡（設計稿 `.taskcard`）：進度環＋下一件＋打卡鈕，點卡片開抽屜。
@@ -113,7 +114,7 @@ class ProfileTaskCard extends StatelessWidget {
       );
     } else {
       final timeStr = (next['time_str'] ?? '').toString();
-      final title = (next['title'] ?? '提醒').toString();
+      final title = stripEmoji((next['title'] ?? '提醒').toString());
       // ⚠️ 時間＋標題皆為動態長度（後端自訂文字）：時間用 FittedBox、標題限 2 行省略。
       right = Column(
         mainAxisSize: MainAxisSize.min,

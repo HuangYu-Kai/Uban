@@ -65,6 +65,9 @@ class _BlobRippleState extends State<BlobRipple> with TickerProviderStateMixin {
       behavior: HitTestBehavior.translucent,
       onPointerDown: (e) => _spawn(e.localPosition),
       child: Stack(
+        // passthrough：父層給固定寬（Expanded／stretch）時子元件照樣撐滿；
+        // 預設 loose 會把它放鬆，雙欄卡就縮成文字寬、中間空一大塊。
+        fit: StackFit.passthrough,
         children: [
           widget.child,
           if (_blobs.isNotEmpty)

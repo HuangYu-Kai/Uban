@@ -228,7 +228,7 @@ class _StreakCelebrationOverlayState extends State<StreakCelebrationOverlay>
                       offset: Offset(0, -10 * wiggle.abs()),
                       child: ExcludeSemantics(
                         child: Image.asset(
-                          'assets/images/pet_foods/food_carrot.png',
+                          'assets/images/pet_foods/carrot_cartoon.png',
                           width: 58,
                           height: 58,
                           fit: BoxFit.contain,

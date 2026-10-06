@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../services/api_service.dart';
 import '../../../utils/reminder_schedule.dart';
 import '../../pet_companion_studio/models/pet_food_item.dart';
 
@@ -68,8 +69,9 @@ class StreakCelebration {
 
 /// 連勝紀錄（新功能）：每天「所有提醒都完成」就算一天，連續天數往回數。
 ///
-/// - 只存 SharedPreferences `all_done_<yyyy-MM-dd>`（本機日期，與
-///   `completed_tasks_<yyyy-MM-dd>` 同一種日期寫法），不打任何 API。
+/// - 存 SharedPreferences `all_done_<yyyy-MM-dd>`（本機日期，與
+///   `completed_tasks_<yyyy-MM-dd>` 同一種日期寫法）；`load` 傳入 elderId 時會再與後端
+///   `all-done-dates` 取聯集（跨裝置），並把後端日期寫回本機鍵供離線顯示。
 /// - `streak_celebrated_<yyyy-MM-dd>` 記錄今天是否已放過慶祝，避免同一天重複。
 /// - 這個類別只做資料與判斷，不碰畫面、不改打卡本身的邏輯。
 class StreakService {
@@ -156,9 +158,44 @@ class StreakService {
   }
 
   /// 讀取連勝卡資料。
-  static Future<StreakSnapshot> load({DateTime? now}) async {
+  ///
+  /// 有 [elderId] 時額外向後端要「全部完成」的日期，與本機取聯集並寫回本機
+  /// `all_done_` 鍵；後端失敗只用本機。[fetchServerDates] 供單元測試注入。
+  static Future<StreakSnapshot> load({
+    DateTime? now,
+    String? elderId,
+    Future<List<String>> Function(String elderId, String until)?
+        fetchServerDates,
+  }) async {
+    final t = now ?? DateTime.now();
     final prefs = await SharedPreferences.getInstance();
-    return buildSnapshot(await _readDoneKeys(prefs), now ?? DateTime.now());
+    var keys = await _readDoneKeys(prefs);
+    if (elderId != null && elderId.isNotEmpty) {
+      try {
+        final until = dayKey(t);
+        final fetch = fetchServerDates ??
+            (id, u) => ApiService.getAllDoneDates(id, until: u, days: 60);
+        final server = await fetch(elderId, until);
+        final fresh = mergeServerDates(keys, server);
+        for (final d in fresh) {
+          await prefs.setBool('$allDonePrefix$d', true);
+        }
+        if (fresh.isNotEmpty) keys = {...keys, ...fresh};
+      } catch (e) {
+        debugPrint('⚠️ [StreakService] 後端連勝日期讀取失敗，僅用本機: $e');
+      }
+    }
+    return buildSnapshot(keys, t);
+  }
+
+  /// 純函式：後端日期中「本機還沒有」且格式合法的部分（需寫回本機）。
+  static Set<String> mergeServerDates(
+      Set<String> local, Iterable<String> server) {
+    final re = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+    return {
+      for (final d in server)
+        if (re.hasMatch(d) && !local.contains(d)) d,
+    };
   }
 
   /// 打卡「成功之後」呼叫：依今天的提醒完成狀況更新紀錄。

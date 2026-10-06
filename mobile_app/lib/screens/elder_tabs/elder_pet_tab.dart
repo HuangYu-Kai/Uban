@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../../services/elder_reminder_manager.dart';
 import '../../services/friend_service.dart';
 import '../../services/game_service.dart';
 import '../../services/weather_service.dart';
@@ -16,8 +17,8 @@ import '../../utils/error_handler.dart';
 import '../../widgets/ui/ui.dart';
 import '../pet_companion_studio/models/pet_growth_state.dart';
 import '../pet_companion_studio/models/pet_food_item.dart';
-import '../pet_companion_studio/services/pet_leaderboard_service.dart';
 import '../pet_companion_studio/services/pet_progress_service.dart';
+import '../pet_companion_studio/services/pet_weight_sync.dart';
 import '../pet_companion_studio/widgets/pet_evolution_dialog.dart';
 import '../pet_companion_studio/widgets/pet_leaderboard_card.dart';
 
@@ -31,6 +32,7 @@ import 'pet/pet_season_chip.dart';
 import 'pet/pet_stat_card.dart';
 import 'profile/utils/coordinate_kalman_filter.dart';
 import 'profile/widgets/pet_corner_actions.dart';
+import 'streak/streak_service.dart';
 
 /// 長輩端「小豬」分頁（v3 分頁重排新增）：上半是元氣小豬之家（原本在「我的」
 /// 分頁最上方），下半嵌入每日祝福圖（[ElderGreetingTab] 的 embedded 模式）。
@@ -45,18 +47,23 @@ class ElderPetTab extends StatefulWidget {
   /// 新手指引高光目標（掛在 PetHeroStage 上），由 ElderHomeScreen 持有。
   final GlobalKey? petKey;
 
+  /// 新手指引高光目標（掛在每日吉祥祝賀圖的預覽卡片上）。
+  final GlobalKey? greetingKey;
+
   const ElderPetTab({
     super.key,
     required this.userId,
     required this.userName,
     this.petKey,
+    this.greetingKey,
   });
 
   @override
   State<ElderPetTab> createState() => _ElderPetTabState();
 }
 
-class _ElderPetTabState extends State<ElderPetTab> {
+class _ElderPetTabState extends State<ElderPetTab>
+    with WidgetsBindingObserver {
   static const double _maxAccuracyMeters = 35.0;
   static const double _minPointDistanceMeters = 2.0;
   static const double _maxReasonableJumpMeters = 120.0;
@@ -142,7 +149,7 @@ class _ElderPetTabState extends State<ElderPetTab> {
   PetFoodUnlockSource? _unlockSource;
 
   // ── 🎨 舞台（寶可夢 GO 夥伴舞台）狀態 ─────────────────────
-  // 新功能：品種（粉紅豬／黑豬）本機持久化，見 PetBreedStore。
+  // 品種（粉紅豬／黑豬）由後端指派；PetBreedStore 只當離線快取（先讀它，後端回應後覆寫）。
   PetBreed _breed = PetBreed.pink;
   // 天氣三級，只用既有 WeatherService.getWeather（含快取），不新增 API。
   PetWeather _weather = PetWeather.sunny;
@@ -151,22 +158,56 @@ class _ElderPetTabState extends State<ElderPetTab> {
   // 餵食前的階段：餵食動畫播完後與新階段比較，升階才呼叫 PetEvolutionDialog。
   PetGrowthStage? _stageBeforeFeed;
   bool _wasVisible = false;
-  DateTime? _lastVisibleRefresh;
+  bool _refreshing = false;
+
+  /// 重新同步：食物解鎖來源、胡蘿蔔帳本、小豬成長狀態、排行榜。進行中不重複發。
+  /// 三種觸發共用：下拉刷新、切回本分頁（TickerMode 由不可見→可見，不節流）、
+  /// App 回前景（僅本分頁可見時）。
+  // 祝賀圖（嵌在本分頁下半部）監聽此值，變動時重讀小豬品種／階段。
+  final ValueNotifier<int> _greetingPigSignal = ValueNotifier<int>(0);
+
+  Future<void> _refreshAll() async {
+    if (_refreshing || !mounted) return;
+    _refreshing = true;
+    try {
+      await Future.wait([
+        _refreshFoodUnlocks(),
+        _refreshCarrotLedger(),
+        _loadPetGrowthState(),
+      ]);
+      // 本機存檔載入後再與伺服器體重對帳（換機／重裝時採用伺服器值，
+      // 本機較重則推上去；見 PetWeightSync）。
+      await _reconcileWeight();
+      if (mounted) setState(() => _leaderboardTick++);
+      // 通知嵌在下方的祝賀圖重讀小豬品種／階段
+      _greetingPigSignal.value++;
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  /// 打卡後（提醒同步／連勝變動）立刻更新胡蘿蔔數，不必切分頁。
+  void _onCheckinChanged() {
+    if (!mounted) return;
+    unawaited(_refreshFoodUnlocks());
+    unawaited(_refreshCarrotLedger());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _wasVisible) {
+      unawaited(_refreshAll());
+    }
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 小豬分頁由不可見變可見（IndexedStack 以 TickerMode 開關）時，重新讀一次
-    // 解鎖來源與胡蘿蔔帳本，否則在別的分頁打卡後這裡仍是舊的 0。5 秒內不重複。
-    final visible = TickerMode.of(context);
+    // 小豬分頁由不可見變可見（IndexedStack 以 TickerMode 開關）時重新同步，
+    // 否則在別的分頁打卡後這裡仍是舊的數字。
+    final visible = TickerMode.valuesOf(context).enabled;
     if (visible && !_wasVisible) {
-      final now = DateTime.now();
-      if (_lastVisibleRefresh == null ||
-          now.difference(_lastVisibleRefresh!) > const Duration(seconds: 5)) {
-        _lastVisibleRefresh = now;
-        unawaited(_refreshFoodUnlocks());
-        unawaited(_refreshCarrotLedger());
-      }
+      unawaited(_refreshAll());
     }
     _wasVisible = visible;
     precacheImage(
@@ -235,19 +276,16 @@ class _ElderPetTabState extends State<ElderPetTab> {
     }
   }
 
-  /// 進入小豬之家時做一次初次體重同步，讓「從沒餵過食」的長輩也會出現在
-  /// 好友排行榜——否則 `my_rank` 永遠是 null（見
-  /// `pet_leaderboard_card.dart:223` 的空狀態文案「你的寵物體重還沒同步上榜」）。
+  /// 進入小豬之家時做一次初次體重對帳。
   ///
-  /// 比照 `pet_studio_screen.dart` 的 `_maybeSyncInitialWeight`：本機存檔
-  /// （[_loadPetGrowthState]）與好友 elder_id 解析（[_loadMyFriendElderId]）
-  /// 是兩個互相獨立的非同步流程，哪個先完成都在這裡因為另一項還沒就緒而
-  /// 先行返回，等兩者都到齊時才由後完成的一方補上這一次同步——這樣才不會
-  /// 用還沒套用本機存檔的預設體重（1250g）搶先上傳。
+  /// 本機存檔（[_loadPetGrowthState]）與好友 elder_id 解析（[_loadMyFriendElderId]）
+  /// 是兩個互相獨立的非同步流程，哪個先完成都在這裡因為另一項還沒就緒而先行
+  /// 返回，等兩者都到齊時才由後完成的一方補上這一次對帳。
   ///
-  /// 刻意只做背景同步、不彈訊息——被動進場同步失敗不像主動餵食（見
-  /// [_handleFeedFood]）那樣需要長輩立刻注意，下次餵食或重新整理時會自然
-  /// 再試一次，此處若也跳警示只會讓長輩一打開畫面就看到看不懂的錯誤提示。
+  /// ★ 不再盲目上傳本機預設體重（1250g）：先讀伺服器體重再決定——伺服器較重
+  /// 就採用（換機／重裝不會歸零）、本機較重或伺服器沒資料才推上去（見
+  /// [_reconcileWeight]）。刻意只做背景同步、不彈訊息，失敗保留本機值，
+  /// 下次重新整理或餵食會自然再試。
   void _maybeSyncInitialWeight() {
     if (_hasSyncedInitialWeight ||
         _petGrowthState == null ||
@@ -255,10 +293,8 @@ class _ElderPetTabState extends State<ElderPetTab> {
       return;
     }
     _hasSyncedInitialWeight = true;
-    unawaited(_syncWeightToLeaderboard(_petGrowthState!.weightGrams).then((ok) {
-      if (!ok) {
-        debugPrint('⚠️ [ElderProfileTab] 初次寵物體重同步到排行榜失敗，不影響既有寵物養成功能');
-      }
+    unawaited(_reconcileWeight().then((_) {
+      if (mounted) setState(() => _leaderboardTick++);
     }));
   }
 
@@ -339,30 +375,59 @@ class _ElderPetTabState extends State<ElderPetTab> {
     }
   }
 
-  /// 把目前體重同步到後端好友排行榜（`POST /api/pet/state`）。
-  ///
-  /// 比照 `pet_studio_screen.dart::_syncWeightToLeaderboard`：
-  /// `PetLeaderboardService.uploadMyState` 內部已經 try/catch 過一層，這裡
-  /// 再包一層防禦性 try/catch 只是避免未來改版又開始拋例外，回傳
-  /// bool 讓呼叫端（[_handleFeedFood] 主動餵食／[_maybeSyncInitialWeight]
-  /// 被動進場）各自決定要不要提示使用者。
-  Future<bool> _syncWeightToLeaderboard(int weightGrams) async {
+  // 餵食請求進行中的數量。>0 時不做體重對帳的採用／推送，避免「本機樂觀值
+  // 被 POST /pet/state 推上去之後，餵食增量又在伺服器加一次」的重複計算。
+  int _feedsInFlight = 0;
+  bool _reconcilingWeight = false;
+
+  /// 與伺服器對帳體重（GET /pet/state/{id}）：伺服器較重→採用並存檔；
+  /// 本機較重或伺服器沒資料→推上去（後端只增不減）；失敗→保留本機。
+  /// 不拋例外、不跳訊息。
+  Future<void> _reconcileWeight() async {
     final eid = _myFriendElderId;
-    if (eid == null) return false;
+    if (eid == null || _petGrowthState == null || _reconcilingWeight) return;
+    _reconcilingWeight = true;
     try {
-      return await PetLeaderboardService.uploadMyState(
+      final r = await PetWeightSync.reconcile(
         elderId: eid,
-        weightGrams: weightGrams,
+        readLocal: () => _effectiveGrowthState.weightGrams,
+        canWrite: () => mounted && _feedsInFlight == 0,
       );
+      if (!r.ok) {
+        debugPrint('⚠️ [ElderProfileTab] 寵物體重與伺服器對帳失敗，保留本機體重');
+      }
+      _applyServerBreed(r.breed);
+      final adopted = r.adoptedWeight;
+      if (adopted != null) _adoptServerWeight(adopted, force: r.forceAdopt);
     } catch (e) {
-      debugPrint('⚠️ [ElderProfileTab] 寵物體重同步到排行榜例外: $e');
-      return false;
+      debugPrint('⚠️ [ElderProfileTab] 寵物體重對帳例外: $e');
+    } finally {
+      _reconcilingWeight = false;
     }
+  }
+
+  /// 採用伺服器體重（預設只在比目前本機大時採用，本機領先不倒退；賽季更新
+  /// [force]＝true 時無條件採用，讓賽季重置不被本機較重的舊體重蓋回去）並寫回存檔。
+  /// 不觸發進化對話框：進化畫面只由「餵食動畫結束」比較餵食前後階段時顯示
+  /// （[_stageBeforeFeed]），換機還原體重不是餵食，不應彈出慶祝。
+  void _adoptServerWeight(int serverWeight, {bool force = false}) {
+    if (!mounted) return;
+    final cur = _effectiveGrowthState;
+    final merged = force
+        ? serverWeight
+        : mergeFedWeight(local: cur.weightGrams, server: serverWeight);
+    if (merged == cur.weightGrams) return;
+    final next = cur.copyWith(weightGrams: merged);
+    setState(() => _petGrowthState = next);
+    unawaited(PetStorageService.saveState(next));
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ElderReminderManager.instance.addListener(_onCheckinChanged);
+    StreakService.changes.addListener(_onCheckinChanged);
 
     _autoStartTracking();
     _startStepTracking();
@@ -371,6 +436,16 @@ class _ElderPetTabState extends State<ElderPetTab> {
     _loadMyFriendElderId();
     _loadBreed();
     _loadWeather();
+  }
+
+  /// 套用後端指派的品種並寫回離線快取（伺服器為權威）。
+  /// null（舊版後端／請求失敗）→ 沿用現有顯示；未知 key → [PetBreed.fromId] 退回粉紅豬。
+  /// 品種改變只換 sprite，不彈任何對話框。
+  void _applyServerBreed(String? id) {
+    if (id == null) return;
+    final b = PetBreed.fromId(id);
+    unawaited(PetBreedStore.save(b));
+    if (mounted && b != _breed) setState(() => _breed = b);
   }
 
   Future<void> _loadBreed() async {
@@ -388,8 +463,12 @@ class _ElderPetTabState extends State<ElderPetTab> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ElderReminderManager.instance.removeListener(_onCheckinChanged);
+    StreakService.changes.removeListener(_onCheckinChanged);
     _positionStream?.cancel();
     _stepCountStream?.cancel();
+    _greetingPigSignal.dispose();
     super.dispose();
   }
 
@@ -749,7 +828,29 @@ class _ElderPetTabState extends State<ElderPetTab> {
       }
     }
 
-    final bool synced = await _syncWeightToLeaderboard(newState.weightGrams);
+    // 餵食改送「增量」到伺服器（伺服器原子累加、client_event_id 冪等），並採用
+    // 回傳的伺服器體重（只在較大時採用，避免本機因離線餵食領先時倒退）。
+    // 採用不影響進化判斷：[_onFeedAnimationDone] 只比較餵食前階段與當下階段。
+    final eid = _myFriendElderId;
+    bool synced = false;
+    if (eid != null) {
+      _feedsInFlight++;
+      try {
+        final r = await PetWeightSync.feed(
+          elderId: eid,
+          gramsDelta: food.weightGainGrams,
+        );
+        synced = r.ok;
+        // 餵食回應也帶品種（換季／管理員覆寫時直接換圖，不彈對話框）。
+        _applyServerBreed(r.breed);
+        final sw = r.serverWeight;
+        if (r.ok && sw != null) {
+          _adoptServerWeight(sw, force: r.seasonReset);
+        }
+      } finally {
+        _feedsInFlight--;
+      }
+    }
     if (!mounted) return;
 
     // 排行榜卡依 refreshTick 重新讀取（上傳是非同步的，所以放在同步完成之後）。
@@ -811,12 +912,6 @@ class _ElderPetTabState extends State<ElderPetTab> {
     }
   }
 
-  void _setBreed(PetBreed b) {
-    if (b == _breed) return;
-    setState(() => _breed = b);
-    unawaited(PetBreedStore.save(b));
-  }
-
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
@@ -850,18 +945,13 @@ class _ElderPetTabState extends State<ElderPetTab> {
                     PetCornerActions(userId: widget.userId, musicOnly: true),
               ),
               const SizedBox(height: 14),
-              PetStatCard(
-                growth: growthState,
-                breed: _breed,
-                onBreedChanged: _setBreed,
-              ),
+              PetStatCard(growth: growthState),
               const SizedBox(height: 14),
               UbanCard(
                 child: PetLeaderboardCard(
                   boardStyle: true,
                   myElderId: _myFriendElderId,
                   refreshTick: _leaderboardTick,
-                  myBreedId: _breed.id,
                   headerTrailing: const PetSeasonChip(),
                 ),
               ),
@@ -878,9 +968,14 @@ class _ElderPetTabState extends State<ElderPetTab> {
       height: double.infinity,
       child: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.only(bottom: elderNavClearance(context)),
+        child: RefreshIndicator(
+          color: UbanColors.of(context).brandFill,
+          backgroundColor: UbanColors.of(context).surface,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
+          padding: EdgeInsets.only(bottom: elderNavClearanceWithPill(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -889,9 +984,12 @@ class _ElderPetTabState extends State<ElderPetTab> {
                 userId: widget.userId,
                 userName: widget.userName,
                 embedded: true,
+                refreshSignal: _greetingPigSignal,
+                tutorialKey: widget.greetingKey,
               ),
             ],
           ),
+        ),
         ),
       ),
     );

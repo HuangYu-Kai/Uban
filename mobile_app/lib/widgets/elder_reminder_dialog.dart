@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import '../utils/display_text.dart';
 import 'elder_overlay_button.dart';
 import 'ui/pressable_scale.dart';
 import 'ui/uban_dialog.dart';
@@ -92,7 +93,7 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
       await _flutterTts.setLanguage("zh-TW");
       await _flutterTts.setPitch(1.0);
       await _flutterTts.setSpeechRate(0.5);
-      final speakContent = "${widget.elderName}您好，現在是${widget.timeStr}，提醒您「${widget.title}」喔！${widget.note.isNotEmpty ? widget.note : ''}";
+      final speakContent = "${widget.elderName}您好，現在是${widget.timeStr}，提醒您「${stripEmoji(widget.title)}」喔！${widget.note.isNotEmpty ? widget.note : ''}";
       await _flutterTts.speak(speakContent);
     } catch (e) {
       debugPrint("⚠️ TTS speak error: $e");
@@ -196,7 +197,7 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '太棒了！已完成「${widget.title}」打卡記錄',
+            '太棒了！已完成「${stripEmoji(widget.title)}」打卡記錄',
             style: ubanText(18, FontWeight.w700, Colors.white),
           ),
           backgroundColor: c.brandStrong,
@@ -285,7 +286,7 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
 
           // 大字體主標題
           Text(
-            widget.title,
+            stripEmoji(widget.title),
             style: ubanText(30, FontWeight.w900, c.text, height: 1.25),
           ),
 

@@ -62,7 +62,7 @@ class AiChatApi {
         if (userName != null && userName.isNotEmpty) 'user_name': userName,
       });
 
-      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 15));
+      final streamedResponse = await client.send(request).timeout(const Duration(seconds: 40));
 
       if (streamedResponse.statusCode != 200) {
         client.close();
@@ -146,32 +146,6 @@ class AiChatApi {
           lineBuf.write(ch);
         }
       }
-    }
-  }
-
-  /// 語音轉文字 (ASR/STT) - 上傳本地錄音檔至主後端
-  static Future<String?> transcribeAudio(String filePath) async {
-    try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('${ApiClient.baseUrl}/voice/transcribe'),
-      );
-      request.files.add(await http.MultipartFile.fromPath('file', filePath));
-      request.fields['language'] = 'zh';
-
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          return data['transcription']?.toString().trim();
-        }
-      }
-      return null;
-    } catch (e) {
-      debugPrint('❌ [transcribeAudio] 錯誤: $e');
-      return null;
     }
   }
 

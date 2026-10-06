@@ -15,6 +15,7 @@ import '../elder_community_screen.dart';
 import 'family_friend_feed_body.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
+import '../../utils/display_text.dart';
 
 class FamilyInteractionTab extends StatefulWidget {
   final Elder? currentElder;
@@ -83,7 +84,8 @@ class FamilyInteractionTab extends StatefulWidget {
   State<FamilyInteractionTab> createState() => _FamilyInteractionTabState();
 }
 
-class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
+class _FamilyInteractionTabState extends State<FamilyInteractionTab>
+    with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   bool _isSending = false;
   /// 本次開啟分頁期間已送出的留言（僅畫面顯示用，不持久化、不打 API）。
@@ -98,8 +100,52 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchReminders();
     _syncAudioBridgeForAlerts();
+  }
+
+  // ── 重新整理三種觸發（下拉／切回此分頁／App 回前景）共用 ──
+  // 本分頁在家屬主畫面的 IndexedStack 底下被保活，initState 只跑一次；
+  // IndexedStack 會讓離屏的子樹 TickerMode 關閉，因此用它判斷「目前是否可見」。
+  /// 上一次記錄的可見狀態；null 代表第一次 didChangeDependencies（initState 已載入，不重複載）。
+  bool? _wasVisible;
+  bool _visible = true;
+  bool _isRefreshing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _visible = TickerMode.valuesOf(context).enabled;
+    final was = _wasVisible;
+    _wasVisible = _visible;
+    // 不可見 → 可見：切回此分頁就重讀（不節流，由 _isRefreshing 擋同時重複請求）
+    if (was == false && _visible) _refreshAll();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 回前景時只刷新目前可見的分頁，離屏的分頁等切回來時再刷
+    if (state == AppLifecycleState.resumed && _visible && mounted) {
+      _refreshAll();
+    }
+  }
+
+  /// 統一的重新整理入口：只呼叫本分頁既有的載入函式。
+  /// 監控裝置清單由父層持有，經 [FamilyInteractionTab.onDevicesChanged]
+  /// 請父層重讀（沿用刪除／改名後既有的同一個回呼）。
+  Future<void> _refreshAll() async {
+    if (_isRefreshing || !mounted) return;
+    _isRefreshing = true;
+    try {
+      widget.onDevicesChanged?.call();
+      await Future.wait([
+        _fetchReminders(),
+        _syncAudioBridgeForAlerts(),
+      ]);
+    } finally {
+      _isRefreshing = false;
+    }
   }
 
   @override
@@ -514,6 +560,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
   }
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // ★ 2026-08-11 第二十二輪（需求 1）：離開分頁時務必停掉配對輪詢，
     //   否則計時器會在 State 已銷毀後繼續打 HTTP 並碰 context。
     _monitorBindPollTimer?.cancel();
@@ -896,7 +943,12 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
 
     // 2026-10 新設計（design_prototype/family.html #tabInteract）：
     // 通話大卡 → AI 照護秘書 → 留言 → 時光牆 → 遠端監控 → 遠端提醒，區塊間距 14。
-    return CustomScrollView(
+    final refreshColors = UbanColors.of(context);
+    return RefreshIndicator(
+      color: refreshColors.brandFill,
+      backgroundColor: refreshColors.surface,
+      onRefresh: _refreshAll,
+      child: CustomScrollView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
@@ -932,6 +984,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -1211,7 +1264,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      (r['title'] ?? '').toString(),
+                      stripEmoji((r['title'] ?? '').toString()),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: famText(isActive ? c.text : c.text3, 15.5, weight: FontWeight.w700),

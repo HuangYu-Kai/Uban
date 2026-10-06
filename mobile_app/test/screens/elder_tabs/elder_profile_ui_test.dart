@@ -249,8 +249,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('今天要做的事'), findsOneWidget);
-      expect(find.text('現在要做（2）'), findsOneWidget);
-      expect(find.text('已完成（1）'), findsOneWidget);
+      // 批次六：抽屜改為「家人提醒／我的目標」兩區，總數仍含全部項目。
+      expect(find.text('家人提醒'), findsOneWidget);
+      expect(find.text('我的目標'), findsOneWidget);
+      expect(find.text('新增我的目標'), findsOneWidget);
     });
 
     for (final dark in [false, true]) {

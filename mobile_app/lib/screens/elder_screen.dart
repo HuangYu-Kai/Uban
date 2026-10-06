@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/signaling.dart';
@@ -59,6 +60,26 @@ class ElderScreen extends StatefulWidget {
 }
 
 class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
+  // ★ 2026-10-05 純視覺換皮：通話房配色沿用 design_prototype/ui.css `.call`
+  //   區塊（註解原文「通話房（深色，兩種主題一致）」）與家屬端
+  //   video_call_screen.dart（commit 327de4b2）完全相同的深色毛玻璃語彙；
+  //   品牌綠沿用本檔 `IncomingCallView.accept` 同一色值（= UbanColors 深色
+  //   主題的 brand），作為長輩端的識別色，呼應需求指定的
+  //   `UbanColors.of(context)` 品牌綠。通話房本身維持「深色、兩種主題一致」
+  //   的設計基準，不隨系統淺/深色模式切換——與 IncomingCallView 類別註解
+  //   「顏色是通話房固定色，不隨主題」同一精神，故採固定常數而非動態讀取
+  //   ThemeExtension。純外觀常數，不影響任何通話/監控邏輯。
+  static const Color _callBg = Color(0xFF0B110F);
+  static const Color _glassFill = Color.fromRGBO(20, 28, 25, 0.62);
+  static const Color _glassFillStrong = Color.fromRGBO(20, 28, 25, 0.72);
+  static const Color _glassLine = Color.fromRGBO(255, 255, 255, 0.1);
+  static const Color _pipLine = Color.fromRGBO(255, 255, 255, 0.18);
+  static const Color _offBg = Colors.white;
+  static const Color _offFg = Color(0xFF16201C);
+  static const Color _hangRed = Color(0xFFE5484D);
+  static const Color _brandGreen = Color(0xFF6FCBAA);
+  static const Color _brandGreenStrong = Color(0xFF1F7A5C);
+
   final Signaling _signaling = Signaling();
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
@@ -1559,6 +1580,43 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
+  /// ★ 2026-10-05 純視覺換皮：通話中控制列單顆按鈕的外殼，比照家屬端
+  /// `video_call_screen.dart::_buildControlButton`（commit 327de4b2）的
+  /// 毛玻璃膠囊樣式，尺寸依長輩端「大字級、好點按」原則放大
+  /// （64px／icon 28，家屬端為 58px／icon 26）。
+  ///
+  /// 純展示 widget：[icon]/[onPressed]/[color]/[bgColor]/[isEndCall] 完全由
+  /// 呼叫端決定，本函式不讀寫任何通話狀態旗標，也不包含任何業務邏輯。
+  Widget _buildCallCtlButton({
+    required IconData icon,
+    VoidCallback? onPressed,
+    Color color = Colors.white,
+    Color? bgColor,
+    bool isEndCall = false,
+    double? width,
+  }) {
+    final bool isDisabled = onPressed == null;
+    final double resolvedWidth = width ?? 64;
+    return Container(
+      width: resolvedWidth,
+      height: 64,
+      decoration: BoxDecoration(
+        color: isEndCall
+            ? _hangRed
+            : (bgColor ??
+                (isDisabled
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : const Color.fromRGBO(255, 255, 255, 0.12))),
+        borderRadius: BorderRadius.circular(999),
+        border: isDisabled ? Border.all(color: _glassLine, width: 1) : null,
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: color, size: 28),
+        onPressed: onPressed,
+      ),
+    );
+  }
+
   // 主動呼叫 (先響鈴)
   Future<void> _makeCall() async {
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
@@ -2003,7 +2061,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   週期，包在這裡與包在 Stack 內效果相同，且不再影響 Stack 尺寸計算。
     return AssistantHiddenZone(
       child: Scaffold(
-        backgroundColor: Colors.black,
+        // ★ 純視覺換皮：通話房底色改用 _callBg（design_prototype `.call` =
+        //   #0B110F，與家屬端通話房 commit 327de4b2 同值），取代原本純黑。
+        backgroundColor: _callBg,
         body: ValueListenableBuilder(
           valueListenable: pendingAcceptedCall,
           builder: (context, pendingCall, _) {
@@ -2012,7 +2072,32 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                 // 1. 全螢幕視訊區塊
                 Positioned.fill(
                   child: Container(
-                    color: const Color(0xFF121212),
+                    // ★ 純視覺換皮：等待畫面底色改用 design_prototype 的漸層
+                    //   取代原本的單一灰底 #121212。CCTV 模式用 `.cctv-room`
+                    //   的綠灰直線漸層（監視機自己鏡頭預覽的待機底色）；一般
+                    //   通話無遠端畫面時用 `.call .remote` 的放射狀漸層，與
+                    //   家屬端 video_call_screen.dart（commit 327de4b2）同值。
+                    //   RTCVideoView 有畫面時會整個蓋過去，漸層只在載入／無
+                    //   畫面時可見，純外觀、不影響任何渲染判斷邏輯。
+                    decoration: BoxDecoration(
+                      gradient: widget.isCCTVMode
+                          ? const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0xFF5E6E66),
+                                Color(0xFF7D8A80),
+                                Color(0xFF4A5650),
+                                Color(0xFF3B4540),
+                              ],
+                              stops: [0.0, 0.55, 0.56, 1.0],
+                            )
+                          : const RadialGradient(
+                              center: Alignment(0, -0.4),
+                              radius: 1.3,
+                              colors: [Color(0xFF3D5A50), Color(0xFF16221E)],
+                            ),
+                    ),
                     child: widget.isCCTVMode
                         ? RTCVideoView(
                             _localRenderer,
@@ -2028,15 +2113,39 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
+                                    // ★ 純視覺換皮：轉圈顏色改用長輩端品牌綠
+                                    //   _brandGreen，取代原本的 orangeAccent。
+                                    //   `if (_isInCall)` 顯示條件完全不動。
                                     if (_isInCall)
-                                      const CircularProgressIndicator(color: Colors.orangeAccent),
+                                      const SizedBox(
+                                        width: 52,
+                                        height: 52,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 3.5,
+                                          color: _brandGreen,
+                                        ),
+                                      ),
                                     const SizedBox(height: 24),
-                                    Text(
-                                      _status,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w500,
+                                    // ★ 純視覺換皮：狀態文字包一層毛玻璃膠囊卡片，
+                                    //   取代原本的裸字——`_status` 的三態判斷
+                                    //   （連線中斷／該監控機已被刪除…）完全不動，
+                                    //   這裡只是換外殼。
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 22, vertical: 14),
+                                      decoration: BoxDecoration(
+                                        color: _glassFill,
+                                        borderRadius: BorderRadius.circular(22),
+                                        border: Border.all(color: _glassLine),
+                                      ),
+                                      child: Text(
+                                        _status,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -2052,20 +2161,24 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     top: MediaQuery.of(context).padding.top + 20,
                     width: 110,
                     height: 160,
+                    // ★ 純視覺換皮：邊框改向設計稿 `.pip`（2px、
+                    //   rgba(255,255,255,.18)、radius 18）對齊，與家屬端
+                    //   video_call_screen.dart 同款。畫面內容
+                    //   （RTCVideoView(_localRenderer,...)）完全不動。
                     child: Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.4),
-                            blurRadius: 8,
+                            color: Colors.black.withValues(alpha: 0.5),
+                            blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
                         ],
-                        border: Border.all(color: Colors.white24, width: 1.5),
+                        border: Border.all(color: _pipLine, width: 2),
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                         child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                       ),
                     ),
@@ -2073,32 +2186,41 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
                 // ★ CCTV 模式：頂部退出按鈕與底部「CCTV 監視中」標籤
                 if (widget.isCCTVMode) ...[
+                  // ★ 純視覺換皮：外殼改用設計稿 `.call .pillg` 的毛玻璃膠囊樣式
+                  //   （半透明深底 + 16px 模糊 + 細邊框），取代原本的純色
+                  //   black60。onTap 仍是原封不動的 _exitCCTVMode。
                   Positioned(
                     top: MediaQuery.of(context).padding.top + 10,
                     right: 16,
-                    child: GestureDetector(
-                      onTap: _exitCCTVMode,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white30, width: 1),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.logout_rounded, color: Colors.white, size: 16),
-                            SizedBox(width: 6),
-                            Text(
-                              '退出監視機',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                        child: GestureDetector(
+                          onTap: _exitCCTVMode,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _glassFill,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: _glassLine),
                             ),
-                          ],
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.logout_rounded, color: Colors.white, size: 18),
+                                SizedBox(width: 6),
+                                Text(
+                                  '退出監視機',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -2108,16 +2230,23 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     left: 0,
                     right: 0,
                     child: Center(
-                      child: Container(
+                      // ★ 純視覺換皮：外殼改用設計稿 `.cctv-label`
+                      //   （rgba(20,28,25,.72) + 16px 模糊 + radius 22），
+                      //   取代原本的純色 black45。內部文字/邏輯完全不動。
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: Container(
                         // ★ 2026-08-25：新增的推送狀態文字是執行期資料（後端 reason
                         //   字串長度不定），限制最大寬度＋下面 Text 的
                         //   maxLines/overflow 雙重保險，避免撐爆版面或造成
                         //   RenderFlex overflow。
                         constraints: const BoxConstraints(maxWidth: 300),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.45),
-                          borderRadius: BorderRadius.circular(12),
+                          color: _glassFillStrong,
+                          borderRadius: BorderRadius.circular(22),
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -2190,6 +2319,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                                 ),
                               ),
                           ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -2197,6 +2328,13 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                 ],
 
                               // 4. 底部控制列 (大按鈕，便於操作)
+                // ★ 2026-10-05 純視覺換皮：整段控制列改用家屬端
+                //   video_call_screen.dart（commit 327de4b2）的毛玻璃膠囊語彙，
+                //   按鈕尺寸依長輩端「大字級、好點按」原則放大（見
+                //   _buildCallCtlButton 的說明）。按鈕排列順序也對齊家屬端
+                //   （擴音／靜音／掛斷／鏡頭／切換鏡頭），方便長輩與家屬互相
+                //   支援操作時肌肉記憶一致。每顆按鈕的 onPressed／狀態判斷式
+                //   原封不動，只是搬了位置、換了外殼。
                 if (!widget.isCCTVMode)
                   Positioned(
                     bottom: 60,
@@ -2205,159 +2343,127 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // ★ 通話時長顯示（僅在通話中顯示）
+                        // ★ 通話時長顯示（僅在通話中顯示）。外殼改用設計稿
+                        //   `.call .pillg` 毛玻璃膠囊＋紅點（取代原本實心黑底），
+                        //   `_isInCall` 顯示條件與 `_formatDuration` 完全不動。
                         if (_isInCall)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 20),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.black38,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white24, width: 1),
-                              ),
-                              child: Text(
-                                '通話時間: ${_formatDuration(_callDuration)}',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _glassFill,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(color: _glassLine),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 9,
+                                        height: 9,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFFF6B6E),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _formatDuration(_callDuration),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          fontFeatures: [FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                      
-                        // ★ 通話控制按鈕（水平排列）
+
+                        // ★ 通話控制按鈕：改用單一毛玻璃膠囊列
+                        //   （design_prototype `.ctlbar`），取代原本各自帶陰影的
+                        //   獨立圓形 FloatingActionButton。每顆按鈕的
+                        //   onPressed／icon／gate 判斷式都逐字保留，只是外殼換成
+                        //   _buildCallCtlButton。
                         if (_isInCall)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                // 攝像頭開關
-                                Container(
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: FloatingActionButton(
-                                    onPressed: _toggleCamera,
-                                    heroTag: 'camera',
-                                    mini: true,
-                                    backgroundColor: _isCameraOff ? Colors.grey.shade600 : Colors.blue.shade500,
-                                    child: Icon(
-                                      _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: _glassFillStrong,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: _glassLine),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    // ★ 2026-08-05 第十八輪（需求 1）：擴音／聽筒切換。
+                                    //   G61：兩態都維持白色圖示，不做灰階（聽筒不是
+                                    //   「停用狀態」）；圖示固定 volume_up／
+                                    //   phone_in_talk，絕不可用 volume_off。
+                                    _buildCallCtlButton(
+                                      icon: _isSpeakerOn ? Icons.volume_up : Icons.phone_in_talk,
+                                      onPressed: _toggleSpeaker,
                                       color: Colors.white,
                                     ),
-                                  ),
-                                ),
-                              
-                                // ★ issue 12：前後鏡頭切換按鈕
-                                Container(
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: FloatingActionButton(
-                                    onPressed: _isCameraOff ? null : _switchCamera,
-                                    heroTag: 'switchCamera',
-                                    mini: true,
-                                    backgroundColor: _isCameraOff ? Colors.grey.shade400 : Colors.blue.shade500,
-                                    child: Icon(
-                                      _isFrontCamera ? Icons.cameraswitch : Icons.cameraswitch_outlined,
-                                      color: Colors.white,
+                                    // 靜音按鈕
+                                    _buildCallCtlButton(
+                                      icon: _isMuted ? Icons.mic_off : Icons.mic,
+                                      onPressed: _toggleMute,
+                                      color: _isMuted ? _offFg : Colors.white,
+                                      bgColor: _isMuted ? _offBg : null,
                                     ),
-                                  ),
-                                ),
-
-                                // 靜音按鈕
-                                Container(
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: FloatingActionButton(
-                                    onPressed: _toggleMute,
-                                    heroTag: 'mute',
-                                    mini: true,
-                                    backgroundColor: _isMuted ? Colors.red.shade600 : Colors.blue.shade500,
-                                    child: Icon(
-                                      _isMuted ? Icons.mic_off : Icons.mic,
-                                      color: Colors.white,
+                                    // 掛斷按鈕（寬膠囊、紅色）。onPressed 原封不動是
+                                    // _hangUp，禁止改為直接 Navigator.pop()。
+                                    _buildCallCtlButton(
+                                      icon: Icons.call_end,
+                                      onPressed: _hangUp,
+                                      isEndCall: true,
+                                      width: 84,
                                     ),
-                                  ),
-                                ),
-
-                                // ★ 2026-08-05 第十八輪（需求 1）：擴音／聽筒切換
-                                Container(
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 8,
-                                      ),
-                                    ],
-                                  ),
-                                  child: FloatingActionButton(
-                                    onPressed: _toggleSpeaker,
-                                    heroTag: 'speaker',
-                                    mini: true,
-                                    backgroundColor: _isSpeakerOn ? Colors.blue.shade500 : Colors.grey.shade600,
-                                    child: Icon(
-                                      _isSpeakerOn ? Icons.volume_up : Icons.phone_in_talk,
-                                      color: Colors.white,
+                                    // 攝像頭開關。無條件可按（G8），不得再加任何
+                                    // 條件或隱藏。
+                                    _buildCallCtlButton(
+                                      icon: _isCameraOff ? Icons.videocam_off : Icons.videocam,
+                                      onPressed: _toggleCamera,
+                                      color: _isCameraOff ? _offFg : Colors.white,
+                                      bgColor: _isCameraOff ? _offBg : null,
                                     ),
-                                  ),
-                                ),
-
-                                // 掛斷按鈕（紅色、較大）
-                                GestureDetector(
-                                  onTap: _hangUp,
-                                  child: Container(
-                                    width: 90,
-                                    height: 90,
-                                    decoration: BoxDecoration(
-                                      color: Colors.redAccent,
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.red.shade300.withValues(alpha: 0.5),
-                                          blurRadius: 12,
-                                          spreadRadius: 2,
-                                        ),
-                                      ],
+                                    // ★ issue 12：前後鏡頭切換按鈕。gate 維持原樣
+                                    // （鏡頭關閉時停用），這是既有的合理限制。
+                                    _buildCallCtlButton(
+                                      icon: _isFrontCamera ? Icons.cameraswitch : Icons.cameraswitch_outlined,
+                                      onPressed: _isCameraOff ? null : _switchCamera,
+                                      color: _isCameraOff ? Colors.white24 : Colors.white,
+                                      bgColor: _isCameraOff ? Colors.white.withValues(alpha: 0.1) : null,
                                     ),
-                                    child: const Icon(Icons.call_end, color: Colors.white, size: 48),
-                                  ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           )
                         else
-                          // 呼叫按鈕（未在通話中時）
+                          // 呼叫按鈕（未在通話中時）。onTap 原封不動是 _makeCall；
+                          // 漸層改用長輩端品牌綠（_brandGreen／_brandGreenStrong），
+                          // 取代原本的 Material 綠，呼應 UbanColors 品牌色。
                           GestureDetector(
                             onTap: _makeCall,
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 20),
                               decoration: BoxDecoration(
                                 gradient: const LinearGradient(
-                                  colors: [Color(0xFF4CAF50), Color(0xFF2E7D32)],
+                                  colors: [_brandGreen, _brandGreenStrong],
                                 ),
                                 borderRadius: BorderRadius.circular(40),
                                 boxShadow: const [

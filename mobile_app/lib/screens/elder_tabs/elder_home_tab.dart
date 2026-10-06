@@ -14,13 +14,16 @@ import '../../services/api/location_api.dart';
 import '../../services/api_service.dart';
 import '../../services/elder_home_place_service.dart';
 import '../../services/friend_service.dart';
+import '../../services/elder_reminder_manager.dart';
 import '../../services/subscription_service.dart';
+import '../../services/today_tasks_loader.dart';
 import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/reminder_schedule.dart';
 import '../../widgets/ui/ui.dart';
 import 'elder_layout.dart';
 import 'widgets/elder_task_sheet.dart';
+import 'widgets/elder_goal_form.dart';
 import 'streak/streak_celebration.dart';
 import 'streak/streak_service.dart';
 import 'widgets/gem_in.dart';
@@ -93,7 +96,8 @@ class ElderHomeTab extends StatefulWidget {
   State<ElderHomeTab> createState() => _ElderHomeTabState();
 }
 
-class _ElderHomeTabState extends State<ElderHomeTab> {
+class _ElderHomeTabState extends State<ElderHomeTab>
+    with WidgetsBindingObserver {
   late String _lunarDate;
   late String _solarTerm;
   late String _dayName;
@@ -125,6 +129,58 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   // 額外安排最多一次自動重試（見 [_loadNextDoseData] 尾端），而不是只改文案。
   int _nextDoseLoadAttempt = 0;
 
+  /// 解析成功後快取的 elder_id（避免每次重讀都多打一次 profile API）。
+  String? _resolvedElderId;
+
+  void _onReminderManagerUpdate() {
+    if (mounted && widget.debugInitialRemindersForTest == null) {
+      _loadNextDoseData();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
+    super.dispose();
+  }
+
+  // ── 重新同步機制（本頁在 IndexedStack 下保活，initState 只跑一次）──
+  // 三種觸發共用 [_refreshAll]：下拉刷新、切回本分頁（TickerMode 由不可見→可見）、
+  // App 回前景（僅在本分頁可見時）。
+  bool _refreshing = false;
+  bool? _wasVisible;
+  bool _isVisible = true;
+
+  /// 重新讀取「今日任務」與「新聞」。進行中不重複發，避免連點／多觸發疊加請求。
+  Future<void> _refreshAll() async {
+    if (_refreshing || !mounted) return;
+    _refreshing = true;
+    try {
+      await Future.wait([
+        if (widget.debugInitialRemindersForTest == null) _loadNextDoseData(),
+        if (widget.debugInitialNewsItemsForTest == null) _fetchNews(),
+      ]);
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 第一次進來 initState 已經載過，只記錄狀態；之後由不可見→可見才刷新。
+    final visible = TickerMode.valuesOf(context).enabled;
+    _isVisible = visible;
+    if (_wasVisible == false && visible) _refreshAll();
+    _wasVisible = visible;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isVisible) _refreshAll();
+  }
+
   /// 「帶我回家」的目的地；null 代表尚未設定家——入口卡仍顯示（見
   /// [_buildGoHomeEntry]），只是呈現停用提示樣態，不隱藏整張卡。
   ElderPlace? _homePlace;
@@ -132,6 +188,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _updateTime();
     // ⚠️ 見 `widget.debugInitialNewsItemsForTest` 欄位說明：僅供 widget
     // test 注入假資料，production 呼叫端恆為 null，行為與原本完全相同。
@@ -151,6 +208,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       _isLoadingNextDose = false;
     } else {
       _loadNextDoseData();
+      ElderReminderManager.instance.addListener(_onReminderManagerUpdate);
     }
     final debugHome = widget.debugInitialHomePlaceForTest;
     if (debugHome != null) {
@@ -238,33 +296,26 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
   /// 載入「下一筆待辦提醒」卡片所需資料：長輩的排程提醒清單 + 今天已完成
   /// 的打卡紀錄。
   ///
-  /// ⚠️ 提醒清單一律用 `widget.roomId`（長輩端的 roomId 即
-  /// elder_profile.elder_id，見上方類別註解與 main.dart 的 elderIdUuid），
+  /// ⚠️ 提醒清單用 elder_profile.elder_id（`TodayTasksLoader.resolveElderId`：
+  /// 先 resolveMyElderId、退回 `widget.roomId`，與「我的」分頁一致），
   /// 不可用 `widget.userId`（DB 整數 PK）——兩者是不同的鍵，`elder_profile_tab.dart`
   /// 的 `_loadElderReminders` 對此有詳細說明（第四十三輪修復的鍵不匹配 bug）。
   Future<void> _loadNextDoseData() async {
     _nextDoseLoadAttempt++;
-    final elderId = widget.roomId;
-    if (elderId == null || elderId.isEmpty) {
-      // 拿不到 elderId 不是「今天沒有提醒」，是「還不知道長輩是誰」——同樣
-      // 不該顯示慶祝文案，比照下面 catch 分支處理（含自動重試，見尾端說明）。
-      if (mounted) {
-        setState(() {
-          _isLoadingNextDose = false;
-          _hasNextDoseLoadError = true;
-        });
-      }
-      _scheduleNextDoseRetry();
-      return;
-    }
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      final completedList = prefs.getStringList('completed_tasks_$today') ?? [];
-      final completedIds =
-          completedList.map((e) => int.tryParse(e) ?? -1).toSet();
-
-      final list = await ApiService.getElderReminders(elderId);
+      // 與「我的」分頁同一套 elder id 解析（resolveMyElderId → 退回 roomId）。
+      final elderId = _resolvedElderId ??
+          await TodayTasksLoader.resolveElderId(widget.userId,
+              roomId: widget.roomId);
+      if (elderId == null || elderId.isEmpty) {
+        // 拿不到 elderId 不是「今天沒有提醒」，是「還不知道長輩是誰」——同樣
+        // 不該顯示慶祝文案，比照下面 catch 分支處理（含自動重試，見尾端說明）。
+        throw StateError('elder id unresolved');
+      }
+      _resolvedElderId = elderId;
+      final data = await TodayTasksLoader.load(elderId);
+      final list = data.reminders;
+      final completedIds = data.completedIds;
       if (!mounted) return;
       setState(() {
         _reminders = List<Map<String, dynamic>>.from(list);
@@ -272,6 +323,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         _isLoadingNextDose = false;
         _hasNextDoseLoadError = false;
       });
+      _nextDoseLoadAttempt = 0;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -523,9 +575,14 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
       color: c.bg,
       child: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearance(context)),
+        child: RefreshIndicator(
+          color: c.brandFill,
+          backgroundColor: c.surface,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
+          padding: EdgeInsets.fromLTRB(18, 14, 18, elderNavClearanceWithPill(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -544,6 +601,7 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
               GemIn(index: 3, child: _buildFeaturedNewsCard(c)),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -886,8 +944,9 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     );
   }
 
-  /// 任務卡（設計稿 `.taskcard`）：進度環（中間只寫「done/total」）＋下一件＋打卡鈕；
-  /// 點卡片開「今天要做的事」抽屜。
+  /// 任務卡（設計稿 `data-taskcard="list"`）：標題「今天要做的事」＋「done／total 完成」標籤，
+  /// 下接最多 3 列未完成任務（可直接打卡）；總數更多時底部「看全部 N 件」開抽屜。
+  /// 進度環＋下一件的樣式只留在「我的」頁（`ProfileTaskCard`）。
   ///
   /// 視覺沿用 [UbanCard]。讀取失敗與「真的沒有提醒／都完成了」分成兩種畫面
   /// （第四十九輪：避免網路不穩被誤導成「今天沒有藥要吃」）。
@@ -936,70 +995,70 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
     final done = groups.done.length;
     final total = done + groups.dueNow.length + groups.later.length;
 
-    final Widget right;
-    if (next == null) {
-      right = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    // 首頁只列「未完成」前 3 件（dueNow 在前、later 在後），讓「今日頭條」留在第一屏；
+    // 總數比列出的多（含已完成）時，底部給「看全部 N 件」開抽屜。
+    final pending = [...groups.dueNow, ...groups.later];
+    final shown = pending.take(3).toList();
+
+    return UbanCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Icon(Icons.check_circle_rounded, size: 24, color: c.brandStrong),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  total == 0 ? '今天沒有要做的事' : '今天的事都做完了',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ubanText(19, FontWeight.w900, c.brandStrong),
-                ),
+              Expanded(
+                child: Text('今天要做的事',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ubanText(22, FontWeight.w900, c.text)),
               ),
+              const SizedBox(width: 8),
+              ElderTaskTag('$done／$total 完成'),
             ],
           ),
-          if (total > 0) ...[
-            const SizedBox(height: 4),
-            Text('小豬也替您開心', style: ubanText(16, FontWeight.w400, c.text2)),
-          ],
-        ],
-      );
-    } else {
-      final timeStr = (next['time_str'] ?? '').toString();
-      final title = (next['title'] ?? '提醒').toString();
-      // ⚠️ 時間＋標題皆為動態長度（後端自訂文字），時間用 FittedBox、標題限 2 行省略。
-      right = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('下一件',
-              style: ubanText(16, FontWeight.w700, c.text3, letterSpacingEm: .1)),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(timeStr,
-                maxLines: 1,
-                style: ubanBrandText(24, FontWeight.w600, c.text, height: 1.3)),
-          ),
-          Text(title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: ubanText(19, FontWeight.w700, c.text, height: 1.3)),
-        ],
-      );
-    }
-
-    return UbanCard(
-      onTap: total > 0 ? _openTaskSheet : null,
-      child: Row(
-        children: [
-          UbanProgressRing(done: done, total: total),
-          const SizedBox(width: 16),
-          Expanded(child: right),
-          if (next != null) ...[
-            const SizedBox(width: 12),
+          const SizedBox(height: 6),
+          if (shown.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.check_circle_rounded,
+                          size: 24, color: c.brandStrong),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          total == 0 ? '今天沒有要做的事' : '今天的事都做完了',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: ubanText(19, FontWeight.w900, c.brandStrong),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (total > 0) ...[
+                    const SizedBox(height: 4),
+                    Text('小豬也替您開心',
+                        style: ubanText(16, FontWeight.w400, c.text2)),
+                  ],
+                ],
+              ),
+            ),
+          for (final r in shown)
+            ElderTaskRow(
+              reminder: r,
+              done: false,
+              onCheck: () => _completeNextDose(r),
+            ),
+          if (total > shown.length) ...[
+            const SizedBox(height: 6),
             UbanButton(
-              label: '打卡',
-              expand: false,
-              onPressed: () => _completeNextDose(next),
+              label: '看全部 $total 件',
+              variant: UbanButtonVariant.ghost,
+              onPressed: _openTaskSheet,
             ),
           ],
         ],
@@ -1017,8 +1076,26 @@ class _ElderHomeTabState extends State<ElderHomeTab> {
         readGroups: () =>
             groupByStatus(_reminders, _completedReminderIds, DateTime.now()),
         onCheckIn: _completeNextDose,
+        onAddGoal: () => _editGoal(null),
+        onEditGoal: _editGoal,
+        onDeleteGoal: (g) async {
+          if (await confirmDeleteElderGoal(context, g, userId: widget.userId)) {
+            await _loadNextDoseData();
+          }
+        },
       ),
     ).whenComplete(() => _taskSheetOpen = false);
+  }
+
+  /// 長輩自建目標：新增（[goal]＝null）或修改。成功後重讀清單，進度環／打卡走既有路徑。
+  Future<void> _editGoal(Map<String, dynamic>? goal) async {
+    final elderId = _resolvedElderId ??
+        await TodayTasksLoader.resolveElderId(widget.userId,
+            roomId: widget.roomId);
+    if (elderId == null || elderId.isEmpty || !mounted) return;
+    final ok = await runElderGoalForm(context,
+        elderId: elderId, userId: widget.userId, existing: goal);
+    if (ok) await _loadNextDoseData();
   }
 
   /// 今日頭條卡（設計稿 `.news-hero`＋`.headline`）。

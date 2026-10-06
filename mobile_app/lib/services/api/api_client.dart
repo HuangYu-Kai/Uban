@@ -99,7 +99,7 @@ class ApiClient {
     }
   }
 
-  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body, {Duration? timeout}) async {
     try {
       final url = fullUrl(path);
       debugPrint('📡 [ApiService.post] -> $url body: $body');
@@ -109,7 +109,7 @@ class ApiClient {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
-          .timeout(timeout);
+          .timeout(timeout ?? ApiClient.timeout);
       debugPrint('📡 [ApiService.post] <- status: ${response.statusCode}, body: ${_bodyPreview(response.body)}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = safeDecode(response);

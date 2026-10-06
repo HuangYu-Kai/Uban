@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
@@ -31,6 +32,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
   final List<Map<String, dynamic>> _chatMessages = [];
   bool _isSending = false;
+
+  // 後端會串接 Ollama→Gemini 兩段 LLM 呼叫，常超過預設 15 秒，故此端點放寬到 45 秒。
+  static const Duration _copilotTimeout = Duration(seconds: 45);
 
   // 🎙️ 語音輸入（第四十九輪新增）：只把辨識結果寫回輸入框，絕不自動送出
   // ——語音可能聽錯，必須讓家屬看過文字內容、自己按送出鍵確認，否則等於
@@ -101,20 +105,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
         try {
           _speechReady = await _speechToText.initialize(
-            onStatus: (status) {
-              // 靜音一段時間後 speech_to_text 會自動停止聆聽（done/notListening），
-              // 這裡只同步視覺狀態，不做任何送出動作。
-              if ((status == 'done' || status == 'notListening') && _isListening && mounted) {
-                setState(() => _isListening = false);
-              }
-            },
-            onError: (err) {
-              debugPrint('⚠️ [FamilyCopilot STT Error] ${err.errorMsg}');
-              if (!mounted) return;
-              setState(() => _isListening = false);
-              // 可重試（改用打字或再試一次），非硬錯誤，用 showWarning。
-              ErrorHandler.showWarning(context, '語音辨識發生錯誤，請改用打字或再試一次');
-            },
+            onStatus: _onCopilotSttStatus,
+            onError: _onCopilotSttError,
           );
         } catch (e) {
           debugPrint('⚠️ [FamilyCopilot STT Init Exception] $e');
@@ -134,6 +126,10 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
     if (!mounted) return;
     setState(() => _isListening = true);
+    // ★ 2026-10-06 喚醒詞修正：SpeechToText 是單例，listen 前把本畫面的
+    //   回呼掛回去（避免被先初始化的其他畫面佔用）。
+    _speechToText.errorListener = _onCopilotSttError;
+    _speechToText.statusListener = _onCopilotSttStatus;
     await _speechToText.listen(
       localeId: 'zh_TW',
       listenOptions: SpeechListenOptions(
@@ -152,6 +148,23 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         );
       },
     );
+  }
+
+  // ★ 2026-10-06 喚醒詞修正：由 initialize 的行內回呼抽成方法（見 listen 前註解）。
+  void _onCopilotSttStatus(String status) {
+    // 靜音一段時間後 speech_to_text 會自動停止聆聽（done/notListening），
+    // 這裡只同步視覺狀態，不做任何送出動作。
+    if ((status == 'done' || status == 'notListening') && _isListening && mounted) {
+      setState(() => _isListening = false);
+    }
+  }
+
+  void _onCopilotSttError(SpeechRecognitionError err) {
+    debugPrint('⚠️ [FamilyCopilot STT Error] ${err.errorMsg}');
+    if (!mounted) return;
+    setState(() => _isListening = false);
+    // 可重試（改用打字或再試一次），非硬錯誤，用 showWarning。
+    ErrorHandler.showWarning(context, '語音辨識發生錯誤，請改用打字或再試一次');
   }
 
   void _scrollToBottom() {
@@ -209,38 +222,34 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         'elder_id': elderIdStr,
         'elder_name': elderName,
         'message': text,
-      });
+      }, timeout: _copilotTimeout);
 
-      Map<String, dynamic>? data;
+      final Map<String, dynamic> data;
       if (res != null && res['status'] == 'success' && res['data'] != null) {
         data = Map<String, dynamic>.from(res['data']);
-      } else {
+      } else if (res == null) {
+        // 網路失敗或逾時：ApiClient 回 null，走離線後備（不編造近況）。
         data = _generateFallbackResponse(text, elderName);
+      } else {
+        // 伺服器有回應但非 success（404 未綁定、500 等）：與離線分開顯示。
+        final msg = res['message'] ?? res['detail'];
+        data = _serverFailureResponse(text, elderName, msg is String ? msg : null);
       }
 
-      setState(() {
-        _chatMessages.add({
-          'isUser': false,
-          'text': (data!['reply_text'] ?? '已為您處理完成！').toString(),
-          'statusSummary': data['status_summary'],
-          'scheduleDrafts': data['schedule_drafts'] != null ? List<dynamic>.from(data['schedule_drafts']) : null,
-        });
-      });
+      if (!mounted) return;
+      setState(() => _addBotMessage(data));
     } catch (e) {
-      final fallbackData = _generateFallbackResponse(text, elderName);
-      setState(() {
-        _chatMessages.add({
-          'isUser': false,
-          'text': fallbackData['reply_text'].toString(),
-          'statusSummary': fallbackData['status_summary'],
-          'scheduleDrafts': fallbackData['schedule_drafts'] != null ? List<dynamic>.from(fallbackData['schedule_drafts']) : null,
-        });
-      });
+      debugPrint('⚠️ [FamilyCopilot] 送出失敗：$e');
+      if (!mounted) return;
+      final fallbackData = _serverFailureResponse(text, elderName, null);
+      setState(() => _addBotMessage(fallbackData));
     } finally {
-      setState(() {
-        _isSending = false;
-      });
-      _scrollToBottom();
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+        _scrollToBottom();
+      }
     }
   }
 
@@ -382,25 +391,47 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       };
     }
 
-    // ⚠️ 第四十九輪誠實性修復：這個分支只在完全連不上後端時才會走到
-    // （見 _sendMessage 的 catch）。舊版在這裡依「現在幾點」編一段看起來
+    // ⚠️ 第四十九輪誠實性修復：這個分支只在 res == null（網路失敗或逾時）
+    // 時才會走到（見 _sendMessage）。舊版在這裡依「現在幾點」編一段看起來
     // 煞有其事、其實與長輩真實狀況完全無關的假近況（例如固定寫死「今日
     // 各時段用藥與關懷打卡皆已全數完成」）。既然是離線也查不到任何真實
     // 資料，唯一誠實的做法就是照實告知「現在連不上，這不是真的近況」，
     // 不能因為畫面要有東西顯示就編數字——這正是本輪要根除的問題本身，
     // 沒有理由只修後端、留著前端這個離線分支繼續騙。
     return {
-      'reply_text': '目前無法連線到伺服器，暫時無法查詢 $elderName 的即時近況。請檢查網路連線後再試一次。',
-      'status_summary': {
-        'mood_status': '目前無法連線，查不到情緒紀錄。',
-        'mood_score': null,
-        'medication_status': '目前無法連線，查不到用藥打卡紀錄。',
-        'activity_status': '目前無法連線，查不到活動與步數資料。',
-        'recent_topics': [],
-        'next_appointment': '目前無法連線，查不到排程資料。',
-      },
+      'reply_text': '目前無法連線到伺服器，或伺服器回應逾時，暫時無法查詢 $elderName 的即時近況。請稍後再試一次。',
+      'status_summary': null,
       'schedule_drafts': [],
     };
+  }
+
+  /// 伺服器有回應、但不是 success（例如 404 未綁定、500）時的提示。
+  /// 與「連不上／逾時」分開顯示，家屬才知道該檢查綁定而不是網路。
+  Map<String, dynamic> _buildServerErrorResponse(String elderName, String? serverMsg) {
+    final detail = (serverMsg == null || serverMsg.isEmpty) ? '' : '（$serverMsg）';
+    return {
+      'reply_text': '伺服器暫時無法處理這個問題$detail。請稍後再試，或確認已與 $elderName 完成綁定。',
+      'status_summary': null,
+      'schedule_drafts': [],
+    };
+  }
+
+  /// 伺服器失敗時的後備：先試本機排程解析，解析不出排程才顯示伺服器錯誤。
+  Map<String, dynamic> _serverFailureResponse(String text, String elderName, String? serverMsg) {
+    final local = _generateFallbackResponse(text, elderName);
+    final drafts = local['schedule_drafts'];
+    if (drafts is List && drafts.isNotEmpty) return local;
+    return _buildServerErrorResponse(elderName, serverMsg);
+  }
+
+  /// 把回覆資料加成一則機器人訊息。
+  void _addBotMessage(Map<String, dynamic> data) {
+    _chatMessages.add({
+      'isUser': false,
+      'text': (data['reply_text'] ?? '已為您處理完成！').toString(),
+      'statusSummary': data['status_summary'],
+      'scheduleDrafts': data['schedule_drafts'] != null ? List<dynamic>.from(data['schedule_drafts']) : null,
+    });
   }
 
   @override

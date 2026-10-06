@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 import 'qr_scanner_screen.dart';
 import 'elder_selection_screen.dart';
 import 'login_screen.dart';
@@ -154,8 +155,9 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = UbanColors.of(context);
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: c.bg,
       appBar: AppBar(
         title: Text(
           '新增長輩連結',
@@ -164,7 +166,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: const Color(0xFF1E293B),
+        foregroundColor: c.text,
         actions: [
           IconButton(
             onPressed: _handleLogout,
@@ -192,7 +194,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                     style: GoogleFonts.notoSansTc(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF1E293B),
+                      color: c.text,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -200,7 +202,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                     '請查看長輩平板/電視上的 4 位數配對碼\n並填寫長輩的資訊開始守護',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.notoSansTc(
-                      color: Colors.grey[600],
+                      color: c.text2,
                       fontSize: 14,
                     ),
                   ),
@@ -217,9 +219,12 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                     keyboardType: TextInputType.number,
                     maxLength: 4,
                     style: GoogleFonts.inter(
-                      letterSpacing: 4,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 26,
+                      letterSpacing: 8,
+                      fontWeight: FontWeight.w800,
+                      color: c.text,
                     ),
+                    cursorColor: c.brandStrong,
                     onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: _inputDecoration(
                       Icons.vpn_key_rounded,
@@ -261,6 +266,8 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
             _buildSectionLabel('2. 長輩基本資訊'),
             TextField(
               controller: _nameController,
+              style: GoogleFonts.notoSansTc(fontSize: 18, color: c.text),
+              cursorColor: c.brandStrong,
               onChanged: (_) => setState(() => _errorMessage = null),
               decoration: _inputDecoration(
                 Icons.person_add_rounded,
@@ -275,6 +282,8 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                   child: TextField(
                     controller: _ageController,
                     keyboardType: TextInputType.number,
+                    style: GoogleFonts.notoSansTc(fontSize: 18, color: c.text),
+                    cursorColor: c.brandStrong,
                     onChanged: (_) => setState(() => _errorMessage = null),
                     decoration: _inputDecoration(Icons.cake_rounded, '年齡'),
                   ),
@@ -286,7 +295,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                     height: 56,
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
+                      color: c.surface2,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(
@@ -381,19 +390,22 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
         style: GoogleFonts.notoSansTc(
           fontSize: 15,
           fontWeight: FontWeight.bold,
-          color: const Color(0xFF1E293B),
+          color: UbanColors.of(context).text,
         ),
       ),
     );
   }
 
   InputDecoration _inputDecoration(IconData icon, String label) {
+    final c = UbanColors.of(context);
     return InputDecoration(
       labelText: label,
-      labelStyle: GoogleFonts.notoSansTc(color: Colors.grey[600], fontSize: 14),
-      prefixIcon: Icon(icon, size: 20, color: const Color(0xFF64748B)),
+      labelStyle: GoogleFonts.notoSansTc(color: c.text3, fontSize: 16),
+      floatingLabelStyle:
+          GoogleFonts.notoSansTc(color: c.brandStrong, fontSize: 16),
+      prefixIcon: Icon(icon, size: 22, color: c.text2),
       filled: true,
-      fillColor: Colors.grey[100],
+      fillColor: c.surface2,
       counterText: "",
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
@@ -406,7 +418,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFF59B294), width: 1.5),
+        borderSide: BorderSide(color: c.brand, width: 1.5),
       ),
     );
   }
@@ -423,7 +435,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
           margin: const EdgeInsets.all(4),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
+            color: isSelected ? UbanColors.of(context).surface : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             boxShadow: isSelected
                 ? [
@@ -440,7 +452,9 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
             style: GoogleFonts.notoSansTc(
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? const Color(0xFF59B294) : Colors.grey[600],
+              color: isSelected
+                  ? UbanColors.of(context).brandStrong
+                  : UbanColors.of(context).text2,
             ),
           ),
         ),

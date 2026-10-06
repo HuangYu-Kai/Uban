@@ -45,7 +45,8 @@ class ApiService {
   // api_client.dart 的說明——AI 呼叫已全部改走 baseUrl。
 
   static Future<Map<String, dynamic>?> get(String path) => ApiClient.get(path);
-  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body) => ApiClient.post(path, body);
+  static Future<Map<String, dynamic>?> post(String path, Map<String, dynamic> body, {Duration? timeout}) =>
+      ApiClient.post(path, body, timeout: timeout);
   static Future<Map<String, dynamic>?> put(String path, Map<String, dynamic> body) => ApiClient.put(path, body);
   static Future<Map<String, dynamic>?> delete(String path) => ApiClient.delete(path);
 
@@ -154,7 +155,6 @@ class ApiService {
     String? userName,
   }) => AiChatApi.aiChatStream(userId, message, appellation: appellation, userName: userName);
 
-  static Future<String?> transcribeAudio(String filePath) => AiChatApi.transcribeAudio(filePath);
   static Future<Map<String, dynamic>> petGreeting(int userId, String context) => AiChatApi.petGreeting(userId, context);
   static Future<List<dynamic>> getPersonaTemplates() => AiChatApi.getPersonaTemplates();
   static Future<Map<String, dynamic>> getElderAgentProfile(int elderId) => AiChatApi.getElderAgentProfile(elderId);
@@ -410,10 +410,21 @@ class ApiService {
   static Future<List<dynamic>> getElderReminders(String elderId) => ReminderApi.getElderReminders(elderId);
   static Future<bool> createElderReminder(Map<String, dynamic> body) => ReminderApi.createElderReminder(body);
   static Future<bool> toggleElderReminder(int reminderId) => ReminderApi.toggleElderReminder(reminderId);
-  static Future<bool> deleteElderReminder(int reminderId) => ReminderApi.deleteElderReminder(reminderId);
+  static Future<bool> deleteElderReminder(int reminderId,
+          {String? requesterRole, int? requesterUserId}) =>
+      ReminderApi.deleteElderReminder(reminderId,
+          requesterRole: requesterRole, requesterUserId: requesterUserId);
+  static Future<Map<String, dynamic>> getTodayProgress(String elderId, {String? date}) =>
+      ReminderApi.getTodayProgress(elderId, date: date);
+  static Future<List<String>> getAllDoneDates(String elderId,
+          {required String until, int days = 60}) =>
+      ReminderApi.getAllDoneDates(elderId, until: until, days: days);
   static Future<bool> updateElderReminder(int reminderId, Map<String, dynamic> body) =>
       ReminderApi.updateElderReminder(reminderId, body);
-  static Future<bool> completeElderReminder(int reminderId) => ReminderApi.completeElderReminder(reminderId);
+  static Future<bool> completeElderReminder(int reminderId, {String? localDate}) =>
+      ReminderApi.completeElderReminder(reminderId, localDate: localDate);
+  static Future<bool> uncompleteElderReminder(int reminderId, {String? localDate}) =>
+      ReminderApi.uncompleteElderReminder(reminderId, localDate: localDate);
 
   // --- Community ---
   /// null＝呼叫失敗（離線／伺服器錯誤），空清單＝真的沒有貼文。
@@ -446,7 +457,12 @@ class ApiService {
   static Future<Map<String, dynamic>?> toggleCommunityPostLike({
     required int postId,
     required int userId,
-  }) => CommunityApi.toggleCommunityPostLike(postId: postId, userId: userId);
+    String? userName,
+  }) => CommunityApi.toggleCommunityPostLike(
+        postId: postId,
+        userId: userId,
+        userName: userName,
+      );
 
   static Future<Map<String, dynamic>?> addCommunityComment({
     required int postId,

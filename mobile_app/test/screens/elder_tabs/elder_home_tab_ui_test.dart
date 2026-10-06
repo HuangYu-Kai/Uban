@@ -1,7 +1,7 @@
 // 長輩端「首頁」「電話」換新設計後的 UI 迴歸測試。
 //
 // 涵蓋：
-//   1. 任務卡進度環中間文字為「done/total」。
+//   1. 首頁任務卡為「今天要做的事」清單（標籤 done／total 完成、最多 3 列未完成、看全部）。
 //   2. 任務抽屜三組標題（現在要做／稍後／已完成）出現，且依設計稿預設「現在要做」
 //      展開、「稍後」「已完成」收合。
 //   3. 深色主題（buildAppDarkTheme）＋ 360x640 ＋ textScaler 1.3 下，首頁與電話頁
@@ -69,8 +69,8 @@ void main() {
     GoogleFonts.config.allowRuntimeFetching = false;
   });
 
-  group('任務卡進度環', () {
-    testWidgets('環中間文字為 done/total（3 筆、完成 1 筆 → 1/3）', (tester) async {
+  group('首頁任務卡（今天要做的事清單）', () {
+    testWidgets('標題＋「1／3 完成」標籤，只列未完成項目（id 2、3），不再有進度環', (tester) async {
       _phone(tester, const Size(412, 915));
       await tester.pumpWidget(_app(
         child: ElderHomeTab(
@@ -84,16 +84,20 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 800));
 
-      expect(find.byType(UbanProgressRing), findsOneWidget);
-      expect(find.text('1/3', findRichText: true), findsOneWidget,
-          reason: '環中間只寫「done/total」');
-      // 下一件＝最早未完成的 id 2。
+      expect(find.byType(UbanProgressRing), findsNothing,
+          reason: '進度環只留在「我的」頁');
+      expect(find.text('今天要做的事'), findsOneWidget);
+      expect(find.text('1／3 完成'), findsOneWidget);
+      expect(find.byType(ElderTaskRow), findsNWidgets(2));
+      expect(find.text('測試提醒1'), findsNothing, reason: '已完成不列在首頁');
       expect(find.text('測試提醒2'), findsOneWidget);
-      expect(find.text('打卡'), findsOneWidget);
+      expect(find.text('測試提醒3'), findsOneWidget);
+      // 總數 3 > 列出 2：底部有「看全部 3 件」。
+      expect(find.text('看全部 3 件'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('全部完成時環中間為 3/3、不再顯示打卡鈕', (tester) async {
+    testWidgets('未完成超過 3 件只列前 3 件；全部完成時顯示完成訊息與「看全部」', (tester) async {
       _phone(tester, const Size(412, 915));
       await tester.pumpWidget(_app(
         child: ElderHomeTab(
@@ -107,9 +111,27 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 800));
 
-      expect(find.text('3/3', findRichText: true), findsOneWidget);
-      expect(find.text('打卡'), findsNothing);
+      expect(find.text('3／3 完成'), findsOneWidget);
+      expect(find.byType(ElderTaskRow), findsNothing);
       expect(find.text('今天的事都做完了'), findsOneWidget);
+      expect(find.text('看全部 3 件'), findsOneWidget, reason: '全完成仍可看已完成清單');
+    });
+
+    testWidgets('首頁列的打卡鈕可點（語意標籤「打卡 標題」）', (tester) async {
+      _phone(tester, const Size(412, 915));
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(_app(
+        child: ElderHomeTab(
+          userId: 1,
+          userName: '測試長輩',
+          roomId: 'test-elder-room',
+          debugInitialRemindersForTest: _fakeReminders(),
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(find.bySemanticsLabel('打卡 測試提醒1'), findsOneWidget);
+      semantics.dispose();
     });
   });
 
@@ -128,14 +150,17 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 800));
 
-      await tester.tap(find.byType(UbanProgressRing));
+      await tester.tap(find.text('看全部 3 件'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
 
-      expect(find.text('今天要做的事'), findsOneWidget);
+      // 首頁卡與抽屜各有一個標題；抽屜標籤是「1／3」。
+      expect(find.text('今天要做的事'), findsNWidgets(2));
       expect(find.text('1／3'), findsOneWidget);
-      expect(find.text('現在要做（2）'), findsOneWidget);
-      expect(find.text('已完成（1）'), findsOneWidget);
+      // 批次六：抽屜改為「家人提醒／我的目標」兩區，總數仍含全部項目。
+      expect(find.text('家人提醒'), findsOneWidget);
+      expect(find.text('我的目標'), findsOneWidget);
+      expect(find.text('新增我的目標'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -235,7 +260,7 @@ void main() {
         expect(tester.getRect(find.bySemanticsLabel('帶我回家')).bottom,
             lessThanOrEqualTo(visibleBottom),
             reason: '帶我回家是安全入口，最壞情境下仍須在第一屏');
-        expect(find.text('打卡'), findsOneWidget, reason: '有下一件的任務卡');
+        expect(find.byType(ElderTaskRow), findsNWidgets(3), reason: '有未完成項目的任務卡');
         // 今日頭條：被大入口擠到折線下可接受，確認仍有算進清單、可捲動到即可。
         expect(find.text('今日頭條'), findsOneWidget);
         if (size.height >= 700) {
