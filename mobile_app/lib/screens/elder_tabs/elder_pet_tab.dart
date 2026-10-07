@@ -26,6 +26,8 @@ import 'elder_greeting_tab.dart';
 import 'elder_layout.dart';
 import 'pet/pet_breed_store.dart';
 import 'pet/pet_buddy_stage.dart';
+import 'pet/pet_gift_banner.dart';
+import '../../services/api/elder_pet_gift_api.dart';
 import 'pet/pet_ear_anchors.dart';
 import 'pet/pet_scene.dart';
 import 'pet/pet_season_chip.dart';
@@ -181,6 +183,8 @@ class _ElderPetTabState extends State<ElderPetTab>
       if (mounted) setState(() => _leaderboardTick++);
       // 通知嵌在下方的祝賀圖重讀小豬品種／階段
       _greetingPigSignal.value++;
+      // ★ 2026-10-07 小豬共養：下拉／回前景一併重讀家人送的點心。
+      ElderPetGiftApi.refreshSignal.value++;
     } finally {
       _refreshing = false;
     }
@@ -770,17 +774,69 @@ class _ElderPetTabState extends State<ElderPetTab>
         isCrownUnlocked: false,
       );
 
-  Future<void> _handleFeedFood(PetFoodItem food) async {
+  // ★ 2026-10-07 小豬共養：餵家人送的點心中（防連點）。
+  bool _giftFeeding = false;
+
+  /// 點橫幅「餵牠吃」：禮物本身就是庫存，不看每日上限／本機庫存；
+  /// 餵食流程共用 [_handleFeedFood]（[gift] 非 null 時走禮物分支）。
+  Future<void> _feedGift(PetGift gift) async {
+    if (_giftFeeding || _feedsInFlight > 0) return;
+    PetFoodItem? food;
+    for (final f in PetFoodItem.milestoneMenu) {
+      if (f.id == gift.foodId) food = f;
+    }
+    if (food == null) {
+      ErrorHandler.showWarning(context, '這份點心小豬還不認識，請稍後再試');
+      return;
+    }
+    setState(() => _giftFeeding = true);
+    try {
+      final stageBefore = _effectiveGrowthState.stage;
+      final ok = await _handleFeedFood(food, gift: gift);
+      if (ok && mounted) {
+        final now = _effectiveGrowthState.stage;
+        if (now.index > stageBefore.index) {
+          PetEvolutionDialog.show(context, now,
+              oldStage: stageBefore,
+              breedId: _breed.id,
+              userName: widget.userName);
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _giftFeeding = false);
+    }
+  }
+
+  /// 回傳是否真的餵出去（庫存不足／禮物記帳失敗為 false）。
+  Future<bool> _handleFeedFood(PetFoodItem food, {PetGift? gift}) async {
     final growthState = _effectiveGrowthState;
-    final bool isCarrot = food.id == 'carrot';
+    final bool isGift = gift != null;
+    final bool isCarrot = food.id == 'carrot' && !isGift;
     final currentCount = _feedingInventory[food.id] ?? food.initialCount;
-    if (!food.isUnlimited && currentCount <= 0) {
-      if (!mounted) return;
+    if (!isGift && !food.isUnlimited && currentCount <= 0) {
+      if (!mounted) return false;
       ErrorHandler.showWarning(
         context,
         '【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾',
       );
-      return;
+      return false;
+    }
+
+    // ★ 禮物：先向後端記一筆消耗（後端據此標記最舊的未餵禮物並通知送禮家人）；
+    //   記帳失敗就不餵，避免小豬吃了但禮物永遠未餵。
+    if (isGift) {
+      final eid = _myFriendElderId;
+      final ok = eid != null &&
+          await PetProgressService.recordFoodConsumption(
+            elderId: eid,
+            ledgerDate: _todayLedgerDate,
+            foodId: food.id,
+          );
+      if (!mounted) return false;
+      if (!ok) {
+        ErrorHandler.showWarning(context, '目前連不上伺服器，請稍後再餵一次');
+        return false;
+      }
     }
 
     HapticFeedback.heavyImpact();
@@ -799,7 +855,7 @@ class _ElderPetTabState extends State<ElderPetTab>
         // 否記帳成功交給下面的 POST 決定；失敗時整份重讀帳本校正，不用
         // 「減 1」去猜後端真實狀態（見下方 recordFoodConsumption 失敗分支）。
         _carrotConsumedToday = (_carrotConsumedToday ?? 0) + 1;
-      } else if (!food.isUnlimited && currentCount > 0) {
+      } else if (!isGift && !food.isUnlimited && currentCount > 0) {
         _feedingInventory[food.id] = currentCount - 1;
       }
     });
@@ -808,7 +864,9 @@ class _ElderPetTabState extends State<ElderPetTab>
     // 任務 C：食物庫存持久化，不 await——庫存寫檔慢不應該拖慢餵食後的
     // 排行榜同步與訊息顯示，且與體重存檔（上面那行）一樣屬於「盡力而為」
     // 的本機寫入，SharedPreferences 幾乎不會失敗。
-    unawaited(PetStorageService.saveFoodInventory(_feedingInventory));
+    if (!isGift) {
+      unawaited(PetStorageService.saveFoodInventory(_feedingInventory));
+    }
 
     if (isCarrot) {
       final eid = _myFriendElderId;
@@ -827,6 +885,10 @@ class _ElderPetTabState extends State<ElderPetTab>
         unawaited(_refreshCarrotLedger());
       }
     }
+
+    // ★ 2026-10-07 小豬共養：後端在 food-ledger 記帳時會把該食物最舊的未餵禮物
+    //   標為已餵並通知送禮家人；這裡只通知首頁重讀橫幅／小紅點（不動食物經濟）。
+    ElderPetGiftApi.refreshSignal.value++;
 
     // 餵食改送「增量」到伺服器（伺服器原子累加、client_event_id 冪等），並採用
     // 回傳的伺服器體重（只在較大時採用，避免本機因離線餵食領先時倒退）。
@@ -851,12 +913,16 @@ class _ElderPetTabState extends State<ElderPetTab>
         _feedsInFlight--;
       }
     }
-    if (!mounted) return;
+    if (!mounted) return true;
 
     // 排行榜卡依 refreshTick 重新讀取（上傳是非同步的，所以放在同步完成之後）。
     setState(() => _leaderboardTick++);
 
-    if (synced) {
+    if (isGift) {
+      // 禮物已記帳成功；體重同步失敗只影響排行榜，下次餵食會補。
+      ErrorHandler.showSuccess(
+          context, '小豬吃了${gift.familyName}送的${gift.foodName}，好開心！');
+    } else if (synced) {
       // 設計稿規定畫面上不顯示任何「+N」數值，只說小豬吃得開心。
       ErrorHandler.showSuccess(
         context,
@@ -872,6 +938,7 @@ class _ElderPetTabState extends State<ElderPetTab>
         '小豬已經吃下【${food.name}】，但體重排行榜同步失敗，下次餵食會自動重試',
       );
     }
+    return true;
   }
 
   /// 胡蘿蔔數為 0 時點按鈕：先重讀解鎖來源與帳本，回傳最新可餵份數。
@@ -929,6 +996,8 @@ class _ElderPetTabState extends State<ElderPetTab>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ★ 2026-10-07 小豬共養：家人送的未餵點心橫幅（沒有時不佔位）。
+              PetGiftBanner(onFeed: _feedGift),
               PetBuddyStage(
                 key: widget.petKey,
                 stage: growthState.stage.index + 1,

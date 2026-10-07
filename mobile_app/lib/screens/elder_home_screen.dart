@@ -17,6 +17,7 @@ import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/api/elder_daily_question_api.dart';
+import '../services/api/elder_pet_gift_api.dart';
 import '../services/today_tasks_loader.dart';
 import '../services/signaling.dart';
 import '../services/elder_location_service.dart';
@@ -358,6 +359,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     //   （socket daily-question-new、聊天回答成功後遞增）。
     ElderDailyQuestionApi.refreshSignal.addListener(_onDailyQuestionSignal);
     unawaited(_refreshDailyQuestionBadge());
+    // ★ 2026-10-07 小豬共養：「小豬」小紅點啟動讀一次；之後由 refreshSignal 驅動
+    //   （socket pet-gift、餵食成功後遞增）。
+    ElderPetGiftApi.refreshSignal.addListener(_onPetGiftSignal);
+    unawaited(_refreshPetGiftBadge());
   }
 
   @override
@@ -367,6 +372,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     if (state == AppLifecycleState.resumed && mounted) {
       unawaited(_cheerService.fetchUnread());
       unawaited(_refreshDailyQuestionBadge()); // ★ 每日一問小紅點
+      unawaited(_refreshPetGiftBadge()); // ★ 小豬共養小紅點
     }
     debugPrint('📱 [WakeWord Emergency Protection] 系統狀態改變: $state - 保持全時背景與休眠緊急喚醒監聽');
     // ★ 2026-08-10 第二十輪（需求 6）：關閉語音喚醒時，生命週期變化不再重啟麥克風。
@@ -786,6 +792,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   Function(dynamic data)? _ownElderQuestionAnswered;
   Function(dynamic data)? _ownCheckinCheer;
   Function(dynamic data)? _ownDailyQuestionNew;
+  Function(dynamic data)? _ownPetGift;
   void Function(Map<String, dynamic>)? _ownRemoteReminder;
   void Function(Map<String, dynamic>)? _ownReminderSync;
 
@@ -863,6 +870,21 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       ElderDailyQuestionApi.refreshSignal.value++;
     };
     Signaling().onDailyQuestionNew = _ownDailyQuestionNew;
+
+    // ★ 2026-10-07 小豬共養：家人送了點心給小豬。同 G102：每次都重新指派並記住最後一份。
+    //   小嘎關懷訊息（沿用加油的 CareMessageStore + HeartbeatOverlay）並刷新「小豬」小紅點。
+    //   通話中或首頁不在最上層時先排隊，回到首頁（本函式再被呼叫）時補顯示。
+    _ownPetGift = (data) {
+      if (!mounted) return;
+      final g = PetGift.tryParse(data);
+      if (g != null && _petGiftSeen.add(g.giftId)) _petGiftPending.add(g);
+      ElderPetGiftApi.refreshSignal.value++;
+      unawaited(_drainPetGifts());
+    };
+    Signaling().onPetGift = _ownPetGift;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_drainPetGifts());
+    });
 
     // ★ ⏰ 監聽排程提醒與同步信令
     _ownRemoteReminder = (data) {
@@ -1059,6 +1081,47 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     }
   }
 
+  // ★ 2026-10-07 小豬共養：家人送點心的小紅點與關懷訊息。
+  final List<PetGift> _petGiftPending = [];
+  final Set<int> _petGiftSeen = {};
+  bool _petGiftDraining = false;
+  String? _petGiftElderId;
+
+  void _onPetGiftSignal() {
+    if (mounted) unawaited(_refreshPetGiftBadge());
+  }
+
+  /// 讀未餵禮物更新「小豬」小紅點；解析不到 elder_id 或讀取失敗皆保留原值。
+  Future<void> _refreshPetGiftBadge() async {
+    try {
+      final id = _petGiftElderId ??
+          await TodayTasksLoader.resolveElderId(widget.userId,
+              roomId: widget.roomId);
+      if (id == null || id.isEmpty) return;
+      _petGiftElderId = id;
+      await ElderPetGiftApi.refresh(id);
+    } catch (e) {
+      debugPrint('⚠️ [ElderHomeScreen] 更新小豬禮物紅點失敗: $e');
+    }
+  }
+
+  /// 依序顯示排隊中的禮物訊息；通話中或首頁不在最上層時不顯示（保留佇列）。
+  Future<void> _drainPetGifts() async {
+    if (_petGiftDraining) return;
+    _petGiftDraining = true;
+    try {
+      while (_petGiftPending.isNotEmpty) {
+        if (!mounted || Signaling().isInCall) break;
+        if (!(ModalRoute.of(context)?.isCurrent ?? true)) break;
+        final g = _petGiftPending.removeAt(0);
+        await _handleProactiveMessage(
+            jsonEncode({'reply': g.careMessage, 'type': 'family', 'emotion': 'happy'}));
+      }
+    } finally {
+      _petGiftDraining = false;
+    }
+  }
+
   /// 留存為關懷訊息並顯示 HeartbeatOverlay（不朗讀；語音由 service 決定）。
   Future<void> _presentCheer(CheckinCheer c) async {
     await CareMessageStore.instance
@@ -1176,6 +1239,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     ElderDailyQuestionApi.refreshSignal.removeListener(_onDailyQuestionSignal);
     if (identical(Signaling().onDailyQuestionNew, _ownDailyQuestionNew)) {
       Signaling().onDailyQuestionNew = null;
+    }
+    ElderPetGiftApi.refreshSignal.removeListener(_onPetGiftSignal);
+    if (identical(Signaling().onPetGift, _ownPetGift)) {
+      Signaling().onPetGift = null;
     }
     unawaited(_cheerService.dispose());
     if (identical(Signaling().onReminderSync, _ownReminderSync)) {
@@ -1564,10 +1631,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     // ★ 2026-10-07 每日一問改留聊天：今天的題目未回答時「聊天」顯示小紅點。
     return ValueListenableBuilder<bool>(
       valueListenable: ElderDailyQuestionApi.hasUnanswered,
-      builder: (context, hasQuestion, _) => UbanGlassNavBar(
-        items: buildElderNavItems(_navItemKeys, hasQuestion),
-        currentIndex: _selectedIndex,
-        onTap: _onNavTap,
+      builder: (context, hasQuestion, _) => ValueListenableBuilder<bool>(
+        // ★ 2026-10-07 小豬共養：有家人送的點心還沒餵時「小豬」顯示小紅點。
+        valueListenable: ElderPetGiftApi.hasUnfed,
+        builder: (context, hasGift, _) => UbanGlassNavBar(
+          items: buildElderNavItems(_navItemKeys, hasQuestion, hasGift),
+          currentIndex: _selectedIndex,
+          onTap: _onNavTap,
+        ),
       ),
     );
   }

@@ -39,6 +39,7 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
   bool _isCheckinNotifyOn = true;
   // ★ 2026-10-07 每日一問：裝置偏好 `daily_answer_notify_enabled`（預設開，不屬於 session 鍵）。
   bool _isDailyAnswerNotifyOn = true;
+  bool _isPetGiftNotifyOn = true;
   List<dynamic> _pairedElders = [];
   bool _isLoadingElders = true;
 
@@ -91,6 +92,12 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
     _loadDemographics();
     _loadCheckinNotifyPref();
     _loadDailyNotifyPref();
+    _loadPetGiftNotifyPref();
+  }
+
+  Future<void> _loadPetGiftNotifyPref() async {
+    final on = await CheckinNotification.isPetGiftEnabled();
+    if (mounted) setState(() => _isPetGiftNotifyOn = on);
   }
 
   Future<void> _loadDailyNotifyPref() async {
@@ -1193,6 +1200,19 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
                     await CheckinNotification.setDailyEnabled(val);
                   } catch (_) {
                     if (mounted) setState(() => _isDailyAnswerNotifyOn = !val);
+                  }
+                },
+              ),
+              _buildSwitchItem(
+                Icons.pets_rounded,
+                '小豬共養通知',
+                _isPetGiftNotifyOn,
+                (val) async {
+                  setState(() => _isPetGiftNotifyOn = val);
+                  try {
+                    await CheckinNotification.setPetGiftEnabled(val);
+                  } catch (_) {
+                    if (mounted) setState(() => _isPetGiftNotifyOn = !val);
                   }
                 },
               ),

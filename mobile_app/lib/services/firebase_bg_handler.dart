@@ -422,6 +422,21 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    // ★ 2026-10-07 小豬共養：長輩用我送的點心餵了小豬（僅送點心的家屬端）。同 daily-answer：
+    //    純 data、一般優先級、不碰來電狀態；角色守門（fail-closed）、開關與 giftId 去重
+    //    在 `CheckinNotification.showPetGiftFed` 內。
+    if (type == 'pet-gift-fed') {
+      debugPrint('🐷 [BG] 收到小豬共養餵食通知，交由家屬端守門後顯示一般優先級通知');
+      try {
+        await CheckinNotification.showPetGiftFedFromData(
+          Map<String, dynamic>.from(message.data),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 小豬共養通知失敗: $e');
+      }
+      return;
+    }
+
     if (type == 'reminder') {
       debugPrint('⏰ [BG] 收到排程提醒 FCM，顯示本機高優先級通知與彈窗');
       try {

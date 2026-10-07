@@ -126,6 +126,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Function(dynamic)? _ownDailyAnswer;
   /// 遞增 token 推給互動分頁的每日一問卡片重讀。
   int _dailyRefreshToken = 0;
+  // ★ 2026-10-07 小豬共養：長輩餵了我送的點心事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
+  Function(dynamic)? _ownPetGiftFed;
+  /// 遞增 token 推給互動分頁的小豬卡片重讀。
+  int _petGiftRefreshToken = 0;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
@@ -695,6 +699,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       setState(() => _dailyRefreshToken++);
     };
     _signaling.onDailyAnswer = _ownDailyAnswer;
+
+    // ★ 2026-10-07 小豬共養：長輩用我送的點心餵了小豬。補一則一般優先級本機通知
+    //    （角色守門／開關／giftId 去重都在 CheckinNotification.showPetGiftFed 內），並讓小豬卡片重讀。
+    _ownPetGiftFed = (data) {
+      if (data is Map) CheckinNotification.showPetGiftFedFromData(data);
+      if (!mounted) return;
+      setState(() => _petGiftRefreshToken++);
+    };
+    _signaling.onPetGiftFed = _ownPetGiftFed;
 
     _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
@@ -2384,6 +2397,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     if (identical(_signaling.onDailyAnswer, _ownDailyAnswer)) {
       _signaling.onDailyAnswer = null;
     }
+    if (identical(_signaling.onPetGiftFed, _ownPetGiftFed)) {
+      _signaling.onPetGiftFed = null;
+    }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
     }
@@ -2837,6 +2853,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 ),
                 FamilyInteractionTab(
                   dailyRefreshToken: _dailyRefreshToken,
+                  petGiftRefreshToken: _petGiftRefreshToken,
                   currentElder: _currentElder,
                   signaling: _signaling,
                   monitorDevices: _monitorDevices,

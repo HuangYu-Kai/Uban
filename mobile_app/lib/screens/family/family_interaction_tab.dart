@@ -14,6 +14,7 @@ import 'family_subscription_screen.dart';
 import '../elder_community_screen.dart';
 import 'family_friend_feed_body.dart';
 import 'widgets/daily_question_card.dart';
+import 'widgets/family_pet_card.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
 import '../../utils/display_text.dart';
@@ -44,6 +45,9 @@ class FamilyInteractionTab extends StatefulWidget {
 
   /// ★ 2026-10-07 每日一問：父層收到 `daily-answer` 時遞增，推給每日一問卡片重讀。
   final int dailyRefreshToken;
+
+  /// ★ 2026-10-07 小豬共養：父層收到 `pet-gift-fed` 時遞增，推給小豬卡片重讀。
+  final int petGiftRefreshToken;
 
   /// ★ 2026-08-10 第十九輪（需求 4）：長輩通訊機的 socket id，由
   /// `FamilyMainScreen._elderSocketId` 維護。撥打一般／緊急通話時必須帶上，
@@ -76,6 +80,7 @@ class FamilyInteractionTab extends StatefulWidget {
     this.tierLevel = 'free',
     this.userId,
     this.dailyRefreshToken = 0,
+    this.petGiftRefreshToken = 0,
     this.elderSocketId,
     this.onDevicesChanged,
     this.onAlertDismissed,
@@ -976,6 +981,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
                 currentElder: widget.currentElder,
                 userId: widget.userId,
                 refreshToken: widget.dailyRefreshToken,
+              ),
+              const SizedBox(height: 14),
+
+              // 2c. ★ 2026-10-07 小豬共養：長輩的小豬、今日點心與送點心入口
+              FamilyPetCard(
+                currentElder: widget.currentElder,
+                userId: widget.userId,
+                refreshToken: widget.petGiftRefreshToken,
               ),
               const SizedBox(height: 14),
 

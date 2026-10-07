@@ -137,12 +137,13 @@ void main() {
     await pumpCase(tester, interactionTab(), dark: false);
 
     final send = find.byTooltip('送出');
-    expect(send, findsOneWidget);
     await tester.scrollUntilVisible(
       send,
       200,
       scrollable: find.byType(Scrollable).first,
     );
+    // 互動分頁新增「小豬」卡片後留言區在視窗外（SliverList 惰性建構），捲到後才驗證存在。
+    expect(send, findsOneWidget);
     // 捲到離視窗頂端一段距離再點（貼著頂邊的點擊會落在捲動容器上，與按鈕無關）。
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 250));
     await tester.pump(const Duration(milliseconds: 500));

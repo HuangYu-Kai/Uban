@@ -24,6 +24,9 @@ class GardenFeedingSheet extends StatefulWidget {
   final Function(PetFoodItem food) onFeedFood;
   final VoidCallback onClose;
 
+  /// ★ 2026-10-07 小豬共養：還有「家人送的、尚未餵」禮物的食物 id，該食物顯示「家人送的」小標籤。
+  final Set<String> giftFoodIds;
+
   const GardenFeedingSheet({
     super.key,
     required this.isLandscape,
@@ -32,6 +35,7 @@ class GardenFeedingSheet extends StatefulWidget {
     this.medicationCheckinsToday = 0,
     required this.onFeedFood,
     required this.onClose,
+    this.giftFoodIds = const {},
   });
 
   @override
@@ -322,7 +326,10 @@ class _GardenFeedingSheetState extends State<GardenFeedingSheet>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
                   children: [
                     Text(
                       food.name,
@@ -334,7 +341,6 @@ class _GardenFeedingSheetState extends State<GardenFeedingSheet>
                             : const Color(0xFF9CA3AF),
                       ),
                     ),
-                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
@@ -350,6 +356,25 @@ class _GardenFeedingSheetState extends State<GardenFeedingSheet>
                         ),
                       ),
                     ),
+                    if (widget.giftFoodIds.contains(food.id)) ...[
+                      Container(
+                        key: ValueKey('gift_tag_${food.id}'),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '家人送的',
+                          style: GoogleFonts.notoSansTc(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFB91C1C),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 4),
