@@ -16,7 +16,9 @@ import 'package:flutter_application_1/models/elder.dart';
 import 'package:flutter_application_1/screens/family/home/dialogs/full_dialogue_dialog.dart';
 import 'package:flutter_application_1/screens/family/home/sheets/category_detail_sheet.dart';
 import 'package:flutter_application_1/screens/family/home/sheets/send_care_card_sheet.dart';
+import 'package:flutter_application_1/models/memoir_story.dart';
 import 'package:flutter_application_1/screens/family/home/widgets/home_ai_mood_radar_card.dart';
+import 'package:flutter_application_1/screens/family/home/widgets/home_analysis_card.dart';
 import 'package:flutter_application_1/screens/family/home/widgets/home_alert_preview_card.dart';
 import 'package:flutter_application_1/screens/family/home/widgets/home_elder_header_card.dart';
 import 'package:flutter_application_1/screens/family/home/widgets/home_elder_life_feed.dart';
@@ -145,6 +147,86 @@ void main() {
         ),
     'HomeElderLifeFeed（無紀錄）': () => HomeElderLifeFeed(currentElder: elder),
   };
+
+  // 近況分析卡：注入假資料，三段都切過一遍，長標題／長故事名在 1.3 倍字下不得溢位。
+  String ymd(int back) {
+    final d = DateTime.now().subtract(Duration(days: back));
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  Widget analysisCard({bool sharing = true}) => HomeAnalysisCard(
+        currentElder: elder,
+        userId: 1,
+        stepsLoader: (id, fid) async => {
+          'status': 'success',
+          'data': {
+            'series': [
+              for (var i = 0; i < 7; i++) {'date': ymd(i), 'steps': i == 3 ? null : 1234567 - i * 100},
+            ],
+          },
+        },
+        outingLoader: (id, uid) async => {
+          'sharing_enabled': sharing,
+          'has_home': true,
+          'days': [
+            for (var i = 0; i < 7; i++)
+              {'date': ymd(i), 'outing_count': i % 3, 'distance_m': 500, 'point_count': 10},
+          ],
+        },
+        emotionLoader: (id, fid) async => {
+          'status': 'success',
+          'data': {
+            'events': [
+              {'timestamp': DateTime.now().toUtc().toIso8601String(), 'emotion': 'sad'},
+            ],
+          },
+        },
+        memoirLoader: (id) async => [
+          for (var i = 0; i < 3; i++)
+            MemoirStory(
+              id: 'm$i',
+              elderId: id,
+              title: '這是一個故意取得很長很長很長很長很長很長很長的人生故事標題 $i',
+              tag: '經典回憶與奮鬥歲月',
+              preview: '',
+              fullStory: '',
+              promptQuestion: '',
+              recordedDate: DateTime(2026, 10, 1 + i),
+            ),
+        ],
+      );
+
+  for (final dark in [false, true]) {
+    testWidgets('HomeAnalysisCard 三段切換在 360×640／1.3 倍字／${dark ? "深" : "淺"}色下無溢位', (tester) async {
+      await pumpCase(tester, analysisCard(), dark: dark);
+      expect(tester.takeException(), isNull);
+      expect(find.text('近況分析'), findsOneWidget);
+      expect(find.textContaining('天平均'), findsOneWidget);
+      await tester.tap(find.text('外出'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('外出 4 天，共 6 次'), findsOneWidget);
+      await tester.tap(find.text('情緒與故事'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('已珍藏 3 篇人生故事'), findsOneWidget);
+      expect(find.text('委託小豬提問'), findsOneWidget);
+    });
+  }
+
+  testWidgets('HomeAnalysisCard 外出：長輩關閉位置分享顯示對應文案', (tester) async {
+    await pumpCase(tester, analysisCard(sharing: false), dark: false);
+    await tester.tap(find.text('外出'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('長輩已關閉位置分享'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('HomeAnalysisCard 未選長輩：顯示尚未選擇長輩且不炸', (tester) async {
+    await pumpCase(tester, const HomeAnalysisCard(), dark: false);
+    expect(find.text('尚未選擇長輩'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final dark in [false, true]) {
     for (final e in cases.entries) {

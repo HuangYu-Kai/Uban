@@ -12,26 +12,14 @@ import '../caregiver_pairing_screen.dart';
 import '../identification_screen.dart';
 import 'family_subscription_screen.dart';
 import 'family_bug_report_screen.dart';
-import '../../models/memoir_story.dart';
-import '../../services/memoir_service.dart';
-import '../../widgets/memoir_detail_sheet.dart';
-import 'memoirs_gallery_screen.dart';
-// ★ 第五十輪：健康趨勢與情緒關注卡片做好了卻沒有入口（`AiHubScreen` 從未被
-// 建構或導覽到，見該檔），本輪把這兩個「真的有資料」的畫面接回本分頁。
-// `VitalSignsWidget`（心率/步數/卡路里/睡眠）刻意不接——它的資料 100% 是
-// initState 硬編的假數字，`_loadVitalSigns()` 只是 delay 後填回同樣的常數，
-// 接進來等於在誠實的分頁裡塞一張假資料卡片，違反本輪誠實性要求，故留待
-// 之後真的接上裝置資料再處理。
-import 'health_trends_screen.dart';
-import 'outing_trends_screen.dart';
-import 'widgets/emotion_preview_card.dart';
 import 'widgets/fam_data_ui.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
 import '../../widgets/error_boundary.dart';
 
 /// ⚙️ 子女端「資料與設定」Tab (FamilyDataTab)
-/// 包含：照顧者資訊、關照長輩完整檔案、AI 陪伴偏好、人生故事膠囊、安全通知設定、裝置與訂閱管理
+/// 包含：照顧者資訊、關照長輩完整檔案、AI 陪伴偏好、安全通知設定、裝置與訂閱管理
+/// （健康／外出／情緒與人生故事的分析已移到首頁「近況分析」卡片，本分頁以設定為主）
 ///
 /// 2026-10 起外觀改家屬新設計（海灣藍）：`.me-card`、`.group2`／`.setrow`（不放圖示方塊）、
 /// `.entry`、`.story`；對話框改 [UbanDialog]（經 [showFamDialog]，內容與回傳值不變）。
@@ -50,7 +38,6 @@ class FamilyDataTab extends StatefulWidget {
   //   等同沒有目標，`SpotlightTutorial` 會自動退化為無挖洞的置中卡片。
   final GlobalKey? caregiverCardKey;
   final GlobalKey? elderSummaryKey;
-  final GlobalKey? memoirsKey;
   final GlobalKey? aiHelperKey;
 
   /// ★ 第五十一輪（任務 2）：由父層 `FamilyMainScreen` 在使用者切換到「資料」
@@ -73,7 +60,6 @@ class FamilyDataTab extends StatefulWidget {
     this.onToggleDarkMode,
     this.caregiverCardKey,
     this.elderSummaryKey,
-    this.memoirsKey,
     this.aiHelperKey,
     this.refreshToken = 0,
   });
@@ -104,10 +90,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
   bool _isLoadingAiProfile = false;
   Map<String, dynamic>? _elderProfileData;
 
-  // 📖 人生故事膠囊資料狀態
-  List<MemoirStory> _memoirStories = [];
-  bool _isLoadingMemoirs = true;
-
   @override
   void initState() {
     super.initState();
@@ -116,8 +98,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
     _loadCaregiverName();
     _loadSubscriptionInfo();
     _loadAiProfile();
-    MemoirService.instance.addListener(_onMemoirsChanged);
-    _loadMemoirs();
   }
 
   // ── 重新整理三種觸發（下拉／切回此分頁／App 回前景）共用 ──
@@ -156,7 +136,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
         _loadCaregiverName(),
         _loadSubscriptionInfo(),
         _loadAiProfile(),
-        _loadMemoirs(),
       ]);
     } finally {
       _isRefreshing = false;
@@ -166,7 +145,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    MemoirService.instance.removeListener(_onMemoirsChanged);
     super.dispose();
   }
 
@@ -176,7 +154,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
     if (widget.currentElder?.id != oldWidget.currentElder?.id ||
         widget.currentElder?.elderId != oldWidget.currentElder?.elderId) {
       _loadAiProfile();
-      _loadMemoirs();
     }
     // ★ 第五十一輪（任務 2）：使用者從別的分頁切回「資料」分頁時，父層會
     //   遞增 `refreshToken`（見欄位宣告的完整理由），這裡跟著重新載入全部
@@ -187,21 +164,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
     //   分頁切換」才會遞增該 token，2.5 秒輪詢造成的其餘重建不會誤觸發。
     if (widget.refreshToken != oldWidget.refreshToken) {
       _refreshAll();
-    }
-  }
-
-  void _onMemoirsChanged() {
-    if (mounted) _loadMemoirs();
-  }
-
-  Future<void> _loadMemoirs() async {
-    final elderId = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? 'default_elder';
-    final stories = await MemoirService.instance.getMemoirs(elderId);
-    if (mounted) {
-      setState(() {
-        _memoirStories = stories;
-        _isLoadingMemoirs = false;
-      });
     }
   }
 
@@ -259,20 +221,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
       context,
       MaterialPageRoute(builder: (_) => const FamilySubscriptionScreen()),
     ).then((_) => _loadSubscriptionInfo());
-  }
-
-  void _openMemoirsGallery(String elderId, String name) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MemoirsGalleryScreen(
-          elderId: elderId,
-          elderName: name,
-          familyUserName: widget.userName,
-          familyId: widget.userId,
-        ),
-      ),
-    );
   }
 
   void _handleEditProfile() {
@@ -654,23 +602,8 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 ErrorBoundary(name: '長輩檔案摘要卡片', builder: () => _buildElderSummaryCard()),
                 const SizedBox(height: 14),
 
-                // 2.5 健康趨勢入口 + 情緒關注預覽卡（第五十輪：接回導覽，見檔頭註解）
-                // 2.6 外出趨勢入口（移動軌跡延伸第三階段）
-                ErrorBoundary(name: '趨勢入口卡片', builder: () => _buildTrendsEntries()),
-                const SizedBox(height: 14),
-                ErrorBoundary(
-                  name: '情緒關注預覽卡片',
-                  builder: () => EmotionPreviewCard(
-                    elderName: widget.currentElder!.displayName,
-                    elderId: widget.currentElder!.id,
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // 3. 長輩人生故事膠囊 (Memoirs & Family Legacy)
-                ErrorBoundary(name: '人生故事膠囊卡片', builder: () => _buildMemoirsCard()),
-                const SizedBox(height: 14),
-
+                // 健康／外出／情緒與人生故事的分析已移到首頁的「近況分析」卡片
+                // （見 home/widgets/home_analysis_card.dart），本分頁只放設定。
                 // 4. 長輩互動與對話偏好 (Companion Preferences)
                 ErrorBoundary(name: 'AI 互動偏好卡片', builder: () => _buildAiHelperCard()),
                 const SizedBox(height: 14),
@@ -968,152 +901,6 @@ class _FamilyDataTabState extends State<FamilyDataTab>
         ),
       ),
       50,
-    );
-  }
-
-  // ─── 2.5／2.6 健康趨勢與外出趨勢入口（`.twin` + `.entry`） ───
-  // 第五十輪新增：`HealthTrendsScreen` 早就做好真實資料串接（步數/體重/身高），
-  // 但全專案沒有任何入口導覽過去，屬於死碼。這裡補入口卡，點下去進
-  // `HealthTrendsScreen`；心率/血壓/血糖仍會顯示 `--`，那是該畫面自己誠實
-  // 標示「需穿戴裝置，目前無法偵測」，不在本卡片重複描述細節。
-  // 外出趨勢入口：刻意用靜態文字、不在本分頁預先打 `getDaily`——本頁已有多支
-  // 啟動即呼叫的 API，而且父層輪詢會頻繁重建；數字都在點進去的畫面裡，所以也沒有
-  // 迷你走勢（設計稿的 `.spark` 在此沒有可用資料，不假造）。
-  // 版面注意（第五十二輪）：Flexible／Expanded 只能是 Row／Column「有界主軸」的直接子節點，
-  // 不可在無界高度的 Column 底下再包 Flexible。這裡的 Expanded 都在 Row 內。
-
-  Widget _buildTrendsEntries() {
-    if (widget.currentElder == null) return const SizedBox.shrink();
-    final elder = widget.currentElder!;
-
-    return _fadeIn(
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: FamEntryCard(
-              title: '健康趨勢',
-              subtitle: '步數、體重、身高',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HealthTrendsScreen(
-                      elderName: elder.displayName,
-                      elderId: elder.id,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: FamEntryCard(
-              title: '外出趨勢',
-              subtitle: '外出次數、距離、在外時間',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => OutingTrendsScreen(
-                      // 與首頁 GPS 軌跡卡片一致：優先用長輩的 elderId 字串，缺漏才退回資料庫 id。
-                      elderId: elder.elderId ?? elder.id.toString(),
-                      userId: widget.userId,
-                      elderName: elder.displayName,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      75,
-    );
-  }
-
-  // ─── 3. 人生故事膠囊 (Memoirs & Family Legacy) ───
-
-  Widget _buildMemoirsCard() {
-    final name = widget.currentElder?.displayName ?? '長輩';
-    final c = _c;
-
-    final stories = _memoirStories;
-    final elderId = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? 'default_elder';
-
-    String two(int n) => n.toString().padLeft(2, '0');
-
-    return _fadeIn(
-      FamCard(
-        key: widget.memoirsKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 卡片頂部標題列（點擊「珍藏 N 篇」可進入完整回憶錄畫廊）
-            FamSecHead(
-              title: '$name的人生故事',
-              trailing: FamMore(
-                label: '珍藏 ${stories.length} 篇',
-                onTap: () => _openMemoirsGallery(elderId, name),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '由日常對話口述整理紀錄，珍藏長輩的人生智慧與家族回憶',
-              style: famText(c.text2, 13, height: 1.5),
-            ),
-            const SizedBox(height: 8),
-
-            // 故事列表（最多展示前 3 篇，點擊可開啟原聲聆聽詳情彈窗）
-            if (_isLoadingMemoirs)
-              const FamStateBlock(
-                height: 80,
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else if (stories.isEmpty)
-              const FamNote(
-                text: '長輩尚未與小豬分享故事，點擊下方「委託小豬提問」讓小豬主動發問吧！',
-              )
-            else
-              for (var i = 0; i < stories.take(3).length; i++)
-                FamStoryRow(
-                  first: i == 0,
-                  title: stories[i].title,
-                  meta:
-                      '${two(stories[i].recordedDate.month)}/${two(stories[i].recordedDate.day)}・${stories[i].tag}${stories[i].familyNotes.isNotEmpty ? '・${stories[i].familyNotes.length} 則筆記' : ''}',
-                  onTap: () => MemoirDetailSheet.show(
-                    _themeCtx,
-                    story: stories[i],
-                    elderName: name,
-                    familyUserName: widget.userName,
-                  ),
-                ),
-
-            const SizedBox(height: 10),
-
-            // 底部快捷按鈕：進入回憶錄畫廊與委託小豬提問（兩者原本就都導向畫廊）
-            FamButton(
-              label: '翻閱自傳畫廊 (${stories.length})',
-              kind: FamButtonKind.tonal,
-              height: 46,
-              onPressed: () => _openMemoirsGallery(elderId, name),
-            ),
-            const SizedBox(height: 8),
-            FamButton(
-              label: '委託小豬提問',
-              kind: FamButtonKind.outline,
-              height: 46,
-              onPressed: () => _openMemoirsGallery(elderId, name),
-            ),
-          ],
-        ),
-      ),
-      100,
     );
   }
 

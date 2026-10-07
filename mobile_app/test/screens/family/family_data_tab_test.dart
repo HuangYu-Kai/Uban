@@ -8,7 +8,7 @@
 //   c. 登出按鈕點擊後真的能開啟確認對話框（Navigator/showDialog 未被擋）
 //   d. 分頁根節點版面尺寸不是 0
 //
-// `_loadSubscriptionInfo` / `_loadAiProfile` / `EmotionPreviewCard` 會打真實
+// `_loadSubscriptionInfo` / `_loadAiProfile` 會打真實
 // HTTP（打 ApiClient.baseUrl，預設 Tailscale 主機名），測試沙盒沒有對應網路
 // /VPN，會以 DNS 查詢失敗快速失敗（非 15 秒逾時卡住）；三處呼叫皆已包
 // try/catch，失敗後會落到既有的預設值/錯誤狀態顯示，不會拋出例外炸穿測試。
@@ -68,6 +68,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(buildHarness(elder: testElder));
       await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 1)); // 讓新進入視窗的卡片的 flutter_animate 計時器跑完
       expect(find.text('這段文字不可能出現在畫面上_canary_只是用來證明斷言會失敗'),
           findsOneWidget);
     },
@@ -149,9 +150,10 @@ void main() {
 
   testWidgets('FamilyDataTab 會畫出「受關照長輩檔案」卡片與長輩姓名', (WidgetTester tester) async {
     await tester.pumpWidget(buildHarness(elder: testElder));
-    // 不用 pumpAndSettle()：EmotionPreviewCard/_loadAiProfile/_loadSubscriptionInfo
+    // 不用 pumpAndSettle()：_loadAiProfile/_loadSubscriptionInfo
     // 走真實 http，沙盒沒有對應網路，用固定 pump 給 DNS 失敗的 catch 分支足夠時間跑完即可。
     await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 1)); // 讓新進入視窗的卡片的 flutter_animate 計時器跑完
 
     expect(find.text('受關照長輩檔案'), findsOneWidget);
     expect(find.text('陳阿嬤'), findsOneWidget);
@@ -175,6 +177,7 @@ void main() {
     // 下方 canary group 用重建的最小結構證明「這個結構真的會丟出這個例外」。
     await tester.pumpWidget(buildHarness(elder: testElder));
     await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 1)); // 讓新進入視窗的卡片的 flutter_animate 計時器跑完
 
     expect(
       tester.takeException(),
@@ -193,6 +196,7 @@ void main() {
       onToggleDarkMode: (val) => received = val,
     ));
     await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 1)); // 讓新進入視窗的卡片的 flutter_animate 計時器跑完
 
     // 2026-10 新設計：開關改為 UbanSwitch；外觀群組的深色模式開關排在最前面（其後是通知開關）。
     final switchFinder = find.byType(UbanSwitch).first;
@@ -207,6 +211,7 @@ void main() {
   testWidgets('登出按鈕可互動：點擊後真的會開啟確認對話框', (WidgetTester tester) async {
     await tester.pumpWidget(buildHarness(elder: testElder));
     await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 1)); // 讓新進入視窗的卡片的 flutter_animate 計時器跑完
 
     expect(find.text('安全登出'), findsNothing);
 
@@ -243,6 +248,7 @@ void main() {
       navigatorObservers: [_RecordingNavigatorObserver(pushedRoutes)],
     ));
     await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 1)); // 讓新進入視窗的卡片的 flutter_animate 計時器跑完
 
     final subscriptionEntry = find.text('訂閱方案與設備上限管理');
     // 這張卡片在清單中段，預設測試視窗看不到、也還沒被 SliverList 掛進
@@ -274,6 +280,7 @@ void main() {
   testWidgets('FamilyDataTab 根節點版面尺寸不為 0', (WidgetTester tester) async {
     await tester.pumpWidget(buildHarness(elder: testElder));
     await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 1)); // 讓新進入視窗的卡片的 flutter_animate 計時器跑完
 
     final size = tester.getSize(find.byType(FamilyDataTab));
     expect(size.width, greaterThan(0), reason: 'FamilyDataTab 寬度不應為 0（否則代表版面塌陷）');

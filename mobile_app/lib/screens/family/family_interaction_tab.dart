@@ -6,13 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/elder.dart';
 import '../../services/signaling.dart';
 import '../../services/api_service.dart';
-import '../../theme/family_theme.dart';
 import '../../widgets/ui/ui.dart';
 import '../video_call_screen.dart';
 import 'family_ai_copilot_screen.dart';
 import 'family_subscription_screen.dart';
-import '../elder_community_screen.dart';
-import 'family_friend_feed_body.dart';
 import 'widgets/daily_question_card.dart';
 import 'widgets/family_pet_card.dart';
 import 'widgets/fam_interaction_ui.dart';
@@ -96,10 +93,6 @@ class FamilyInteractionTab extends StatefulWidget {
 
 class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     with WidgetsBindingObserver {
-  final TextEditingController _messageController = TextEditingController();
-  bool _isSending = false;
-  /// 本次開啟分頁期間已送出的留言（僅畫面顯示用，不持久化、不打 API）。
-  final List<({String text, String time})> _sentMessages = [];
   List<Map<String, dynamic>> _reminders = [];
   bool _isLoadingReminders = false;
 
@@ -251,8 +244,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     if (!mounted) return;
     // ★ 第五項需求（家屬好友系統）順手修復：原本讀不到 caregiver_id 時會
     // 兜底成寫死的 family_id 1，導致新增的提醒被歸屬到別人的帳號。讀不到就
-    // 顯示明確錯誤並不開對話框，不得用猜測值兜底（比照下方 _buildCommunitySection
-    // 已修過的同型別寫法）。
+    // 顯示明確錯誤並不開對話框，不得用猜測值兜底（比照 AI 照護秘書
+    // 分享紀錄入口已修過的同型別寫法）。
     final familyId = prefs.getInt('caregiver_id');
     if (familyId == null) {
       _toast('無法取得您的帳號 ID，請重新登入後再試');
@@ -575,7 +568,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     //   否則計時器會在 State 已銷毀後繼續打 HTTP 並碰 context。
     _monitorBindPollTimer?.cancel();
     _monitorBindPollTimer = null;
-    _messageController.dispose();
     super.dispose();
   }
 
@@ -897,54 +889,6 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     );
   }
 
-  void _sendMessage(String text) async {
-    if (widget.currentElder == null) {
-      _toast('請先在頂部選擇要關照的長輩');
-      return;
-    }
-
-    final messageText = text.trim();
-    if (messageText.isEmpty) return;
-
-    setState(() => _isSending = true);
-    HapticFeedback.lightImpact();
-
-    try {
-      final bool sent = await widget.signaling.sendHeartbeat(
-        widget.currentElder!.id,
-        messageText,
-        playSound: true,
-      );
-
-      if (!mounted) return;
-      if (sent) {
-        final now = DateTime.now();
-        setState(() {
-          _sentMessages.add((
-            text: messageText,
-            time:
-                '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-          ));
-          if (_sentMessages.length > 3) _sentMessages.removeAt(0);
-        });
-        _messageController.clear();
-        _toast('已傳送留言給 ${widget.currentElder!.displayName}', success: true);
-      } else {
-        // ★ 2026-08-31 第三十八輪：sendHeartbeat 在 socket 未連線時回傳 false，
-        //   之前無條件顯示成功提示（謊報成功），改為顯示失敗提示；訊息保留在輸入框，不清空。
-        _toast('目前未連線，請稍後再試', error: true);
-      }
-    } catch (e) {
-      if (mounted) {
-        _toast('傳送失敗: $e', error: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSending = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.currentElder == null) {
@@ -952,7 +896,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     }
 
     // 2026-10 新設計（design_prototype/family.html #tabInteract）：
-    // 通話大卡 → AI 照護秘書 → 留言 → 時光牆 → 遠端監控 → 遠端提醒，區塊間距 14。
+    // 通話大卡 → AI 照護秘書（分享近況／問近況／設提醒，已併入原留言與時光牆入口）
+    // → 每日一問 → 小豬共養 → 遠端監控 → 遠端提醒，區塊間距 14。
     final refreshColors = UbanColors.of(context);
     return RefreshIndicator(
       color: refreshColors.brandFill,
@@ -992,19 +937,11 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
               ),
               const SizedBox(height: 14),
 
-              // 3. 留言給長輩（單行輸入＋送出）
-              _buildMessageSection(),
-              const SizedBox(height: 14),
-
-              // 4. 家庭生活社群時光牆（雙向動態互動）
-              _buildCommunitySection(),
-              const SizedBox(height: 14),
-
-              // 5. 遠端監控區
+              // 3. 遠端監控區
               _buildMonitorSection(),
               const SizedBox(height: 14),
 
-              // 6. 遠端提醒與用藥行程
+              // 4. 遠端提醒與用藥行程
               _buildReminderSection(),
             ]),
           ),
@@ -1014,75 +951,58 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     );
   }
 
+  /// 單一入口：AI 照護秘書。三項能力（分享近況給長輩／問近況／設提醒）各有一顆快捷鈕，
+  /// 點了開啟秘書並預填草稿（只填入、不自動送出）。
   Widget _buildAiCopilotSection() {
     final elderName = widget.currentElder?.displayName ?? '長輩';
-
-    return FamAction(
-      key: widget.aiCopilotKey,
-      title: 'AI 照護秘書',
-      subtitle: '問$elderName今天過得怎樣、用一句話排吃藥提醒',
-      trailing: FamAction.chevron(context),
-      onTap: () {
-        HapticFeedback.mediumImpact();
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => FamilyAiCopilotScreen(currentElder: widget.currentElder),
-          ),
-        ).then((_) {
-          _fetchReminders();
-        });
-      },
-    );
-  }
-
-  /// `.msgs`＋`.msgbox`：留言給長輩。送出走 [_sendMessage]（signaling.sendHeartbeat，
-  /// 行為與原版相同；原版此函式沒有任何 UI 入口，2026-10 依設計稿補上）。
-  Widget _buildMessageSection() {
     final c = UbanColors.of(context);
-    final name = widget.currentElder?.displayName ?? '長輩';
+
     return FamCard(
+      key: widget.aiCopilotKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          FamSecHead(title: '留言給$name'),
-          if (_sentMessages.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            for (final m in _sentMessages)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: FamChatBubble(
-                  mine: true,
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _openAiCopilot(),
+            child: Row(
+              children: [
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(m.text,
-                          style: famText(c.brandStrong, 14.5, height: 1.5)),
-                      Text('您・${m.time}', style: famText(c.text3, 11.5)),
+                      Text('AI 照護秘書',
+                          style: famText(c.text, 16.5, weight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Text('分享近況、問$elderName今天好嗎、設提醒',
+                          style: famText(c.text2, 13.5, height: 1.45)),
                     ],
                   ),
                 ),
-              ),
-          ],
+                const SizedBox(width: 12),
+                FamAction.chevron(context),
+              ],
+            ),
+          ),
           const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              Expanded(
-                child: FamInput(
-                  controller: _messageController,
-                  hintText: '寫點什麼給$name',
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: _isSending ? null : _sendMessage,
-                ),
+              FamFilterChip(
+                label: '分享近況',
+                selected: false,
+                onTap: () => _openAiCopilot('跟$elderName說：'),
               ),
-              const SizedBox(width: 8),
-              FamRoundBtn(
-                icon: Icons.send_rounded,
-                tooltip: '送出',
-                onTap: _isSending
-                    ? null
-                    : () => _sendMessage(_messageController.text),
+              FamFilterChip(
+                label: '問近況',
+                selected: false,
+                onTap: () => _openAiCopilot('$elderName今天好嗎？'),
+              ),
+              FamFilterChip(
+                label: '設提醒',
+                selected: false,
+                onTap: () => _openAiCopilot('每天 08:00 提醒吃藥'),
               ),
             ],
           ),
@@ -1091,61 +1011,20 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     );
   }
 
-  Widget _buildCommunitySection() {
-    return FamAction(
-      key: widget.communityKey,
-      title: '家庭生活時光牆',
-      subtitle: '瀏覽長輩心情、分享生活照片與留言關心',
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const FamChip(label: '雙向交流', tone: FamTone.brand),
-          const SizedBox(width: 4),
-          FamAction.chevron(context),
-        ],
+  void _openAiCopilot([String? initialMessage]) {
+    HapticFeedback.mediumImpact();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FamilyAiCopilotScreen(
+          currentElder: widget.currentElder,
+          initialMessage: initialMessage,
+        ),
       ),
-      onTap: () async {
-        HapticFeedback.lightImpact();
-        final prefs = await SharedPreferences.getInstance();
-        if (!mounted) return;
-        // ★ 第五項需求（家屬好友系統）順手修復：原本讀不到 caregiver_id
-        // 時會兜底成寫死的 family_id 2，導致使用者用別人的家庭身分發文
-        // 到別人的家庭留言板。讀不到就顯示明確錯誤並不開畫面，不得用
-        // 猜測值兜底。
-        final familyId = prefs.getInt('caregiver_id');
-        if (familyId == null) {
-          _toast('無法取得您的帳號 ID，請重新登入後再試');
-          return;
-        }
-        final userName = prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            // 2026-10：ElderCommunityScreen 長輩／家屬共用、內部不動；家屬端 push
-            // 時在外層掛 FamilyThemeScope，讓「朋友」標籤內的 FamilyFriendFeedBody
-            // 與其開出的 sheet／加好友頁都吃得到家屬主題。
-            builder: (context) => FamilyThemeScope(
-              child: ElderCommunityScreen(
-                userId: familyId,
-                userName: userName,
-                familyId: familyId,
-                // ★ 第五項需求（家屬好友系統）：家屬跟進長輩端的「家庭／朋友」
-                // 頂部標籤——第一個標籤文字改成「家庭」（長輩端維持「家人」不變，
-                // 見 ElderCommunityScreen.familyTabLabel 預設值），朋友標籤內容
-                // 換成家屬自己的 FamilyFriendFeedBody，與長輩朋友圈資料互不相通。
-                showFriendTab: true,
-                familyTabLabel: '家庭',
-                friendTabContent: FamilyFriendFeedBody(
-                  familyId: familyId,
-                  familyName: userName,
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
+    ).then((_) {
+      // 秘書可能建立了提醒，回來時重讀。
+      _fetchReminders();
+    });
   }
 
   Widget _buildNoElderPlaceholder() {

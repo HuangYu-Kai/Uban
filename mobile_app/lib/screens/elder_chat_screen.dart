@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -24,6 +25,9 @@ import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
 import 'elder_screen.dart';
 import '../services/care_message_store.dart';
+import '../services/api/family_updates_api.dart';
+import '../widgets/elder_floating_chrome.dart';
+import 'elder_tabs/chat/chat_images.dart';
 
 /// 長輩端「和小嘎聊天」—— AI 聊天頁（串流 + Markdown 渲染）。
 ///
@@ -62,6 +66,7 @@ class _ChatMessage {
   String? ttsAudioPath; // 本地快取音檔路徑（特別是台語，存入本地，點了直接重播，免額外發送 Yating API）
   bool isPlayingAudio; // 當前是否正在播放中
   DailyQuestion? dailyQuestion; // ★ 每日一問：非 null 時氣泡下方顯示「我來回答」
+  final List<String> images; // ★ 家人分享轉述：氣泡下方的照片網址（可為相對路徑）
 
   _ChatMessage(
     this.text,
@@ -72,6 +77,7 @@ class _ChatMessage {
     this.ttsText,
     this.ttsAudioPath,
     this.isPlayingAudio = false,
+    this.images = const [],
   }) : id = id ?? '${DateTime.now().millisecondsSinceEpoch}_${text.hashCode.abs()}';
 }
 
@@ -147,6 +153,59 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     //   被其他畫面覆寫；而且本頁在 IndexedStack 中會被保活、initState 只跑
     //   一次，靠監聽才能即時接到新訊息。
     CareMessageStore.instance.latest.addListener(_onCareMessage);
+
+    // ★ 2026-10-07 家人分享轉述：socket `family-share-new` 且本分頁開著時由外殼遞增
+    //   訊號；切回聊天分頁時也補查一次（並補唸尚未唸的轉述）。
+    ElderFamilyUpdatesApi.refreshSignal.addListener(_onFamilyUpdatesSignal);
+    elderChatTabActive.addListener(_onChatTabActiveChanged);
+  }
+
+  // ── 家人分享轉述 ─────────────────────────────────────────────
+  bool _relayInFlight = false; // 防重入：取回→顯示→標記完成前不再打第二次
+  _ChatMessage? _unspokenRelay; // 分頁不在前景時加入、尚未朗讀的轉述氣泡
+
+  void _onFamilyUpdatesSignal() {
+    if (mounted) unawaited(_relayFamilyUpdates());
+  }
+
+  void _onChatTabActiveChanged() {
+    if (!mounted || !elderChatTabActive.value) return;
+    final pending = _unspokenRelay;
+    if (pending != null) {
+      _unspokenRelay = null;
+      unawaited(_playOrReplayTts(pending));
+    } else {
+      unawaited(_relayFamilyUpdates());
+    }
+  }
+
+  /// 取回家人分享開場白，以小嘎身分加一則氣泡（文字＋照片），朗讀後才通知後端已轉述。
+  Future<void> _relayFamilyUpdates() async {
+    if (_relayInFlight || !mounted || _isThinking) return;
+    _relayInFlight = true;
+    try {
+      final opening = await ElderFamilyUpdatesApi.fetchOpening(widget.userId);
+      if (opening == null || !mounted || _isThinking) return;
+      final msg = _ChatMessage(
+        opening.message,
+        false,
+        ttsText: opening.message,
+        ttsLanguage: 'mandarin',
+        images: opening.images,
+      );
+      setState(() => _messages.add(msg));
+      _scrollToBottom();
+      _saveLocalChatHistory();
+      // 聊天分頁在前景才朗讀（與 AI 回覆一致）；否則等切回分頁再唸。
+      if (elderChatTabActive.value) {
+        unawaited(_playOrReplayTts(msg));
+      } else {
+        _unspokenRelay = msg;
+      }
+      await ElderFamilyUpdatesApi.markRelayed(widget.userId, opening);
+    } finally {
+      _relayInFlight = false;
+    }
   }
 
   /// 載入由長輩或子女設定的專屬稱呼（優先從本機快取讀取，並向後端 API 同步）
@@ -195,6 +254,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                   ttsLanguage: item['ttsLanguage'],
                   ttsText: item['ttsText'],
                   ttsAudioPath: item['ttsAudioPath'],
+                  images: decodeChatImages(item['images']),
                 ))
             .where((m) => m.text.isNotEmpty)
             .toList();
@@ -231,6 +291,24 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
             }
           }
           if (mounted && remoteLoaded.isNotEmpty) {
+            // 後端歷史只有文字；本機轉述氣泡的照片依文字比對帶回來，避免被整批覆蓋掉。
+            final imagesByText = {
+              for (final m in _messages)
+                if (!m.isUser && m.images.isNotEmpty) m.text: m.images,
+            };
+            final merged = [
+              for (final m in remoteLoaded)
+                if (!m.isUser && imagesByText.containsKey(m.text))
+                  _ChatMessage(m.text, false,
+                      ttsLanguage: m.ttsLanguage,
+                      ttsText: m.ttsText,
+                      images: imagesByText[m.text]!)
+                else
+                  m
+            ];
+            remoteLoaded
+              ..clear()
+              ..addAll(merged);
             setState(() {
               _messages.clear();
               _messages.addAll(remoteLoaded);
@@ -255,6 +333,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         ));
       });
     }
+
+    // ★ 2026-10-07 家人分享轉述：先於每日一問，讓小嘎先說家人的消息。
+    await _relayFamilyUpdates();
 
     // ★ 任務 D：聊天歷史載入完成後，讓小嘎在對話中自然提出回憶選題，
     // 取代原本個人分頁獨立的「小豬想聽你說」橫幅。
@@ -349,6 +430,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                 'ttsLanguage': m.ttsLanguage,
                 'ttsText': m.ttsText,
                 'ttsAudioPath': m.ttsAudioPath,
+                if (m.images.isNotEmpty) 'images': m.images,
               })
           .toList();
       await prefs.setString('chat_history_${widget.userId}', jsonEncode(listData));
@@ -530,6 +612,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   @override
   void dispose() {
+    ElderFamilyUpdatesApi.refreshSignal.removeListener(_onFamilyUpdatesSignal);
+    elderChatTabActive.removeListener(_onChatTabActiveChanged);
     CareMessageStore.instance.latest.removeListener(_onCareMessage);
     _speechToText.stop();
     _restoreWakeWord();
@@ -1167,6 +1251,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                         _audioPlayer.stop();
                       },
                     ),
+                  ],
+                  // ★ 家人分享轉述：照片接在文字下方
+                  if (msg.images.isNotEmpty && !msg.isStreaming) ...[
+                    const SizedBox(height: 10),
+                    ChatImageGallery(images: msg.images),
                   ],
                   // 串流中：顯示打字游標動畫
                   if (msg.isStreaming)

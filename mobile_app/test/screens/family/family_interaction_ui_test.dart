@@ -15,7 +15,6 @@ import 'package:flutter_application_1/models/elder.dart';
 import 'package:flutter_application_1/screens/family/family_add_friend_screen.dart';
 import 'package:flutter_application_1/screens/family/family_ai_copilot_screen.dart';
 import 'package:flutter_application_1/screens/family/family_interaction_tab.dart';
-import 'package:flutter_application_1/screens/family/widgets/fam_interaction_ui.dart';
 import 'package:flutter_application_1/services/signaling.dart';
 import 'package:flutter_application_1/theme/family_theme.dart';
 
@@ -133,31 +132,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('留言送出鈕存在且可點，未連線時訊息保留在輸入框', (tester) async {
+  testWidgets('互動分頁只剩單一 AI 照護秘書入口（無留言／時光牆卡），三顆快捷鈕在', (tester) async {
     await pumpCase(tester, interactionTab(), dark: false);
+    expect(find.text('AI 照護秘書'), findsOneWidget);
+    expect(find.text('分享近況'), findsOneWidget);
+    expect(find.text('問近況'), findsOneWidget);
+    expect(find.text('設提醒'), findsOneWidget);
+    expect(find.text('家庭生活時光牆'), findsNothing);
+    expect(find.textContaining('留言給'), findsNothing);
+    expect(find.byTooltip('送出'), findsNothing);
+  });
 
-    final send = find.byTooltip('送出');
-    await tester.scrollUntilVisible(
-      send,
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    // 互動分頁新增「小豬」卡片後留言區在視窗外（SliverList 惰性建構），捲到後才驗證存在。
-    expect(send, findsOneWidget);
-    // 捲到離視窗頂端一段距離再點（貼著頂邊的點擊會落在捲動容器上，與按鈕無關）。
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, 250));
-    await tester.pump(const Duration(milliseconds: 500));
-
-    final input = find.byType(TextField);
-    expect(input, findsOneWidget);
-    await tester.enterText(input, '中午記得吃藥喔');
-    expect(tester.widget<FamRoundBtn>(find.byType(FamRoundBtn)).onTap, isNotNull);
-    await tester.tap(find.byType(FamRoundBtn));
-    await tester.pump(const Duration(milliseconds: 300));
-
-    // Signaling 在測試環境未連線 → sendHeartbeat 回 false → 失敗提示，訊息不清空。
-    expect(find.text('目前未連線，請稍後再試'), findsOneWidget);
-    expect(find.text('中午記得吃藥喔'), findsOneWidget);
+  testWidgets('點「分享近況」開啟秘書並預填、不自動送出', (tester) async {
+    await pumpCase(tester, interactionTab(), dark: false);
+    await tester.ensureVisible(find.text('分享近況'));
+    await tester.pump();
+    await tester.tap(find.text('分享近況'));
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(milliseconds: 800));
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, '跟${elder.displayName}說：');
     expect(tester.takeException(), isNull);
   });
 

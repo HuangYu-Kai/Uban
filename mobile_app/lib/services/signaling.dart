@@ -172,6 +172,11 @@ class Signaling {
   /// 純回呼欄位，註冊者 dispose 時以 `identical()` 歸還（G102）。
   Function(dynamic data)? onPetGiftFed;
 
+  /// ★ 2026-10-07 家人分享轉述：長輩端收到「家人有新分享」訊號（`family-share-new`，
+  /// 只是「有新消息」，內容由聊天裡的小嘎轉述）。註冊點為 `elder_home_screen.dart`，
+  /// dispose 時以 `identical()` 歸還（G102）。
+  Function(dynamic data)? onFamilyShareNew;
+
   /// 📍 家屬端：收到長輩定位異常的「安心提醒」（`location-alert`：晚歸／久未更新／
   /// 離家太遠）。純回呼欄位、無任何顯示狀態；註冊點只有 `family_main_screen.dart`，
   /// dispose 時以 `identical()` 歸還（G102）。
@@ -912,6 +917,12 @@ class Signaling {
     socket!.on('pet-gift', (data) {
       debugPrint("★ [Signaling] 收到小豬點心禮物: $data");
       if (onPetGift != null) onPetGift!(data);
+    });
+
+    // ★ 2026-10-07 家人分享轉述：家人有新分享 → 長輩端（僅訊號）
+    socket!.on('family-share-new', (data) {
+      debugPrint("★ [Signaling] 收到家人新分享訊號: $data");
+      if (onFamilyShareNew != null) onFamilyShareNew!(data);
     });
 
     // ★ 2026-10-07 小豬共養：長輩餵了點心 → 送禮的家屬端

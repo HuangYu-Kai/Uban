@@ -18,6 +18,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/api/elder_daily_question_api.dart';
 import '../services/api/elder_pet_gift_api.dart';
+import '../services/api/family_updates_api.dart';
 import '../services/today_tasks_loader.dart';
 import '../services/signaling.dart';
 import '../services/elder_location_service.dart';
@@ -793,6 +794,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   Function(dynamic data)? _ownCheckinCheer;
   Function(dynamic data)? _ownDailyQuestionNew;
   Function(dynamic data)? _ownPetGift;
+  Function(dynamic data)? _ownFamilyShareNew;
+  bool _familyShareHintPending = false;
   void Function(Map<String, dynamic>)? _ownRemoteReminder;
   void Function(Map<String, dynamic>)? _ownReminderSync;
 
@@ -884,6 +887,24 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     Signaling().onPetGift = _ownPetGift;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_drainPetGifts());
+    });
+
+    // ★ 2026-10-07 家人分享轉述：只是「有新消息」訊號，內容一律在聊天裡由小嘎轉述
+    //   （才會恰好標記一次）。同 G102：每次都重新指派並記住最後一份。
+    //   聊天分頁開著 → 通知聊天頁立刻取；否則比照小豬禮物，通話中／首頁不在最上層
+    //   先排隊，回到首頁（本函式再被呼叫）時補顯示提示。
+    _ownFamilyShareNew = (data) {
+      if (!mounted) return;
+      if (elderChatTabActive.value) {
+        ElderFamilyUpdatesApi.refreshSignal.value++;
+        return;
+      }
+      _familyShareHintPending = true;
+      unawaited(_drainFamilyShareHint());
+    };
+    Signaling().onFamilyShareNew = _ownFamilyShareNew;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_drainFamilyShareHint());
     });
 
     // ★ ⏰ 監聽排程提醒與同步信令
@@ -1122,6 +1143,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     }
   }
 
+  /// 家人有新分享：顯示「去聊天看看」提示（不含內容）；通話中或首頁不在最上層保留排隊。
+  Future<void> _drainFamilyShareHint() async {
+    if (!_familyShareHintPending) return;
+    if (!mounted || Signaling().isInCall) return;
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    _familyShareHintPending = false;
+    await _handleProactiveMessage(jsonEncode({
+      'reply': '小嘎有家人的消息要跟您說，點我去聊天看看',
+      'type': 'family',
+      'emotion': 'happy',
+    }));
+  }
+
   /// 留存為關懷訊息並顯示 HeartbeatOverlay（不朗讀；語音由 service 決定）。
   Future<void> _presentCheer(CheckinCheer c) async {
     await CareMessageStore.instance
@@ -1243,6 +1277,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     ElderPetGiftApi.refreshSignal.removeListener(_onPetGiftSignal);
     if (identical(Signaling().onPetGift, _ownPetGift)) {
       Signaling().onPetGift = null;
+    }
+    if (identical(Signaling().onFamilyShareNew, _ownFamilyShareNew)) {
+      Signaling().onFamilyShareNew = null;
     }
     unawaited(_cheerService.dispose());
     if (identical(Signaling().onReminderSync, _ownReminderSync)) {

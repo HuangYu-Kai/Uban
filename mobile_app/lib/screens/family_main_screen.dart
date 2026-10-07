@@ -390,7 +390,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   // 資料分頁
   final GlobalKey _dataCaregiverKey = GlobalKey();
   final GlobalKey _dataElderSummaryKey = GlobalKey();
-  final GlobalKey _dataMemoirsKey = GlobalKey();
   final GlobalKey _dataAiHelperKey = GlobalKey();
 
   /// 本次畫面存活期間，已經嘗試顯示過教學的分頁 index。只避免同一個 session
@@ -2654,11 +2653,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           body: '這裡整理了長輩的基本資料，像是慢性病史和用藥提醒，方便您隨時查閱。',
         ),
         TutorialStep(
-          targetKey: _dataMemoirsKey,
-          title: '回憶錄',
-          body: '這裡收藏長輩的人生故事，您可以陪長輩一起回顧美好的回憶。',
-        ),
-        TutorialStep(
           targetKey: _dataAiHelperKey,
           title: 'AI 助手設定',
           body: '這裡可以調整陪伴長輩的 AI 助手，像是稱呼、說話語氣和聊天話題偏好。',
@@ -2945,7 +2939,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   //   `_showDataTabTutorial` 與欄位宣告處的說明。
                   caregiverCardKey: _dataCaregiverKey,
                   elderSummaryKey: _dataElderSummaryKey,
-                  memoirsKey: _dataMemoirsKey,
                   aiHelperKey: _dataAiHelperKey,
                 ),
               ],

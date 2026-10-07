@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
@@ -9,6 +12,9 @@ import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/family_theme.dart';
 import '../../utils/error_handler.dart';
+import '../elder_community_screen.dart';
+import 'family_friend_feed_body.dart';
+import 'family_share_draft.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
 
@@ -17,10 +23,16 @@ import 'widgets/fam_ui.dart';
 /// 2026-10 起改家屬新設計（海灣藍、design_prototype/family.html #copilot）：
 /// `famSubBar`、快捷分段 `.qrow`、對話泡泡 `.cbub`、排程確認卡 `.sched`、底部輸入列 `.cbar`；
 /// 語音輸入與送出邏輯完全不變。
+///
+/// 2026-10 起「互動」分頁的留言／時光牆入口併入這裡：秘書有三項能力——
+/// 分享近況給長輩（可附照片，產生分享草稿卡、確認後才發到時光牆）、查長輩近況、建立提醒草稿。
 class FamilyAiCopilotScreen extends StatefulWidget {
   final Elder? currentElder;
 
-  const FamilyAiCopilotScreen({super.key, this.currentElder});
+  /// 預先填入輸入框的草稿（互動分頁的快捷鈕用）。只填入、不自動送出。
+  final String? initialMessage;
+
+  const FamilyAiCopilotScreen({super.key, this.currentElder, this.initialMessage});
 
   @override
   State<FamilyAiCopilotScreen> createState() => _FamilyAiCopilotScreenState();
@@ -32,6 +44,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
   final List<Map<String, dynamic>> _chatMessages = [];
   bool _isSending = false;
+
+  /// 待附的照片（送出時先上傳、再帶 image_url 給後端）。
+  File? _attachedImage;
 
   // 後端會串接 Ollama→Gemini 兩段 LLM 呼叫，常超過預設 15 秒，故此端點放寬到 45 秒。
   static const Duration _copilotTimeout = Duration(seconds: 45);
@@ -48,9 +63,16 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   void initState() {
     super.initState();
     final elderName = widget.currentElder?.displayName ?? '長輩';
+    final initial = widget.initialMessage;
+    if (initial != null && initial.isNotEmpty) {
+      _messageController.value = TextEditingValue(
+        text: initial,
+        selection: TextSelection.collapsed(offset: initial.length),
+      );
+    }
     _chatMessages.add({
       'isUser': false,
-      'text': '您好！我是您的 AI 照護共創助理 🤖\n您可以直接詢問「$elderName 今天過得怎麼樣？」，或以自然對話要我建立排程（例如：「每天早上 8 點與晚上 8 點提醒 $elderName 吃降血壓藥」）！',
+      'text': '您好！我是您的 AI 照護秘書 🤖\n我可以幫您：\n・分享近況或照片給 $elderName（例如：「跟$elderName說：今天孫子考了 100 分」，也可以附照片）\n・查詢「$elderName 今天過得怎麼樣？」\n・建立提醒（例如：「每天早上 8 點與晚上 8 點提醒 $elderName 吃降血壓藥」）',
       'statusSummary': null,
       'scheduleDrafts': null,
     });
@@ -60,6 +82,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   void dispose() {
     _speechToText.stop();
     _messageController.dispose();
+    for (final m in _chatMessages) {
+      (m['shareController'] as TextEditingController?)?.dispose();
+    }
     _scrollController.dispose();
     super.dispose();
   }
@@ -167,6 +192,14 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     ErrorHandler.showWarning(context, '語音辨識發生錯誤，請改用打字或再試一次');
   }
 
+  /// 快捷：只把草稿填進輸入框（不自動送出），讓家屬補完再送。
+  void _prefill(String text) {
+    _messageController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -181,7 +214,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
   Future<void> _sendMessage([String? presetText]) async {
     final text = (presetText ?? _messageController.text).trim();
-    if (text.isEmpty || _isSending) return;
+    final imageFile = presetText == null ? _attachedImage : null;
+    if ((text.isEmpty && imageFile == null) || _isSending) return;
 
     setState(() => _isSending = true);
 
@@ -199,14 +233,32 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       return;
     }
 
+    // 有附照片：先上傳；失敗就中止，文字與照片都保留讓家屬重試（不假裝成功）。
+    String? uploadedUrl;
+    if (imageFile != null) {
+      uploadedUrl = await ApiService.uploadCommunityImage(imageFile);
+      if (!mounted) return;
+      if (uploadedUrl == null) {
+        setState(() => _isSending = false);
+        ErrorHandler.showWarning(context, '照片上傳失敗，請檢查網路後再試一次');
+        return;
+      }
+    }
+    // 只有照片沒有文字時：畫面上顯示「（照片）」，送給後端的 message 用空字串——
+    // 後端有附照片就直接回分享草稿（文字空白讓家屬自己填），若送「分享照片」，
+    // 這四個字會被當成要轉述給長輩的內容。
+    final sendText = text.isEmpty ? '（照片）' : text;
+
     if (presetText == null) {
       _messageController.clear();
     }
 
     setState(() {
+      _attachedImage = null;
       _chatMessages.add({
         'isUser': true,
-        'text': text,
+        'text': sendText,
+        'localImage': imageFile,
         'statusSummary': null,
         'scheduleDrafts': null,
       });
@@ -222,6 +274,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         'elder_id': elderIdStr,
         'elder_name': elderName,
         'message': text,
+        if (uploadedUrl != null) 'image_url': uploadedUrl,
       }, timeout: _copilotTimeout);
 
       final Map<String, dynamic> data;
@@ -229,19 +282,25 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         data = Map<String, dynamic>.from(res['data']);
       } else if (res == null) {
         // 網路失敗或逾時：ApiClient 回 null，走離線後備（不編造近況）。
-        data = _generateFallbackResponse(text, elderName);
+        data = uploadedUrl != null
+            ? _buildServerErrorResponse(elderName, null)
+            : _generateFallbackResponse(text, elderName);
       } else {
         // 伺服器有回應但非 success（404 未綁定、500 等）：與離線分開顯示。
         final msg = res['message'] ?? res['detail'];
-        data = _serverFailureResponse(text, elderName, msg is String ? msg : null);
+        data = uploadedUrl != null
+            ? _buildServerErrorResponse(elderName, msg is String ? msg : null)
+            : _serverFailureResponse(text, elderName, msg is String ? msg : null);
       }
 
       if (!mounted) return;
-      setState(() => _addBotMessage(data));
+      setState(() => _addBotMessage(data, uploadedImageUrl: uploadedUrl));
     } catch (e) {
       debugPrint('⚠️ [FamilyCopilot] 送出失敗：$e');
       if (!mounted) return;
-      final fallbackData = _serverFailureResponse(text, elderName, null);
+      final fallbackData = uploadedUrl != null
+          ? _buildServerErrorResponse(elderName, null)
+          : _serverFailureResponse(text, elderName, null);
       setState(() => _addBotMessage(fallbackData));
     } finally {
       if (mounted) {
@@ -251,6 +310,114 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         _scrollToBottom();
       }
     }
+  }
+
+  /// 從相簿選一張照片附上（送出時才上傳）。
+  Future<void> _pickImage() async {
+    if (_isSending) return;
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+      if (picked == null || !mounted) return;
+      setState(() => _attachedImage = File(picked.path));
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 選照片失敗：$e');
+      if (!mounted) return;
+      ErrorHandler.showWarning(context, '無法開啟相簿，請確認已允許照片權限');
+    }
+  }
+
+  /// 確認送出分享草稿：建立時光牆貼文（author_role 'family'）。
+  /// 失敗時卡片保留、顯示錯誤，可重試；不假裝成功。
+  Future<void> _confirmShare(int messageIndex) async {
+    final msg = _chatMessages[messageIndex];
+    if (msg['sharePhase'] == ShareCardPhase.sending ||
+        msg['sharePhase'] == ShareCardPhase.sent) {
+      return;
+    }
+    final controller = msg['shareController'] as TextEditingController;
+    final imageUrl = msg['shareImageUrl'] as String?;
+    final content = controller.text.trim();
+    if (!canSendShare(text: content, hasImage: imageUrl != null, sending: false)) return;
+
+    setState(() {
+      msg['sharePhase'] = ShareCardPhase.sending;
+      msg['shareError'] = null;
+    });
+
+    String? error;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final familyId = prefs.getInt('caregiver_id');
+      if (familyId == null) {
+        error = '無法確認家屬身分，請重新登入後再試';
+      } else {
+        final userName =
+            prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
+        final res = await ApiService.createCommunityPost(
+          familyId: familyId,
+          authorId: familyId,
+          authorName: userName,
+          authorRole: 'family',
+          content: content,
+          imageUrl: imageUrl,
+        );
+        if (res == null) error = '送出失敗，請檢查網路後再試一次';
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 分享送出失敗：$e');
+      error = '送出失敗，請稍後再試';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      if (error == null) {
+        msg['sharePhase'] = ShareCardPhase.sent;
+        msg['shareError'] = null;
+      } else {
+        msg['sharePhase'] = ShareCardPhase.draft;
+        msg['shareError'] = error;
+      }
+    });
+    _scrollToBottom();
+  }
+
+  /// 「分享紀錄」：開啟時光牆（與原互動分頁「家庭生活時光牆」卡片的開法相同）。
+  Future<void> _openCommunity() async {
+    HapticFeedback.lightImpact();
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    // 讀不到 caregiver_id 就明確提示、不開畫面，不得用猜測值兜底。
+    final familyId = prefs.getInt('caregiver_id');
+    if (familyId == null) {
+      ErrorHandler.showWarning(context, '無法取得您的帳號 ID，請重新登入後再試');
+      return;
+    }
+    final userName = prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        // ElderCommunityScreen 長輩／家屬共用、內部不動；家屬端 push 時在外層掛
+        // FamilyThemeScope，讓「朋友」標籤內的 FamilyFriendFeedBody 吃得到家屬主題。
+        builder: (context) => FamilyThemeScope(
+          child: ElderCommunityScreen(
+            userId: familyId,
+            userName: userName,
+            familyId: familyId,
+            showFriendTab: true,
+            familyTabLabel: '家庭',
+            friendTabContent: FamilyFriendFeedBody(
+              familyId: familyId,
+              familyName: userName,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmBatchSchedule(List<dynamic> drafts, int messageIndex) async {
@@ -425,8 +592,22 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   }
 
   /// 把回覆資料加成一則機器人訊息。
-  void _addBotMessage(Map<String, dynamic> data) {
+  void _addBotMessage(Map<String, dynamic> data, {String? uploadedImageUrl}) {
+    // share_draft 可能缺席（舊版後端）或為 null。
+    var share = data['intent'] == 'SHARE_WITH_ELDER' || data['share_draft'] != null
+        ? ShareDraft.tryParse(data['share_draft'])
+        : null;
+    // 有附照片時後端一定回 SHARE_WITH_ELDER；草稿若漏了 image_url，以剛上傳的為準。
+    if (uploadedImageUrl != null && data['intent'] == 'SHARE_WITH_ELDER') {
+      share = ShareDraft(text: share?.text ?? '', imageUrl: share?.imageUrl ?? uploadedImageUrl);
+    }
     _chatMessages.add({
+      if (share != null) ...{
+        'shareImageUrl': share.imageUrl,
+        'shareController': TextEditingController(text: share.text),
+        'sharePhase': ShareCardPhase.draft,
+        'shareError': null,
+      },
       'isUser': false,
       'text': (data['reply_text'] ?? '已為您處理完成！').toString(),
       'statusSummary': data['status_summary'],
@@ -451,7 +632,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       appBar: famSubBar(
         context,
         title: 'AI 照護秘書',
-        trailing: const [FamChip(label: '就緒', tone: FamTone.brand, dot: true)],
+        trailing: [
+          FamSmallBtn(label: '分享紀錄', onTap: _openCommunity),
+        ],
       ),
       body: SafeArea(
         top: false,
@@ -462,6 +645,11 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
               padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
               child: FamFilterRow(
                 children: [
+                  FamFilterChip(
+                    label: '分享近況',
+                    selected: false,
+                    onTap: () => _prefill('跟$elderName說：'),
+                  ),
                   FamFilterChip(
                     label: '近況速報',
                     selected: false,
@@ -494,6 +682,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                   final statusSummary = msg['statusSummary'];
                   final scheduleDrafts = msg['scheduleDrafts'];
                   final isApplied = msg['isApplied'] == true;
+                  final localImage = msg['localImage'];
+                  final sharePhase = msg['sharePhase'] as ShareCardPhase?;
 
                   return FamChatBubble(
                     mine: isUser,
@@ -504,6 +694,26 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                           msg['text'],
                           style: FamChatBubble.textStyle(context, mine: isUser),
                         ),
+                        if (isUser && localImage is File) ...[
+                          const SizedBox(height: 6),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.file(localImage,
+                                width: 120, height: 120, fit: BoxFit.cover),
+                          ),
+                        ],
+                        // 分享草稿卡
+                        if (!isUser && sharePhase != null)
+                          ShareDraftCard(
+                            controller: msg['shareController'] as TextEditingController,
+                            imageUrl: msg['shareImageUrl'] as String?,
+                            elderName: elderName,
+                            phase: sharePhase,
+                            errorText: msg['shareError'] as String?,
+                            onSend: () => _confirmShare(index),
+                            onCancel: () => setState(
+                                () => msg['sharePhase'] = ShareCardPhase.cancelled),
+                          ),
                         // 近況摘要
                         if (!isUser && statusSummary != null)
                           _buildStatusSummary(statusSummary),
@@ -529,6 +739,48 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                 ),
               ),
 
+            // 已附照片的縮圖（可移除）
+            if (_attachedImage != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.file(_attachedImage!,
+                            width: 64, height: 64, fit: BoxFit.cover),
+                      ),
+                      Positioned(
+                        top: -6,
+                        right: -6,
+                        child: Semantics(
+                          button: true,
+                          label: '移除照片',
+                          child: GestureDetector(
+                            onTap: _isSending
+                                ? null
+                                : () => setState(() => _attachedImage = null),
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: c.text2,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close_rounded,
+                                  size: 16, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // 底部輸入列（`.cbar`）：輸入框＋語音＋送出。固定寬度圓鈕、輸入框 Expanded，
             // 窄螢幕下不會造成 RenderFlex 溢位（鐵律 #14）。
             Padding(
@@ -538,12 +790,21 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                   Expanded(
                     child: FamInput(
                       controller: _messageController,
-                      hintText: _isListening ? '聆聽中，請說話…' : '詢問長輩近況，或對話建立排程...',
+                      hintText: _isListening ? '聆聽中，請說話…' : '分享近況、問近況或設提醒…',
                       height: 50,
                       radius: 999,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _sendMessage(),
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  FamRoundBtn(
+                    icon: Icons.add_photo_alternate_outlined,
+                    tooltip: '附照片',
+                    size: 50,
+                    background: c.brandContainer,
+                    foreground: c.brandStrong,
+                    onTap: _isSending ? null : _pickImage,
                   ),
                   const SizedBox(width: 8),
                   // 🎙️ 語音輸入按鈕（第四十九輪新增）。收聽中改 danger 底，明顯區分狀態。

@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/ui/uban_glass_nav_bar.dart';
 import 'home/widgets/home_elder_header_card.dart';
 import 'home/widgets/home_checkin_card.dart';
+import 'home/widgets/home_analysis_card.dart';
 import 'home/widgets/home_zone_card.dart';
 import 'home/widgets/home_gps_trail_card.dart';
 import 'home/widgets/home_monitor_device_card.dart';
@@ -235,6 +236,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                           onStartVideoCall: widget.onStartVideoCall,
                         ),
                         const SizedBox(height: 16),
+                        HomeAnalysisCard(
+                          currentElder: widget.currentElder,
+                          userId: widget.userId,
+                          refreshToken: _checkinRefresh + widget.checkinRefreshToken,
+                        ),
+                        const SizedBox(height: 16),
                         HomeZoneCard(
                           monitorDevices: widget.monitorDevices,
                           elderZone: widget.elderZone,
@@ -329,6 +336,12 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                       refreshToken: _checkinRefresh + widget.checkinRefreshToken,
                       userId: widget.userId,
                       onStartVideoCall: widget.onStartVideoCall,
+                    ),
+                    const SizedBox(height: 16),
+                    HomeAnalysisCard(
+                      currentElder: widget.currentElder,
+                      userId: widget.userId,
+                      refreshToken: _checkinRefresh + widget.checkinRefreshToken,
                     ),
                     const SizedBox(height: 16),
 

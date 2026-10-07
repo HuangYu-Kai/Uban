@@ -381,9 +381,9 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('教學用 GlobalKey 掛在對應卡片上（4 個都有 currentContext）', (tester) async {
+  testWidgets('教學用 GlobalKey 掛在對應卡片上（3 個都有 currentContext）', (tester) async {
     await seedMemoirs();
-    final k1 = GlobalKey(), k2 = GlobalKey(), k3 = GlobalKey(), k4 = GlobalKey();
+    final k1 = GlobalKey(), k2 = GlobalKey(), k4 = GlobalKey();
     tester.view.physicalSize = const Size(360, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -396,14 +396,13 @@ void main() {
           userName: '測試家屬',
           caregiverCardKey: k1,
           elderSummaryKey: k2,
-          memoirsKey: k3,
           aiHelperKey: k4,
         ),
       ),
       dark: false,
     ));
     await tester.pump(const Duration(seconds: 2));
-    for (final k in [k1, k2, k3, k4]) {
+    for (final k in [k1, k2, k4]) {
       expect(k.currentContext, isNotNull);
       expect(k.currentContext!.findRenderObject(), isA<RenderBox>());
     }
