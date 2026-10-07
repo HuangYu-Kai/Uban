@@ -215,11 +215,13 @@ class _ElderTalkPreferenceScreenState extends State<ElderTalkPreferenceScreen> {
 
   Future<void> _deleteTopic(Map<String, dynamic> topic) async {
     final id = _intOf(topic['topic_id']);
-    if (id == null || _topicBusy) return;
+    final code = _elderCode;
+    // ★ 2026-10-07 收尾：後端 DELETE /ai/topics/{id} 現在必帶 elder_id（驗證話題屬於該長輩）。
+    if (id == null || code == null || _topicBusy) return;
     setState(() => _topicBusy = true);
     Map<String, dynamic> resp;
     try {
-      resp = await widget.gateway.deleteTopic(id);
+      resp = await widget.gateway.deleteTopic(id, code);
     } catch (e) {
       resp = {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
     }
