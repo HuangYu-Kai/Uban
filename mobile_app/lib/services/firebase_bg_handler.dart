@@ -407,6 +407,21 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    // ★ 2026-10-07 每日一問：長輩回答了今天的小問題（家屬端）。同 elder-checkin：
+    //    純 data、一般優先級、不碰來電狀態；角色守門（fail-closed）與開關在
+    //    `CheckinNotification.showDailyAnswer` 內。
+    if (type == 'daily-answer') {
+      debugPrint('💬 [BG] 收到每日一問回答，交由家屬端守門後顯示一般優先級通知');
+      try {
+        await CheckinNotification.showDailyAnswerFromData(
+          Map<String, dynamic>.from(message.data),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 每日一問通知失敗: $e');
+      }
+      return;
+    }
+
     if (type == 'reminder') {
       debugPrint('⏰ [BG] 收到排程提醒 FCM，顯示本機高優先級通知與彈窗');
       try {

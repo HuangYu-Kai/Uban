@@ -163,7 +163,9 @@ void main() {
   testWidgets('有警報的監視機列出現語音通道鈕', (tester) async {
     await pumpCase(tester, interactionTab(), dark: false);
     final btn = find.text('開啟語音通道 30 分鐘');
-    await tester.ensureVisible(btn);
+    // 2026-10-07 每日一問卡片讓內容變長，SliverList 懶建構：先捲到按鈕再驗證。
+    await tester.scrollUntilVisible(btn, 300,
+        scrollable: find.byType(Scrollable).first);
     expect(btn, findsOneWidget);
   });
 }

@@ -10,6 +10,7 @@ import '../almanac/farmer_almanac_screen.dart';
 import '../news_listen_player/news_listen_player_screen.dart';
 import '../../models/chinese_converter.dart';
 import '../../models/elder_place.dart';
+import '../../services/api/elder_daily_question_api.dart';
 import '../../services/api/location_api.dart';
 import '../../services/api_service.dart';
 import '../../services/elder_home_place_service.dart';
@@ -22,6 +23,8 @@ import '../../theme/app_theme.dart';
 import '../../utils/reminder_schedule.dart';
 import '../../widgets/ui/ui.dart';
 import 'elder_layout.dart';
+import 'daily_question_answer_sheet.dart';
+import 'widgets/elder_daily_question_card.dart';
 import 'widgets/elder_task_sheet.dart';
 import 'widgets/elder_goal_form.dart';
 import 'streak/streak_celebration.dart';
@@ -76,6 +79,18 @@ class ElderHomeTab extends StatefulWidget {
   @visibleForTesting
   final ElderPlace? debugInitialHomePlaceForTest;
 
+  /// ★ 2026-10-07 每日一問：「聽小嘎唸」朗讀（沿用 `ElderHomeScreen` 既有 TTS，
+  /// 不新增引擎）。null 時卡片不顯示該按鈕。
+  final Future<void> Function(String text)? onSpeak;
+
+  /// ★ 2026-10-07 每日一問：讓小嘎說一句話（走既有關懷訊息路徑：
+  /// CareMessageStore＋HeartbeatOverlay），回答成功後用來說「謝謝您分享…」。
+  final Future<void> Function(String text)? onSayCare;
+
+  /// ⚠️ 僅供 widget test：直接指定今天的問題（非 null 時不呼叫 API）。
+  @visibleForTesting
+  final DailyQuestion? debugInitialDailyQuestionForTest;
+
   const ElderHomeTab({
     super.key,
     required this.userId,
@@ -90,6 +105,9 @@ class ElderHomeTab extends StatefulWidget {
     this.debugInitialRemindersForTest,
     this.debugInitialCompletedIdsForTest,
     this.debugInitialHomePlaceForTest,
+    this.onSpeak,
+    this.onSayCare,
+    this.debugInitialDailyQuestionForTest,
   });
 
   @override
@@ -140,6 +158,7 @@ class _ElderHomeTabState extends State<ElderHomeTab>
 
   @override
   void dispose() {
+    ElderDailyQuestionApi.refreshSignal.removeListener(_onDailyQuestionSignal);
     WidgetsBinding.instance.removeObserver(this);
     ElderReminderManager.instance.removeListener(_onReminderManagerUpdate);
     super.dispose();
@@ -160,6 +179,8 @@ class _ElderHomeTabState extends State<ElderHomeTab>
       await Future.wait([
         if (widget.debugInitialRemindersForTest == null) _loadNextDoseData(),
         if (widget.debugInitialNewsItemsForTest == null) _fetchNews(),
+        if (widget.debugInitialDailyQuestionForTest == null)
+          _loadDailyQuestion(),
       ]);
     } finally {
       _refreshing = false;
@@ -179,6 +200,61 @@ class _ElderHomeTabState extends State<ElderHomeTab>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _isVisible) _refreshAll();
+  }
+
+  // ── ★ 2026-10-07 每日一問 ──
+  DailyQuestion? _dailyQuestion;
+
+  void _onDailyQuestionSignal() {
+    if (mounted && widget.debugInitialDailyQuestionForTest == null) {
+      unawaited(_loadDailyQuestion());
+    }
+  }
+
+  /// 讀取今天的問題。elder_id 解析同 [_loadNextDoseData]；失敗靜默（保留舊卡片，
+  /// 不打擾長輩），下次回前景／推播時再試。
+  Future<void> _loadDailyQuestion() async {
+    try {
+      final elderId = _resolvedElderId ??
+          await TodayTasksLoader.resolveElderId(widget.userId,
+              roomId: widget.roomId);
+      if (elderId == null || elderId.isEmpty) return;
+      _resolvedElderId = elderId;
+      final q = await ElderDailyQuestionApi.getToday(elderId);
+      if (!mounted) return;
+      // 讀不到（含網路失敗）不清掉既有卡片，避免回前景瞬間卡片消失。
+      if (q != null) setState(() => _dailyQuestion = q);
+    } catch (e) {
+      debugPrint('⚠️ [ElderHomeTab] 載入每日一問失敗: $e');
+    }
+  }
+
+  Future<void> _openDailyAnswer() async {
+    final q = _dailyQuestion;
+    final elderId = _resolvedElderId ?? widget.roomId;
+    if (q == null || elderId == null || elderId.isEmpty) return;
+    HapticFeedback.mediumImpact();
+    final ok = await showDailyQuestionAnswerSheet(context,
+        question: q, elderId: elderId);
+    if (!ok) return;
+    if (widget.onSayCare != null) {
+      unawaited(widget.onSayCare!('謝謝您分享，家人一定會很開心！'));
+    }
+    if (mounted) unawaited(_loadDailyQuestion());
+  }
+
+  Widget _buildElderDailyQuestionCard() {
+    final q = _dailyQuestion;
+    if (q == null) return const SizedBox.shrink();
+    final speak = widget.onSpeak;
+    return Padding(
+      padding: const EdgeInsets.only(top: _cardGap),
+      child: ElderDailyQuestionCard(
+        question: q,
+        onAnswer: _openDailyAnswer,
+        onListen: speak == null ? null : () => unawaited(speak(q.question)),
+      ),
+    );
   }
 
   /// 「帶我回家」的目的地；null 代表尚未設定家——入口卡仍顯示（見
@@ -201,6 +277,14 @@ class _ElderHomeTabState extends State<ElderHomeTab>
     }
     _loadSubscription();
     _fetchWeather();
+    final debugQuestion = widget.debugInitialDailyQuestionForTest;
+    if (debugQuestion != null) {
+      _dailyQuestion = debugQuestion;
+      _resolvedElderId ??= widget.roomId;
+    } else {
+      _loadDailyQuestion();
+    }
+    ElderDailyQuestionApi.refreshSignal.addListener(_onDailyQuestionSignal);
     final debugReminders = widget.debugInitialRemindersForTest;
     if (debugReminders != null) {
       _reminders = List<Map<String, dynamic>>.from(debugReminders);
@@ -598,6 +682,9 @@ class _ElderHomeTabState extends State<ElderHomeTab>
               GemIn(index: 1, child: _buildTodayCard(c)),
               const SizedBox(height: _cardGap),
               GemIn(index: 2, child: _buildTaskCard(c)),
+              // ★ 2026-10-07 每日一問：緊接在今日任務（打卡）卡之後；今天沒有題目
+              // 時整張卡不佔空間，既有首頁版面不受影響。
+              _buildElderDailyQuestionCard(),
               const SizedBox(height: _cardGap),
               GemIn(index: 3, child: _buildFeaturedNewsCard(c)),
             ],

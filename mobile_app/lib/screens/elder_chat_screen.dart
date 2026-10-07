@@ -9,16 +9,16 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../globals.dart';
 import '../utils/stt_locale.dart';
 import '../services/api_service.dart';
 import '../services/friend_service.dart';
-import '../services/memoir_service.dart';
+import '../services/api/elder_daily_question_api.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ui/ui.dart';
 import 'elder_tabs/chat/chat_widgets.dart';
+import 'elder_tabs/daily_question_answer_sheet.dart';
 import 'elder_tabs/elder_layout.dart';
 import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
@@ -61,6 +61,7 @@ class _ChatMessage {
   String? ttsText; // 記錄當初 TTS 實際唸出來的純淨文字
   String? ttsAudioPath; // 本地快取音檔路徑（特別是台語，存入本地，點了直接重播，免額外發送 Yating API）
   bool isPlayingAudio; // 當前是否正在播放中
+  DailyQuestion? dailyQuestion; // ★ 每日一問：非 null 時氣泡下方顯示「我來回答」
 
   _ChatMessage(
     this.text,
@@ -260,16 +261,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     await _maybeAskMemoirPrompt();
   }
 
-  /// ★ 任務 D：把回憶選題自然接進 AI 聊天。優先取子女委託的提問
-  /// （MemoirService.getPendingPrompts），沒有才用每日選題
-  /// （getNextPromptQuestion），以小嘎的身分附加一則訊息到 _messages，
-  /// 沿用既有的 _ChatMessage 結構與氣泡樣式，不新增訊息型別或 widget。
-  ///
-  /// 每天只問一次（SharedPreferences 旗標 `memoir_prompt_asked_yyyy-MM-dd`）：
-  /// 長輩端先前吃過「連環彈窗」的苦頭，每次切分頁都重問會是回歸。
-  ///
-  /// 這則訊息刻意不寫進 chat_history_${widget.userId} 快取，只存在於當次
-  /// session 的畫面上，避免每日選題累積污染聊天歷史。
+  /// ★ 任務 D／2026-10-07 每日一問：把「今天的問題」（後端 GET /daily_question/today，
+  /// 家人出題或題庫）自然接進 AI 聊天，以小嘎的身分附加一則訊息到 _messages，並附
+  /// 「我來回答」開啟回答面板；已回答則不問。每個題目只問一次（旗標
+  /// `daily_question_asked_<id>`），避免每次切分頁重問（連環彈窗回歸）。
+  /// 這則訊息刻意不寫進 chat_history 快取。
   /// 小嘎主動關懷訊息抵達 → 以小嘎的身分附加一則聊天訊息，
   /// 讓長輩事後在聊天室裡找得到「今天小嘎跟我說過什麼」。
   void _onCareMessage() {
@@ -292,32 +288,21 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   Future<void> _maybeAskMemoirPrompt() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final todayKey =
-          'memoir_prompt_asked_${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
-      if (prefs.getBool(todayKey) == true) return;
-
-      // elderKey 規則沿用個人分頁既有寫法：優先用 FriendService 解析出的
-      // 4 位數 elder_id，拿不到才退回 'elder_${widget.userId}'。
+      // ★ 2026-10-07 每日一問：問題來源改為後端「今天的問題」（家人出題或題庫），
+      // 取代本機 MemoirService 選題。已回答就不再問。
       final resolvedElderId = await FriendService.resolveMyElderId(widget.userId);
       final elderKey = resolvedElderId ?? 'elder_${widget.userId}';
+      final dq = await ElderDailyQuestionApi.getToday(elderKey);
+      if (!mounted || dq == null || dq.answered) return;
 
-      final pending = await MemoirService.instance.getPendingPrompts(elderKey);
-      String question;
-      bool isFromChild;
-      if (pending.isNotEmpty) {
-        question = pending.first.question;
-        isFromChild = true;
-      } else {
-        question = await MemoirService.instance.getNextPromptQuestion(elderKey);
-        isFromChild = false;
-      }
+      // 每個題目只問一次（SharedPreferences 旗標），避免每次切分頁都重問。
+      final prefs = await SharedPreferences.getInstance();
+      final askedKey = 'daily_question_asked_${dq.id}';
+      if (prefs.getBool(askedKey) == true) return;
 
-      if (!mounted || question.trim().isEmpty) return;
-
-      final greeting = isFromChild
-          ? '跟您聊個天～您的家人想聽您說說：$question'
-          : '跟您聊個天～$question';
+      final greeting = dq.isFromFamily && dq.askedByName != null
+          ? '跟您聊個天～家人 ${dq.askedByName} 想問您：${dq.question}'
+          : '跟您聊個天～${dq.question}';
 
       setState(() {
         _messages.add(_ChatMessage(
@@ -325,14 +310,31 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           false,
           ttsText: greeting,
           ttsLanguage: 'mandarin',
-        ));
+        )..dailyQuestion = dq);
       });
       _scrollToBottom();
 
-      await prefs.setBool(todayKey, true);
+      await prefs.setBool(askedKey, true);
     } catch (e) {
-      debugPrint('⚠️ [MemoirPrompt] error: $e');
+      debugPrint('⚠️ [DailyQuestionPrompt] error: $e');
     }
+  }
+
+  /// ★ 每日一問：從聊天室的小嘎提問開啟同一個回答面板。
+  Future<void> _openDailyAnswer(_ChatMessage msg) async {
+    final dq = msg.dailyQuestion;
+    if (dq == null) return;
+    final elderId = await FriendService.resolveMyElderId(widget.userId) ??
+        'elder_${widget.userId}';
+    if (!mounted) return;
+    final ok = await showDailyQuestionAnswerSheet(context,
+        question: dq, elderId: elderId);
+    if (!ok || !mounted) return;
+    setState(() => msg.dailyQuestion = null);
+    ElderDailyQuestionApi.refreshSignal.value++;
+    // 走既有關懷訊息路徑；本頁的 _onCareMessage 會把它接成小嘎的一則訊息。
+    await CareMessageStore.instance.add(
+        text: '謝謝您分享，家人一定會很開心！', type: 'family', emotion: 'happy');
   }
 
   Future<void> _saveLocalChatHistory() async {
@@ -1172,6 +1174,16 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                       padding: const EdgeInsets.only(top: 4),
                       child: _StreamingCursor(),
                     ),
+                  // ★ 每日一問：小嘎的提問氣泡附「我來回答」大按鈕（開同一個回答面板）
+                  if (msg.dailyQuestion != null && !msg.isStreaming) ...[
+                    const SizedBox(height: 10),
+                    UbanButton(
+                      key: const ValueKey('chat_daily_answer'),
+                      label: '我來回答',
+                      icon: Icons.mic_rounded,
+                      onPressed: () => _openDailyAnswer(msg),
+                    ),
+                  ],
                   // 非串流中：顯示當時 TTS 朗讀的語系與「再聽一次」重播鈕
                   if (!msg.isStreaming &&
                       (msg.ttsText?.isNotEmpty == true || msg.text.isNotEmpty))

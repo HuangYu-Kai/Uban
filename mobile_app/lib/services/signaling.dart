@@ -156,6 +156,14 @@ class Signaling {
   /// `elder_home_screen.dart`，dispose 時以 `identical()` 歸還（G102）。
   Function(dynamic data)? onCheckinCheer;
 
+  /// ★ 2026-10-07 每日一問：長輩端收到家人剛設定今天的問題（`daily-question-new`）。
+  /// 註冊點為 `elder_home_screen.dart`，dispose 時以 `identical()` 歸還（G102）。
+  Function(dynamic data)? onDailyQuestionNew;
+
+  /// ★ 2026-10-07 每日一問：家屬端收到長輩的回答（`daily-answer`）。純回呼欄位，
+  /// 註冊者 dispose 時以 `identical()` 歸還（G102）。
+  Function(dynamic data)? onDailyAnswer;
+
   /// 📍 家屬端：收到長輩定位異常的「安心提醒」（`location-alert`：晚歸／久未更新／
   /// 離家太遠）。純回呼欄位、無任何顯示狀態；註冊點只有 `family_main_screen.dart`，
   /// dispose 時以 `identical()` 歸還（G102）。
@@ -878,6 +886,18 @@ class Signaling {
     socket!.on('checkin-cheer', (data) {
       debugPrint("🎉 [Signaling] 收到打卡加油: $data");
       if (onCheckinCheer != null) onCheckinCheer!(data);
+    });
+
+    // ★ 2026-10-07 每日一問：家人出了新問題 → 長輩端
+    socket!.on('daily-question-new', (data) {
+      debugPrint("★ [Signaling] 收到每日一問新題目: $data");
+      if (onDailyQuestionNew != null) onDailyQuestionNew!(data);
+    });
+
+    // ★ 2026-10-07 每日一問：長輩回答了 → 家屬端
+    socket!.on('daily-answer', (data) {
+      debugPrint("★ [Signaling] 收到長輩每日一問回答: $data");
+      if (onDailyAnswer != null) onDailyAnswer!(data);
     });
 
     // 📍 長輩定位異常的安心提醒（只會由後端推給家屬）。

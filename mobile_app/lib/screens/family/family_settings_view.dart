@@ -37,6 +37,8 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
   bool _isAiInsightOn = false;
   // ★ 2026-10-07 打卡雙向互動：裝置偏好 `checkin_notify_enabled`（預設開，不屬於 session 鍵）。
   bool _isCheckinNotifyOn = true;
+  // ★ 2026-10-07 每日一問：裝置偏好 `daily_answer_notify_enabled`（預設開，不屬於 session 鍵）。
+  bool _isDailyAnswerNotifyOn = true;
   List<dynamic> _pairedElders = [];
   bool _isLoadingElders = true;
 
@@ -88,6 +90,12 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
     _loadOemGuideAcknowledgedState();
     _loadDemographics();
     _loadCheckinNotifyPref();
+    _loadDailyNotifyPref();
+  }
+
+  Future<void> _loadDailyNotifyPref() async {
+    final on = await CheckinNotification.isDailyEnabled();
+    if (mounted) setState(() => _isDailyAnswerNotifyOn = on);
   }
 
   Future<void> _loadCheckinNotifyPref() async {
@@ -1172,6 +1180,19 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
                     await CheckinNotification.setEnabled(val);
                   } catch (_) {
                     if (mounted) setState(() => _isCheckinNotifyOn = !val);
+                  }
+                },
+              ),
+              _buildSwitchItem(
+                Icons.question_answer_rounded,
+                '每日一問通知',
+                _isDailyAnswerNotifyOn,
+                (val) async {
+                  setState(() => _isDailyAnswerNotifyOn = val);
+                  try {
+                    await CheckinNotification.setDailyEnabled(val);
+                  } catch (_) {
+                    if (mounted) setState(() => _isDailyAnswerNotifyOn = !val);
                   }
                 },
               ),
