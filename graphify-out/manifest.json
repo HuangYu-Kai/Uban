@@ -174,10 +174,10 @@
     "semantic_hash": "ac96b1f61f546daceee2e59257da4ff3"
   },
   "Uban/mobile_app/lib/screens/elder_home_screen.dart": {
-    "mtime": 1791339228.6340475,
-    "seen": 1791339259.0790944,
-    "ast_hash": "f32f9a43ef1509e2176bc3164479d8ce",
-    "semantic_hash": "f32f9a43ef1509e2176bc3164479d8ce"
+    "mtime": 1791340000.6946647,
+    "seen": 1791340028.0516918,
+    "ast_hash": "8f932352c3f99cf5af8591faddca245d",
+    "semantic_hash": "8f932352c3f99cf5af8591faddca245d"
   },
   "Uban/mobile_app/lib/screens/elder_pairing_display_screen.dart": {
     "mtime": 1791272728.893578,
@@ -210,10 +210,10 @@
     "semantic_hash": "1e986b5938774e31a4518a87ec413846"
   },
   "Uban/mobile_app/lib/screens/elder_tabs/elder_home_tab.dart": {
-    "mtime": 1791339228.6360464,
-    "seen": 1791339259.0790944,
-    "ast_hash": "9cfbb0d551634a32d14b992c6d6ed2a4",
-    "semantic_hash": "9cfbb0d551634a32d14b992c6d6ed2a4"
+    "mtime": 1791340000.6956637,
+    "seen": 1791340028.0516918,
+    "ast_hash": "1137235b794295984bb233c086ded178",
+    "semantic_hash": "1137235b794295984bb233c086ded178"
   },
   "Uban/mobile_app/lib/screens/elder_tabs/elder_profile_tab.dart": {
     "mtime": 1791337113.9221447,
@@ -3270,10 +3270,10 @@
     "semantic_hash": "d87df3604f4a4cf81725b97b6526dea5"
   },
   "Uban/mobile_app/lib/screens/elder_tabs/elder_layout.dart": {
-    "mtime": 1791265446.992053,
-    "seen": 1791273372.9399617,
-    "ast_hash": "581a20eac8d4c8f05321c43ab25a7921",
-    "semantic_hash": "581a20eac8d4c8f05321c43ab25a7921"
+    "mtime": 1791340000.6966648,
+    "seen": 1791340028.0516918,
+    "ast_hash": "8e9456f39b70b76b25f3f603220d28c2",
+    "semantic_hash": "8e9456f39b70b76b25f3f603220d28c2"
   },
   "Uban/mobile_app/lib/screens/elder_tabs/elder_pet_tab.dart": {
     "mtime": 1791267881.7800548,
@@ -4200,10 +4200,10 @@
     "semantic_hash": "e3b153b67dfe41a6529cec13b1a5e8f9"
   },
   "Uban/mobile_app/lib/widgets/ui/uban_glass_nav_bar.dart": {
-    "mtime": 1791200732.1525261,
-    "seen": 1791273372.9409595,
-    "ast_hash": "2bf31321a764a6c59ea12876ac47aa2a",
-    "semantic_hash": "2bf31321a764a6c59ea12876ac47aa2a"
+    "mtime": 1791340000.698667,
+    "seen": 1791340028.052689,
+    "ast_hash": "bb61b1ae638a468dad0897b28654ea29",
+    "semantic_hash": "bb61b1ae638a468dad0897b28654ea29"
   },
   "Uban/mobile_app/lib/widgets/ui/uban_progress_ring.dart": {
     "mtime": 1791200732.1535254,
@@ -4793,12 +4793,6 @@
     "ast_hash": "7c7f8dfccce2b847b4e47684405d3f91",
     "semantic_hash": "7c7f8dfccce2b847b4e47684405d3f91"
   },
-  "Uban/mobile_app/lib/screens/elder_tabs/widgets/elder_daily_question_card.dart": {
-    "mtime": 1791339228.6360464,
-    "seen": 1791339259.0790944,
-    "ast_hash": "b6b1e171eeab112f00b73ba3f6c6e62f",
-    "semantic_hash": "b6b1e171eeab112f00b73ba3f6c6e62f"
-  },
   "Uban/mobile_app/lib/screens/family/daily_question_screen.dart": {
     "mtime": 1791339228.6370466,
     "seen": 1791339259.0790944,
@@ -4818,16 +4812,16 @@
     "semantic_hash": "dd1473cb49da75be2559908bfde63208"
   },
   "Uban/mobile_app/lib/services/api/elder_daily_question_api.dart": {
-    "mtime": 1791339228.645559,
-    "seen": 1791339259.0790944,
-    "ast_hash": "6d7a232f973bd17612a743d6cfcd9926",
-    "semantic_hash": "6d7a232f973bd17612a743d6cfcd9926"
+    "mtime": 1791340000.697668,
+    "seen": 1791340028.052689,
+    "ast_hash": "a8398be6942773813d365bb66d04becf",
+    "semantic_hash": "a8398be6942773813d365bb66d04becf"
   },
   "Uban/mobile_app/test/screens/elder_tabs/daily_question_test.dart": {
-    "mtime": 1791339228.6495583,
-    "seen": 1791339259.0790944,
-    "ast_hash": "1e5d0c1ef50aab253416da7176d6228b",
-    "semantic_hash": "1e5d0c1ef50aab253416da7176d6228b"
+    "mtime": 1791340000.6996644,
+    "seen": 1791340028.052689,
+    "ast_hash": "5515e3ee5e940cd1abf3eff0fb4414ee",
+    "semantic_hash": "5515e3ee5e940cd1abf3eff0fb4414ee"
   },
   "Uban/mobile_app/test/screens/family/daily_question_test.dart": {
     "mtime": 1791339228.6505587,
