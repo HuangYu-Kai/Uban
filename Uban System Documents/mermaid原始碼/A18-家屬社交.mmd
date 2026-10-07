@@ -9,7 +9,7 @@ flowchart TD
     S3(["瀏覽動態、發文、按讚留言"]):::act
   end
   subgraph ROLE2["家屬 B"]
-    PAD_ROLE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    PAD_ROLE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     T1["查看好友邀請"]:::act
     T2{"是否同意？"}:::dec
     R1(["維持未成立"]):::act
@@ -32,9 +32,6 @@ flowchart TD
     B6["查詢朋友圈動態"]:::act
     B7["發表貼文、按讚、留言"]:::act
     DB[("家屬好友代碼資料表<br/>家屬好友關係資料表<br/>家屬貼文、留言、按讚資料表<br/>★ 與長輩端社交資料分開存放")]:::gap
-    D_B3{"分支選擇？"}:::dec
-    D_B5{"分支選擇？"}:::dec
-    M_DB{" "}:::dec
   end
 
   ST_S1 --> S1
@@ -45,23 +42,21 @@ flowchart TD
   B1 --> B2
   B2 -->|"[否]"| A3
   B2 -->|"[是]"| B3
-  D_B3 --> M_DB
-  D_B3 --> B4
+  B3 -.-> DB
+  B3 --> B4
   B4 --> T1
   T1 --> T2
   T2 -->|"[拒絕]"| R1
   T2 -->|"[同意]"| B5
-  D_B5 --> M_DB
-  D_B5 --> B6
+  B5 -.-> DB
+  B5 --> B6
   B6 --> A2
   A2 --> S3
   S3 --> B7
-  B7 --> M_DB
+  B7 -.-> DB
   R1 --> M_END
   A3 --> M_END
-  B3 --> D_B3
-  B5 --> D_B5
-  M_DB --> DB
+  S3 --> M_END
   M_END --> EN_ALL
   ROLE ~~~ ROLE2 ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF

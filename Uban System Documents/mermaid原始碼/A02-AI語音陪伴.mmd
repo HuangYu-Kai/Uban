@@ -31,13 +31,11 @@ flowchart TD
     B9["背景執行緒<br/>向量化 upsert"]:::act
     X1[("Pinecone<br/>索引 uban · 768 維<br/>（外部服務）")]:::act
     X2[("activity_log 長輩活動紀錄")]:::act
-    D_B2{"分支選擇？"}:::dec
-    D_B7{"分支選擇？"}:::dec
-    M_B8{" "}:::dec
   end
 
   ST_S1 --> S1
   S1 --> M_A1
+  M_A1 --> A1
   A1 --> A2
   A2 -->|"[否]"| M_A1
   A2 -->|"[是]"| A3
@@ -45,25 +43,21 @@ flowchart TD
   S2 --> A4
   A4 --> B1
   B1 --> B2
-  D_B2 --> B3
+  B2 --> B3
+  B2 -.-> B9
+  B9 -.-> X1
   B3 -->|"[是]"| B4
   B3 -->|"[否]"| B5
   B4 --> B6
   B5 --> B6
   B6 -->|"[是]"| B7
-  D_B7 --> X2
-  D_B7 --> M_B8
-  B6 -->|"[否]"| M_B8
+  B7 -.-> X2
+  B7 --> B8
+  B6 -->|"[否]"| B8
   B8 --> A5
   A5 --> A6
   A6 --> S3
-  D_B2 --> B9
-  B9 --> X1
   S3 --> EN_S3
-  B2 --> D_B2
-  B7 --> D_B7
-  M_A1 --> A1
-  M_B8 --> B8
   ROLE ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

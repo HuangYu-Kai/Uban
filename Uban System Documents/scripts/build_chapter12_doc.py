@@ -319,7 +319,8 @@ def generate_markdown(output_path):
     print(f"Markdown successfully generated: {output_path}")
 
 def main():
-    target_dir = r"E:\114Project\Uban\Uban System Documents\章節性文件\Chapter 12"
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    target_dir = os.path.join(base_dir, "章節性文件", "Chapter 12")
     docx_path = os.path.join(target_dir, "Chapter 12.docx")
     md_path = os.path.join(target_dir, "Chapter 12.md")
 
@@ -327,8 +328,8 @@ def main():
     generate_markdown(md_path)
 
     # Root copy
-    root_docx = r"E:\114Project\Uban\Uban System Documents\章節性文件\Chapter 12.docx"
-    root_md = r"E:\114Project\Uban\Uban System Documents\章節性文件\Chapter 12.md"
+    root_docx = os.path.join(base_dir, "章節性文件", "Chapter 12.docx")
+    root_md = os.path.join(base_dir, "章節性文件", "Chapter 12.md")
 
     shutil.copyfile(docx_path, root_docx)
     shutil.copyfile(md_path, root_md)

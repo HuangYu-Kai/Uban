@@ -11,8 +11,8 @@ Strictly adheres to:
 """
 
 import os
-
-IMAGES_DIR = r"E:\114Project\Uban\Uban System Documents\章節性文件\Chapter 12\images"
+HERE = os.path.dirname(os.path.abspath(__file__))
+IMAGES_DIR = os.path.join(os.path.dirname(HERE), "章節性文件", "Chapter 12", "images")
 
 # 12-1 系統通用登入與身分確認
 SECTION_12_1_INTRO = (

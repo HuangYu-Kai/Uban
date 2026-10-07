@@ -5,11 +5,11 @@ flowchart TD
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([進入『開發者帳號』頁]):::act
-    S2(["看見三人明碼密碼"]):::act
+    S2(["檢視開發者名單與密碼"]):::act
     S3{"要修改<br/>自己的密碼？"}:::dec
     S4["輸入新密碼"]:::act
     S5(["密碼更新完成"]):::act
-    E1([結束]):::act
+    E1([結束操作]):::act
   end
   subgraph FE["開發者管理端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -20,7 +20,7 @@ flowchart TD
   end
   subgraph BE["uban-api 後端"]
     G0{"JWT<br/>驗證通過？"}:::dec
-    B1["列出開發者帳號（含密碼）"]:::act
+    B1["列出開發者帳號清單"]:::act
     B2["以 AES-GCM 解密密碼"]:::act
     B3{"解密金鑰<br/>可用？"}:::dec
     B4["修改自己的密碼"]:::act
@@ -28,9 +28,6 @@ flowchart TD
     DB[("開發者帳號資料表<br/>密碼雜湊（登入驗證用）<br/>加密密碼（互相查看用）")]:::act
     ENV[("伺服器環境變數<br/>（存放解密金鑰）<br/>★ 不納入版本控制")]:::gap
     X(["401 未授權，導回登入頁"]):::act
-    D_B5{"分支選擇？"}:::dec
-    M_DB{" "}:::dec
-    M_B2{" "}:::dec
   end
 
   ST_S1 --> S1
@@ -38,9 +35,9 @@ flowchart TD
   G0 -->|"[否]"| X
   G0 -->|"[是]"| A1
   A1 --> B1
-  B1 --> M_DB
-  DB --> M_B2
-  ENV --- M_B2
+  B1 -.-> DB
+  DB -.-> B2
+  ENV -.-> B2
   B2 --> B3
   B3 -->|"[否]"| A2
   B3 -->|"[是]"| S2
@@ -49,15 +46,12 @@ flowchart TD
   S3 -->|"[是]"| S4
   S4 --> B4
   B4 --> B5
-  D_B5 --> M_DB
-  D_B5 --> S5
+  B5 -.-> DB
+  B5 --> S5
   S5 --> M_END
   E1 --> M_END
   A2 --> M_END
   X --> M_END
-  B5 --> D_B5
-  M_DB --> DB
-  M_B2 --> B2
   M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF

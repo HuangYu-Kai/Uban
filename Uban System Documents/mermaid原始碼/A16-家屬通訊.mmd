@@ -5,9 +5,9 @@ flowchart TD
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([於『互動』分頁點撥打]):::act
-    S2{"一般通話<br/>或緊急通話？"}:::dec
-    S3(["通話中"]):::act
-    S4["點掛斷"]:::act
+    S2{"通話類型<br/>選擇？"}:::dec
+    S3(["通話進行中"]):::act
+    S4["點選掛斷按鈕"]:::act
   end
   subgraph FE["家屬端"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -16,7 +16,6 @@ flowchart TD
     A3["顯示重撥對話框"]:::act
     A4["進入視訊通話畫面"]:::act
     M1[("Oracle Cloud TURN 媒體中繼<br/>（UDP）")]:::act
-    D_A4{"分支選擇？"}:::dec
     M_END{" "}:::dec
     EN_ALL(("●")):::endterm
   end
@@ -24,27 +23,25 @@ flowchart TD
     PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     E1["一般來電響鈴<br/>（60 秒內有效）"]:::act
     E2["緊急來電：自動喚醒畫面<br/>並強制調高音量<br/>（1 小時內有效）"]:::act
-    E3["接聽"]:::act
-    E4["忙線，回覆忙線訊號"]:::act
+    E3["接聽來電"]:::act
+    E4["回覆忙線訊號"]:::act
   end
   subgraph BE["uban-api 信令（Socket.IO）"]
     B1["通知長輩所有裝置<br/>（線上用 Socket.IO、離線用 FCM）"]:::act
-    B2{"長輩回應？"}:::dec
+    B2{"長輩端<br/>回應狀態？"}:::dec
     B3["交換 WebRTC 連線資訊"]:::act
     B4["掛斷並寫入通話紀錄<br/>（標記是否為緊急通話）"]:::act
-    T1(["通話失效"]):::act
-    D_B1{"分支選擇？"}:::dec
-    M_B1{" "}:::dec
+    T1(["通話逾期失效"]):::act
   end
 
   ST_S1 --> S1
   S1 --> S2
-  S2 -->|"[一般]"| A1
-  A1 --> M_B1
-  D_B1 --> E1
-  S2 -->|"[緊急]"| A2
-  A2 --> M_B1
-  D_B1 --> E2
+  S2 -->|"[一般通話]"| A1
+  A1 --> B1
+  B1 --> E1
+  S2 -->|"[緊急通話]"| A2
+  A2 --> B1
+  B1 --> E2
   E1 --> B2
   E2 --> B2
   B2 -->|"[忙線]"| E4
@@ -53,16 +50,13 @@ flowchart TD
   B2 -->|"[接聽]"| E3
   E3 --> B3
   B3 --> A4
-  D_A4 --> S3
-  D_A4 --> M1
+  A4 -.-> M1
+  A4 --> S3
   S3 --> S4
   S4 --> B4
   A3 --> M_END
   B4 --> M_END
   T1 --> M_END
-  B1 --> D_B1
-  A4 --> D_A4
-  M_B1 --> B1
   M_END --> EN_ALL
   ROLE ~~~ FE ~~~ FE2 ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF

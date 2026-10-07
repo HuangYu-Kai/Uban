@@ -6,7 +6,7 @@ flowchart TD
     ST_S1(("&nbsp;")):::term
     S1([想填寫本人年齡與居住地]):::act
     S2["填寫年齡、縣市、行政區<br/>三欄皆選填"]:::act
-    S3(["資料儲存"]):::act
+    S3(["資料儲存成功"]):::act
     M_S2{" "}:::dec
   end
   subgraph FE["家屬端"]
@@ -25,7 +25,6 @@ flowchart TD
     B1["更新個人資料"]:::act
     B2[("家屬帳號資料表<br/>（年齡、居住縣市、行政區）")]:::act
     B3["年齡與居住地分布統計<br/>（開發者管理端）"]:::act
-    D_B2{"分支選擇？"}:::dec
   end
 
   ST_S1 --> S1
@@ -36,17 +35,16 @@ flowchart TD
   A3 -->|"[否]"| A4
   A4 --> M_S2
   A3 -->|"[是]"| M_S2
+  M_S2 --> S2
   S2 --> A5
   A5 -->|"[是]"| A6
   A5 -->|"[否]"| B1
-  B1 --> B2
-  D_B2 --> S3
-  D_B2 --> B3
+  B1 -.-> B2
+  B1 --> S3
+  B1 -.-> B3
   S3 --> M_END
   A6 --> M_END
   B3 --> M_END
-  B2 --> D_B2
-  M_S2 --> S2
   M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF

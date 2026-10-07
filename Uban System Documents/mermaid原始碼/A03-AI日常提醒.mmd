@@ -19,7 +19,6 @@ flowchart TD
     A6{"App 在<br/>前景？"}:::dec
     W1["20 秒看門狗<br/>主動補拉"]:::act
     X(["忽略重複"]):::act
-    M_A1{" "}:::dec
     M_END{" "}:::dec
     EN_ALL(("●")):::endterm
   end
@@ -31,17 +30,17 @@ flowchart TD
     B4["emit_threadsafe('remote-reminder')<br/>推 comm_elder_id 與 elder_id 房間"]:::act
     B5["發送 data-only FCM<br/>離線備援"]:::act
     C1["complete 回報提醒已完成"]:::act
-    D_B4{"分支選擇？"}:::dec
     M_B1{" "}:::dec
   end
 
   ST_B1 --> M_B1
+  M_B1 --> B1
   B1 --> B2
   B2 --> B3
   B3 -->|"[否]"| M_B1
   B3 -->|"[是]"| B4
-  D_B4 --> B5
-  D_B4 --> M_A1
+  B4 --> A1
+  B4 -.-> B5
   B5 --> A2
   A1 --> A3
   A2 --> A6
@@ -51,18 +50,15 @@ flowchart TD
   A3 -->|"[是]"| X
   A3 -->|"[否]"| A4
   A4 --> M_S1
+  M_S1 --> S1
   S1 --> S2
   S2 -->|"[是]"| C1
   C1 --> S3
   S2 -->|"[否]"| S4
-  W1 -.-> M_A1
+  W1 -.-> A1
   S3 --> M_END
   S4 --> M_END
   X --> M_END
-  B4 --> D_B4
-  M_B1 --> B1
-  M_A1 --> A1
-  M_S1 --> S1
   M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF

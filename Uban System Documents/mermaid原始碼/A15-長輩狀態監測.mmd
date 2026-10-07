@@ -13,14 +13,12 @@ flowchart TD
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     A1["視訊畫面（監控模式）"]:::act
     A2["發起單向 WebRTC 影像串流"]:::act
-    D_A1{"分支選擇？"}:::dec
     M_A1{" "}:::dec
   end
   subgraph FE2["長輩端監視機（舊手機）"]
     PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     M1["啟動監控模式"]:::act
-    M2["擷取相機影格"]:::act
-    D_M1{"分支選擇？"}:::dec
+    M2["定時擷取影格上傳"]:::act
   end
   subgraph BE["uban-api 後端（信令與 AI 推論）"]
     G0{"家屬與長輩<br/>關係驗證通過？"}:::dec
@@ -31,8 +29,6 @@ flowchart TD
     B5{"超過 30 秒<br/>未收到畫面？"}:::dec
     B6["標記監視機離線<br/>並重置判定窗口"]:::act
     X(["拒絕觀看"]):::act
-    D_B2{"分支選擇？"}:::dec
-    M_B4{" "}:::dec
   end
   subgraph NET["雙軌傳輸（實體分離）"]
     PAD_NET["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -44,29 +40,24 @@ flowchart TD
   S1 --> G0
   G0 -->|"[否]"| X
   G0 -->|"[是]"| M_A1
-  D_A1 --> A2
+  M_A1 --> A1
+  A1 --> A2
   A2 --> N1
   N1 --> B1
   B1 --> M1
-  D_M1 --> N2
-  N2 --> M_A1
-  D_A1 --> S2
-  D_M1 --> M2
+  M1 --> N2
+  N2 --> S2
+  M1 -.-> M2
   M2 --> B2
-  D_B2 --> B3
-  D_B2 --> M_B4
+  B2 --> B3
+  B2 --> B4
   B4 --> B5
   B5 -->|"[是]"| B6
-  B5 -->|"[否]"| M_B4
+  B5 -->|"[否]"| S2
   S2 --> M_END
   B3 --> M_END
   B6 --> M_END
   X --> M_END
-  A1 --> D_A1
-  M1 --> D_M1
-  B2 --> D_B2
-  M_A1 --> A1
-  M_B4 --> B4
   M_END --> EN_ALL
   ROLE ~~~ FE ~~~ FE2 ~~~ BE ~~~ NET
   classDef pad  fill:none,stroke:none,color:#FFFFFF

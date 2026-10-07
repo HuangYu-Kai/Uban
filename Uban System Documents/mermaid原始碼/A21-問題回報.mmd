@@ -6,26 +6,24 @@ flowchart TD
     ST_S1(("&nbsp;")):::term
     S1([開啟問題回報]):::act
     S2["填寫標題與內容"]:::act
-    S3(["送出成功"]):::act
+    S3(["送出回報成功"]):::act
   end
   subgraph FE["家屬端"]
     A1["問題回報畫面"]:::act
     A2{"標題與內容<br/>皆已填寫？"}:::dec
     A3["前端擋下並提示"]:::act
-    A4["附上裝置資訊與 App 版本<br/>送出回報"]:::act
+    A4["附上裝置資訊與 App 版本<br/>送出回報請求"]:::act
     A5["提示稍後再試<br/>（不會自動重送）"]:::act
     M_END{" "}:::dec
     EN_ALL(("●")):::endterm
   end
   subgraph BE["uban-api 後端"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    B1["接收問題回報<br/>（不需登入）"]:::gap
+    B1{"伺服器連線<br/>是否正常？"}:::dec
     B2{"一分鐘內<br/>超過 5 次？"}:::dec
-    B3["限流拒絕"]:::act
+    B3["限流拒絕請求"]:::act
     B4["寫入問題回報資料表<br/>（狀態：新回報）"]:::gap
     C1["開發者檢視與處理<br/>新回報 → 處理中<br/>→ 已修復、不予處理<br/>（開發者管理端）"]:::act
-    D_B1{"執行狀態？"}:::dec
-    D_B4{"分支選擇？"}:::dec
   end
 
   ST_S1 --> S1
@@ -35,19 +33,17 @@ flowchart TD
   A2 -->|"[否]"| A3
   A2 -->|"[是]"| A4
   A4 --> B1
-  D_B1 -->|"[連線失敗]"| A5
-  D_B1 --> B2
+  B1 -->|"[連線失敗]"| A5
+  B1 -->|"[連線正常]"| B2
   B2 -->|"[是]"| B3
   B2 -->|"[否]"| B4
-  D_B4 --> S3
-  D_B4 --> C1
+  B4 --> S3
+  B4 -.-> C1
   S3 --> M_END
   A3 --> M_END
   A5 --> M_END
   B3 --> M_END
   C1 --> M_END
-  B1 --> D_B1
-  B4 --> D_B4
   M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF

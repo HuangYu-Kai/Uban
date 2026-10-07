@@ -9,62 +9,39 @@ flowchart TD
     EN_S2(("●")):::endterm
   end
   subgraph FE["開發者管理端（數據總覽頁）"]
-    A1["同時查詢三類統計資料"]:::act
-    A2["人口統計圖表"]:::act
-    A3["警報統計圖表"]:::act
-    A4["通話統計圖表"]:::act
-    A5["Recharts 繪製圖表"]:::act
+    A1["發出三類統計查詢請求"]:::act
+    A5["Recharts 繪製人口、<br/>警報與通話圖表"]:::act
     A6["顯示『尚無資料』"]:::gap
-    D_A1{"分支選擇？"}:::dec
-    M_A5{" "}:::dec
   end
   subgraph BE["uban-api 後端（統計 API）"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    B1["年齡與居住地統計"]:::act
-    B2["警報推送與誤報統計"]:::act
-    B3["緊急通話次數統計"]:::act
-    B4["區分長輩與家屬"]:::act
-    B5["依警報次數<br/>計算誤報比例"]:::act
-    B6["區分緊急與一般通話"]:::act
-    B7{"欄位是否有值？<br/>（舊資料可能沒有）"}:::dec
+    B1["年齡與居住地人口統計"]:::act
+    B2["警報推送與誤報比例統計"]:::act
+    B3["緊急通話與一般通話次數統計"]:::act
+    B7{"資料庫中<br/>是否有紀錄？"}:::dec
     D1[("家屬帳號資料表<br/>（年齡、居住地）")]:::act
     D2[("長輩資料表")]:::act
     D3[("緊急警報紀錄表<br/>（含是否為誤報）")]:::act
     D4[("通話紀錄表<br/>（含是否為緊急通話）")]:::act
-    D_B4{"分支選擇？"}:::dec
-    D_B5{"分支選擇？"}:::dec
-    D_B6{"分支選擇？"}:::dec
   end
 
   ST_S1 --> S1
   S1 --> A1
-  D_A1 --> B1
-  B1 --> B4
-  D_B4 --- D1
-  D_B4 --- D2
-  D_A1 --> B2
-  B2 --> B5
-  D_B5 --- D3
-  D_A1 --> B3
-  B3 --> B6
-  D_B6 --- D4
-  D_B4 --> B7
-  D_B5 --> B7
-  D_B6 --> B7
-  B7 -->|"[否]"| A6
-  B7 -->|"[是]"| A2
-  A2 --> M_A5
-  B7 -->|"[是]"| A3
-  A3 --> M_A5
-  B7 -->|"[是]"| A4
-  A4 --> M_A5
+  A1 --> B1
+  A1 --> B2
+  A1 --> B3
+  B1 -.-> D1
+  B1 -.-> D2
+  B2 -.-> D3
+  B3 -.-> D4
+  B1 --> B7
+  B2 --> B7
+  B3 --> B7
+  B7 -->|"[無資料]"| A6
+  B7 -->|"[有資料]"| A5
   A5 --> S2
+  A6 --> S2
   S2 --> EN_S2
-  A1 --> D_A1
-  B4 --> D_B4
-  B5 --> D_B5
-  B6 --> D_B6
-  M_A5 --> A5
   ROLE ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

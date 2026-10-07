@@ -32,7 +32,6 @@ flowchart TD
     DB[("遠端提醒資料表")]:::act
     PC[("Pinecone 長期記憶<br/>（向量資料庫）")]:::act
     X(["回傳無權限"]):::act
-    D_B2{"分支選擇？"}:::dec
   end
 
   ST_S1 --> S1
@@ -42,8 +41,8 @@ flowchart TD
   A1 --> S2
   S2 --> B1
   B1 --> B2
-  D_B2 --- PC
-  D_B2 --> B3
+  B2 -.-> PC
+  B2 --> B3
   B3 -->|"[是]"| B4
   B3 -->|"[否]"| B5
   B4 --> B6
@@ -55,13 +54,12 @@ flowchart TD
   A2 --> S3
   S3 -->|"[否]"| A3
   S3 -->|"[是]"| B8
-  B8 --> DB
-  DB --> S5
+  B8 -.-> DB
+  B8 --> S5
   S4 --> M_END
   S5 --> M_END
   A3 --> M_END
   X --> M_END
-  B2 --> D_B2
   M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
   classDef pad  fill:none,stroke:none,color:#FFFFFF
