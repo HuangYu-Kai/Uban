@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../utils/server_time.dart';
 
 /// 長輩動態解析後的結構化模型
 class ActivityLogEntry {
@@ -60,10 +61,9 @@ class ActivityLogParser {
 
     String timeDisplay = rawTime;
     if (timeDisplay.isEmpty && item['rawTimestamp'] != null) {
-      final ts = item['rawTimestamp'].toString();
-      if (ts.length >= 16) {
-        timeDisplay = ts.substring(11, 16);
-      }
+      // ★ 2026-10-07：後端時間是沒帶 Z 的 UTC，換成本地時間（不再直接切字串）。
+      final local = ServerTime.parse(item['rawTimestamp']);
+      if (local != null) timeDisplay = ServerTime.clock(local);
     }
 
     // 1. 新聞類 (News)

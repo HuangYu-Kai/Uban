@@ -36,6 +36,7 @@ import '../services/cctv_alert_notification.dart';
 import '../services/location_alert_notification.dart';
 import '../services/checkin_notification.dart';
 import '../utils/alert_display.dart';
+import '../services/api/family_alert_dismissal_api.dart';
 
 class FamilyMainScreen extends StatefulWidget {
   final int userId;
@@ -1914,6 +1915,41 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           _dismissedKeysLoaded = true;
         });
       }
+      // ★ 2026-10-07：本機讀完（卡片已可顯示）之後再和後端同步，不讓網路卡住首頁。
+      //   必須放在 finally：上面 try 裡有多個提早 return（本機沒有紀錄、格式壞掉），
+      //   放在 try/finally 之後就永遠跑不到——新裝的 App 正是「本機沒有紀錄」。
+      unawaited(_syncDismissedAlertKeysWithServer());
+    }
+  }
+
+  /// ★ 2026-10-07：滑掉紀錄原本只存本機，清資料／重裝／換手機就消失、警示又跑出來。
+  /// 現在後端（`family_alert_dismissal`）每位家屬存一份：後端有、本機沒有的補進本機與
+  /// 過濾集合；本機有、後端沒有的（離線時滑掉、或上線前的舊紀錄）補送後端。
+  /// 後端失敗就只用本機，不影響首頁。
+  Future<void> _syncDismissedAlertKeysWithServer() async {
+    final familyId = widget.userId;
+    if (familyId <= 0) return;
+    try {
+      final server = await FamilyAlertDismissalApi.fetchKeys(familyId);
+      if (!mounted) return;
+      final r = FamilyAlertDismissalApi.reconcile(
+          _persistedDismissedTimestamps.keys, server);
+      if (r.toAddLocally.isNotEmpty) {
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        setState(() {
+          _dismissedAlertKeys.addAll(r.toAddLocally);
+          _persistedDismissedTimestamps = _pruneDismissedTimestamps({
+            ..._persistedDismissedTimestamps,
+            for (final k in r.toAddLocally) k: nowMs,
+          });
+        });
+        unawaited(_saveDismissedAlertKeys());
+      }
+      for (final k in r.toUpload) {
+        await FamilyAlertDismissalApi.dismiss(familyId, k);
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FamilyMainScreen] 後端滑掉紀錄同步失敗，僅用本機: $e');
     }
   }
 
@@ -1968,6 +2004,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       _persistedDismissedTimestamps =
           _pruneDismissedTimestamps(_persistedDismissedTimestamps);
       unawaited(_saveDismissedAlertKeys());
+      // ★ 2026-10-07：同步存到後端，換手機／重裝也記得（失敗時下次冷啟動補送）。
+      if (widget.userId > 0) {
+        unawaited(FamilyAlertDismissalApi.dismiss(widget.userId, itemId));
+      }
     }
   }
 
@@ -2820,6 +2860,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                             activeAlerts: _activeAlerts,
                             // ★ 2026-10-02：語音求救附位置的「查看位置」需要 userId。
                             userId: widget.userId,
+                            // ★ 2026-10-07：首頁滑掉的警示，警示中心也不再顯示。
+                            dismissedAlertKeys: _dismissedAlertKeys,
                           ),
                         ),
                       );

@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../utils/alert_display.dart';
+import '../../../../utils/server_time.dart';
 import '../../widgets/fam_ui.dart';
 import '../../alert_center_screen.dart';
 import '../../elder_location_map_screen.dart';
@@ -139,9 +140,12 @@ class HomeAlertPreviewCard extends StatelessWidget {
     }).map((row) {
       final type = (row['alert_type'] ?? row['alertType'] ?? 'fall').toString();
       final detectedAt = (row['detected_at'] ?? row['detectedAt'] ?? '').toString();
+      // ★ 2026-10-07：detected_at 是沒帶 Z 的 UTC，換成本地時間再顯示。
+      final detectedLocal = ServerTime.parse(detectedAt);
       String whenStr = '';
-      if (detectedAt.length >= 16) {
-        whenStr = '${detectedAt.substring(5, 7)}/${detectedAt.substring(8, 10)} ${detectedAt.substring(11, 16)}';
+      if (detectedLocal != null) {
+        final dk = ServerTime.dateKey(detectedLocal);
+        whenStr = '${dk.substring(5, 7)}/${dk.substring(8, 10)} ${ServerTime.clock(detectedLocal)}';
       }
       final String title = AlertDisplay.title(type);
       String desc = AlertDisplay.pastDesc(type);
@@ -153,7 +157,7 @@ class HomeAlertPreviewCard extends StatelessWidget {
       DateTime? locDate;
       if (loc != null) {
         desc = '$desc 點擊查看最後位置';
-        locDate = AlertDisplay.parseLocationAt(row) ?? DateTime.tryParse(detectedAt);
+        locDate = AlertDisplay.parseLocationAt(row) ?? detectedLocal;
       }
       final String? persistedDeviceId = (row['device_id'] ?? row['deviceId'])?.toString();
       final String? persistedAlertIdRaw = (row['alert_id'] ?? row['alertId'])?.toString();
@@ -218,6 +222,7 @@ class HomeAlertPreviewCard extends StatelessWidget {
                             elderRoomId: currentElder?.elderId ?? currentElder?.id.toString(),
                             activeAlerts: activeAlerts,
                             userId: userId,
+                            dismissedAlertKeys: dismissedAlertKeys,
                           ),
                         ),
                       );

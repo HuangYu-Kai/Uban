@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../services/predictive_alert_service.dart';
 import '../../services/api_service.dart';
 import '../../utils/alert_display.dart';
 import '../../utils/error_handler.dart';
+import '../../utils/server_time.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/family_theme.dart';
 import '../../widgets/ui/uban_dialog.dart';
@@ -104,6 +104,10 @@ class AlertCenterScreen extends StatefulWidget {
   /// 抓持久化警報用的是同一個來源。
   final int? userId;
 
+  /// ★ 2026-10-07：家屬在首頁「最新警示」滑掉的項目鍵（`alert:<id>`／`log:<id>`，
+  /// 與首頁同一份、也同步存在後端），警示紀錄清單一併排除，兩邊看到的一致。
+  final Set<String> dismissedAlertKeys;
+
   const AlertCenterScreen({
     super.key,
     required this.elderName,
@@ -112,6 +116,7 @@ class AlertCenterScreen extends StatefulWidget {
     this.activeAlerts = const [],
     this.historyAlertItemsOverride,
     this.userId,
+    this.dismissedAlertKeys = const {},
   });
 
   @override
@@ -119,19 +124,18 @@ class AlertCenterScreen extends StatefulWidget {
 }
 
 class _AlertCenterScreenState extends State<AlertCenterScreen> {
-  final _alertService = PredictiveAlertService();
-
   // 家屬主題之下的 context（State 自己的 context 在 FamilyThemeScope 之上）：
   // 用它開 dialog／日期選擇器，才會吃到家屬色票；每次 build 更新。
   BuildContext? _themed;
   BuildContext get _themeCtx => _themed ?? context;
   UbanColors get _c => UbanColors.of(_themeCtx);
 
-  List<Alert> _alerts = [];
   // ★ 第四十一輪（item 1 追加）：family_home_tab.dart 預覽區另外兩個真實
   // 來源（_realLogs 活動流水、_emergencyAlerts 持久化跌倒警報）合併、排序
-  // 後的結果。與 [Alert]／`_alerts`（預測型健康警示）是完全不同的資料
-  // 種類，分開存放、分開渲染（見 _buildContent、_buildHistoryAlertsSection）。
+  // 後的結果。
+  // ★ 2026-10-07：原本另有一區「預測型健康警示」（PredictiveAlertService），
+  // 餵的是寫死的假健康數據（心率 75、血壓 125/82…）與家屬手機本機的情緒紀錄，
+  // 和長輩實際狀況無關，已整區移除。
   List<Map<String, dynamic>> _historyAlertItems = [];
   bool _isLoading = true;
   // ★ 第四十五輪：正在送出「標記誤報」請求的項目 id（防重複點擊／顯示 loading）。
@@ -218,30 +222,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
   }
 
   Future<void> _loadAlerts() async {
-    setState(() => _isLoading = true);
-
-    // 模擬健康數據
-    final healthData = {
-      'heartRate': 75,
-      'bloodSugar': 95,
-      'systolicBP': 125,
-      'diastolicBP': 82,
-      'dailySteps': 3500,
-      'consecutiveLowActivityDays': 2,
-      'sleepQualityTrend': 'stable',
-      'callFrequencyTrend': 'stable',
-    };
-
-    final alerts = await _alertService.checkAllAlerts(
-      healthData: healthData,
-      lookbackDays: 7,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _alerts = alerts;
-      _isLoading = false;
-    });
+    if (_isLoading) setState(() => _isLoading = false);
 
     // ★ 第五十二輪 F2：警示紀錄改走獨立的局部載入狀態，不再共用上面的
     // `_isLoading`（原因見該欄位宣告處註解）。初次載入／下拉重新整理仍會
@@ -360,9 +341,12 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     }).map((row) {
       final type = (row['alert_type'] ?? row['alertType'] ?? 'fall').toString();
       final detectedAt = (row['detected_at'] ?? row['detectedAt'] ?? '').toString();
+      // ★ 2026-10-07：detected_at 是沒帶 Z 的 UTC，原本直接切字串會少 8 小時。
+      final DateTime? detectedLocal = ServerTime.parse(detectedAt);
       String whenStr = '';
-      if (detectedAt.length >= 16) {
-        whenStr = '${detectedAt.substring(5, 7)}/${detectedAt.substring(8, 10)} ${detectedAt.substring(11, 16)}';
+      if (detectedLocal != null) {
+        final dk = ServerTime.dateKey(detectedLocal);
+        whenStr = '${dk.substring(5, 7)}/${dk.substring(8, 10)} ${ServerTime.clock(detectedLocal)}';
       }
       // ★ 2026-10-02（G196）：文案集中到 AlertDisplay；`sos_voice` 不再被寫成跌倒，
       //   未知型別退回中性的「異常狀況」。
@@ -389,13 +373,13 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         'desc': desc,
         'level': 'high',
         'icon': AlertDisplay.icon(type),
-        'sortTs': DateTime.tryParse(detectedAt),
+        'sortTs': detectedLocal,
         // ★ 2026-10-02：求救位置——hasLocation 為 true 才顯示「查看位置」與相對時間；
         //   locationDate 是地圖要開的那一天（優先用定位時間，退回警報時間）。
         'hasLocation': loc != null,
         'locationAt': locationAt,
         'locationDate': loc != null
-            ? (locationAt ?? DateTime.tryParse(detectedAt))
+            ? (locationAt ?? detectedLocal)
             : null,
         'alertId': persistedAlertIdRaw != null ? int.tryParse(persistedAlertIdRaw) : null,
         'isFalseAlarm': rawIsFalseAlarm == true || rawIsFalseAlarm == 1,
@@ -432,7 +416,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         'desc': desc,
         'level': level,
         'icon': icon,
-        'sortTs': DateTime.tryParse(logTs ?? ''),
+        'sortTs': ServerTime.parse(logTs),
       };
     });
 
@@ -441,9 +425,11 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     // 見 [_AlertStatusFilter] enum 定義處的說明。選了非「全部狀態」時，
     // 不能讓 logItems 混進來變成一批看不出狀態的「未分類」項目。
     final bool statusFilterActive = _statusFilter != _AlertStatusFilter.all;
-    final combined = statusFilterActive
-        ? [...persistedItems]
-        : [...persistedItems, ...logItems];
+    final combined = (statusFilterActive
+            ? [...persistedItems]
+            : [...persistedItems, ...logItems])
+        .where((i) => !widget.dismissedAlertKeys.contains(i['id']))
+        .toList();
     // 其餘（跌倒歷史 + 活動警示）依時間新到舊排序；缺時間戳的排最後，
     // 不擠到最前面誤導使用者以為是最新事件。
     combined.sort((a, b) {
@@ -577,7 +563,7 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     // 都是空的，會被整頁空狀態蓋掉、連篩選器都看不到，等於走不出目前
     // 選到的空篩選範圍。即時警報／健康建議兩個來源都空時，把「目前沒有
     // 警示」卡片當成 ListView 的第一個項目，警示紀錄區塊照樣接在後面。
-    final bool otherSourcesEmpty = _alerts.isEmpty && realtimeAlerts.isEmpty;
+    final bool otherSourcesEmpty = realtimeAlerts.isEmpty;
 
     return RefreshIndicator(
       onRefresh: _loadAlerts,
@@ -600,11 +586,6 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
           // ★ 第四十一輪（item 1 追加）：跌倒歷史 + 活動警示，依時間新到舊。
           _buildHistoryAlertsSection(_historyAlertItems),
           const SizedBox(height: 20),
-          if (_alerts.isNotEmpty) ...[
-            _buildSummaryCard(),
-            const SizedBox(height: 20),
-            _buildAlertsList(),
-          ],
         ],
       ),
     );
@@ -1270,110 +1251,10 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              '${widget.elderName} 的健康狀況良好',
+              '${widget.elderName} 目前沒有即時警報',
               textAlign: TextAlign.center,
               style: famText(c.text2, 14, height: 1.4),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 健康建議摘要：一般 [FamCard]＋兩格 [FamStat]。
-  Widget _buildSummaryCard() {
-    final highPriorityCount = _alerts.where((a) =>
-      a.priority == AlertPriority.high || a.priority == AlertPriority.urgent
-    ).length;
-    final actionRequiredCount = _alerts.where((a) => a.actionRequired).length;
-
-    return FamCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FamSecHead(
-            title: '警示總覽',
-            trailing: FamChip(label: '共 ${_alerts.length} 項', tone: FamTone.brand),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: FamStat(label: '重要警示', value: '$highPriorityCount')),
-              const SizedBox(width: 10),
-              Expanded(child: FamStat(label: '需處理', value: '$actionRequiredCount')),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAlertsList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const FamSecHead(title: '警示詳情'),
-        const SizedBox(height: 12),
-        ..._alerts.map(_buildAlertCard),
-      ],
-    );
-  }
-
-  FamTone _priorityTone(AlertPriority p) {
-    switch (p) {
-      case AlertPriority.urgent:
-      case AlertPriority.high:
-        return FamTone.danger;
-      case AlertPriority.medium:
-        return FamTone.warm;
-      case AlertPriority.low:
-        return FamTone.info;
-    }
-  }
-
-  Widget _buildAlertCard(Alert alert) {
-    final c = _c;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: FamCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                FamChip(label: alert.priorityLabel, tone: _priorityTone(alert.priority), dot: true),
-                const SizedBox(width: 8),
-                // ★ 2026-08-10 第二十輪（需求 2）：警報型別標籤由後端下發，長度不可控。
-                Flexible(child: FamChip(label: alert.typeLabel)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              alert.title,
-              style: famText(c.text, 16, weight: FontWeight.w900, height: 1.35),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              alert.description,
-              style: famText(c.text2, 14, height: 1.5),
-            ),
-            if (alert.recommendedActions.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text('建議行動', style: famText(c.brandStrong, 13, weight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              ...alert.recommendedActions.map((action) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('• ', style: famText(c.text2, 14.5, height: 1.6)),
-                        Expanded(
-                          child: Text(action, style: famText(c.text2, 14.5, height: 1.6)),
-                        ),
-                      ],
-                    ),
-                  )),
-            ],
           ],
         ),
       ),
