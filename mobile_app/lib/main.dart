@@ -1517,6 +1517,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
       }
 
+      // ★ 2026-10-07 小豬共養：長輩用我送的點心餵了小豬（前景 FCM，僅送點心的家屬端）。
+      //   與 daily-answer 同形：獨立分支、不碰來電狀態；角色守門／開關／giftId 去重
+      //   在 CheckinNotification.showPetGiftFed 內（fail-closed）。
+      if (message.data['type'] == 'pet-gift-fed') {
+        try {
+          await CheckinNotification.showPetGiftFedFromData(message.data);
+        } catch (e) {
+          debugPrint("⚠️ [FCM-Fg] 小豬共養通知失敗: $e");
+        }
+        return;
+      }
+
       // ★ ⏰ 排程提醒 FCM（前景訊息，交由 ElderReminderManager 彈窗處理）
       if (message.data['type'] == 'reminder') {
         debugPrint("⏰ [FCM-Fg] 收到排程提醒，交由 ElderReminderManager 處理");

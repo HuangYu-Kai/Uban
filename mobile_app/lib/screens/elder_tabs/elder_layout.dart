@@ -18,10 +18,12 @@ double elderNavClearanceWithPill(BuildContext context) =>
 ///
 /// 抽成純函式方便測試。[keys] 若有給，第 i 個 key 會掛在第 i 項上（外部新手
 /// 指引 spotlight 用的 `_navItemKeys`）；長度不足的項目不掛 key。
+/// ★ 2026-10-07 小豬共養：[petBadge] 為 true 時「小豬」項顯示小紅點。
 /// ★ 2026-10-07 每日一問改留聊天：[chatBadge] 為 true 時「聊天」項顯示小紅點。
 List<UbanNavItem> buildElderNavItems([
   List<Key?> keys = const [],
   bool chatBadge = false,
+  bool petBadge = false,
 ]) {
   Key? k(int i) => i < keys.length ? keys[i] : null;
   return [
@@ -42,6 +44,8 @@ List<UbanNavItem> buildElderNavItems([
       selectedIcon: Icons.savings_rounded,
       label: '小豬',
       key: k(2),
+      showBadge: petBadge,
+      badgeLabel: '有家人送的點心',
     ),
     UbanNavItem(
       icon: Icons.chat_bubble_outline_rounded,

@@ -257,6 +257,133 @@ class CheckinNotification {
     );
   }
 
+  // ───────── ★ 2026-10-07 小豬共養：長輩用家屬送的點心餵了小豬（沿用本類別的 plugin／守門） ─────────
+  // 只通知「送點心的那位家屬」（後端只推給 giver）。點擊通知只是打開 App（不另設 pendingTap）。
+
+  static const String typePetGiftFed = 'pet-gift-fed';
+  static const String petGiftChannelId = 'pet_gift';
+  static const String petGiftChannelName = '小豬共養';
+  static const String petGiftChannelDesc = '長輩用您送的點心餵了小豬時的通知';
+
+  /// 裝置偏好鍵：是否顯示小豬共養通知（預設 true；非 SessionManager session key，G58/G59）。
+  static const String petGiftPrefKey = 'pet_gift_notify_enabled';
+
+  static bool _petGiftChannelCreated = false;
+
+  static Future<bool> isPetGiftEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      try {
+        await prefs.reload();
+      } catch (_) {}
+      return prefs.getBool(petGiftPrefKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setPetGiftEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(petGiftPrefKey, value);
+  }
+
+  /// 顯示「長輩用你送的點心餵了小豬」。欄位對應後端 data：
+  /// elderId/elderName/giftId/foodId/foodName/fedAt。角色守門（fail-closed）、開關、
+  /// 依 giftId 去重（三條呼叫路徑共用）；強度一般，不蓋屏、不繞勿擾、不改音量（硬規則 13）。
+  static Future<void> showPetGiftFed({
+    required String elderId,
+    required String elderName,
+    required String giftId,
+    required String foodName,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      DartPluginRegistrant.ensureInitialized();
+
+      // 🔒 角色守門必須在任何初始化／顯示之前，fail-closed。
+      if (!await LocationAlertNotification.isFamilyDevice()) {
+        debugPrint('🔒 [CheckinNotification] 本機非確定的家屬端，略過小豬共養通知');
+        return;
+      }
+      if (!await isPetGiftEnabled()) {
+        debugPrint('🔕 [CheckinNotification] 使用者已關閉小豬共養通知');
+        return;
+      }
+
+      final dedupeKey = '$typePetGiftFed|$giftId';
+      if (seenRecently(dedupeKey)) {
+        debugPrint('♻️ [CheckinNotification] 重複事件略過: $dedupeKey');
+        return;
+      }
+
+      await _ensureInit();
+      await _ensurePetGiftChannel();
+
+      final name = elderName.trim().isEmpty ? '長輩' : elderName.trim();
+      final food = foodName.trim().isEmpty ? '點心' : foodName.trim();
+      final heading = '$name用你送的$food餵了小豬 🐷';
+      const body = '小豬吃得好開心！';
+
+      // 專屬 id 區段（1.1995e9～1.1999e9：不與每日一問 1.195e9～1.199e9、安心提醒 1.2e9～ 重疊）。
+      final int notificationId =
+          1199500000 + (_stableHash(dedupeKey) % 400000);
+
+      final androidDetails = AndroidNotificationDetails(
+        petGiftChannelId,
+        petGiftChannelName,
+        channelDescription: petGiftChannelDesc,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        category: AndroidNotificationCategory.status,
+        // 🚫 不設 fullScreenIntent、不繞勿擾、不設鬧鐘音量。
+      );
+
+      await _plugin.show(
+        notificationId,
+        heading,
+        body,
+        NotificationDetails(android: androidDetails),
+        payload: jsonEncode(<String, String>{
+          'type': typePetGiftFed,
+          'elderId': elderId,
+          'elderName': name,
+          'giftId': giftId,
+        }),
+      );
+      debugPrint('✅ [CheckinNotification] 已顯示 pet-gift-fed giftId=$giftId');
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 小豬共養通知顯示失敗: $e');
+    }
+  }
+
+  static Future<void> _ensurePetGiftChannel() async {
+    if (_petGiftChannelCreated) return;
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        petGiftChannelId,
+        petGiftChannelName,
+        description: petGiftChannelDesc,
+        importance: Importance.defaultImportance,
+        playSound: true,
+        enableVibration: true,
+      ));
+    }
+    _petGiftChannelCreated = true;
+  }
+
+  /// 從 Socket／FCM 的 data map 顯示小豬共養通知（camelCase 欄位兩邊相同）。
+  static Future<void> showPetGiftFedFromData(Map data) {
+    String s(String k) => (data[k] ?? '').toString();
+    return showPetGiftFed(
+      elderId: s('elderId'),
+      elderName: s('elderName'),
+      giftId: s('giftId'),
+      foodName: s('foodName'),
+    );
+  }
+
   static Future<bool> isEnabled() async {
     try {
       final prefs = await SharedPreferences.getInstance();
