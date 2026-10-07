@@ -1505,6 +1505,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
       }
 
+      // ★ 2026-10-07 每日一問：長輩回答了今天的小問題（前景 FCM，家屬端）。
+      //   與 elder-checkin 同形：獨立分支、不碰來電狀態；角色守門／開關／去重在
+      //   CheckinNotification.showDailyAnswer 內（fail-closed）。
+      if (message.data['type'] == 'daily-answer') {
+        try {
+          await CheckinNotification.showDailyAnswerFromData(message.data);
+        } catch (e) {
+          debugPrint("⚠️ [FCM-Fg] 每日一問通知失敗: $e");
+        }
+        return;
+      }
+
       // ★ ⏰ 排程提醒 FCM（前景訊息，交由 ElderReminderManager 彈窗處理）
       if (message.data['type'] == 'reminder') {
         debugPrint("⏰ [FCM-Fg] 收到排程提醒，交由 ElderReminderManager 處理");

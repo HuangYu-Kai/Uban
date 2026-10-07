@@ -2,6 +2,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/services/checkin_cheer_service.dart';
 
 void main() {
+  group('每日一問 questionText', () {
+    test('文字回覆：附上截短到 12 字的題目', () {
+      final c = CheckinCheer.tryParse({
+        'cheerId': 7,
+        'familyName': '璿OwO',
+        'text': '好棒！',
+        'questionText': '您小時候最喜歡吃的東西是什麼呢？',
+      })!;
+      expect(c.displayText, '璿OwO 回覆了您的回答：好棒！（「您小時候最喜歡吃的東西是…」）');
+    });
+
+    test('短題目不加刪節號；純語音回覆', () {
+      final c = CheckinCheer.tryParse({
+        'cheerId': 8,
+        'familyName': '小美',
+        'audioUrl': '/uploads/cheers/y.m4a',
+        'questionText': '最愛吃什麼？',
+      })!;
+      expect(c.displayText, '小美 回覆了您的回答，傳了一段語音給您（「最愛吃什麼？」）');
+    });
+  });
+
   group('CheckinCheer.tryParse / displayText', () {
     test('文字 + 提醒標題', () {
       final c = CheckinCheer.tryParse({

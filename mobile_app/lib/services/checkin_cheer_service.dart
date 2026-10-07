@@ -15,12 +15,16 @@ class CheckinCheer {
   final String? audioUrl; // 相對路徑（/uploads/cheers/x.m4a）
   final String? reminderTitle;
 
+  /// ★ 2026-10-07 每日一問：有值代表這則加油是「對長輩每日一問回答的回覆」。
+  final String? questionText;
+
   const CheckinCheer({
     required this.cheerId,
     required this.familyName,
     this.text,
     this.audioUrl,
     this.reminderTitle,
+    this.questionText,
   });
 
   bool get hasAudio => audioUrl != null && audioUrl!.isNotEmpty;
@@ -43,12 +47,20 @@ class CheckinCheer {
       text: _nz(data['text']),
       audioUrl: _nz(data['audioUrl'] ?? data['audio_url']),
       reminderTitle: _nz(data['reminderTitle'] ?? data['reminder_title']),
+      questionText: _nz(data['questionText'] ?? data['question_text']),
     );
     return (c.hasText || c.hasAudio) ? c : null;
   }
 
   /// 留存／顯示用的關懷訊息文字。
   String get displayText {
+    // ★ 每日一問的回覆：「璿OwO 回覆了您的回答：好棒！（「您小時候最喜歡吃的…」）」。
+    final q = questionText;
+    if (q != null) {
+      final short = q.length > 12 ? '${q.substring(0, 12)}…' : q;
+      final reply = hasText ? '回覆了您的回答：$text' : '回覆了您的回答，傳了一段語音給您';
+      return '$familyName $reply（「$short」）';
+    }
     final base = hasText ? '$familyName：$text' : '$familyName 傳了一段語音給您';
     final ctx = reminderTitle == null ? '' : '（為您完成「$reminderTitle」加油）';
     return '$base$ctx';

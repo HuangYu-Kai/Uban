@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../../models/memoir_story.dart';
+import '../../services/api/daily_question_api.dart';
 import '../../services/memoir_service.dart';
 import '../../theme/family_theme.dart';
 import '../../widgets/memoir_detail_sheet.dart';
 import '../../widgets/ui/ui.dart';
+import 'daily_question_screen.dart' show resolveFamilyId;
 import 'widgets/fam_data_ui.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
@@ -23,11 +27,25 @@ class MemoirsGalleryScreen extends StatefulWidget {
   final String elderName;
   final String familyUserName;
 
+  /// ★ 2026-10-07 每日一問：家屬 user id（出題用）；null 時讀 `caregiver_id`。
+  final int? familyId;
+
+  /// 測試注入點：取得每日一問歷史；null 時走真實 API。
+  final Future<List<DailyQuestionItem>?> Function(String elderId, int familyId)?
+      dailyLoader;
+
+  /// 測試注入點：出題；null 時走真實 API。
+  final Future<DailyAskResult> Function(
+      {required String question, String? category})? dailyAsker;
+
   const MemoirsGalleryScreen({
     super.key,
     required this.elderId,
     required this.elderName,
     this.familyUserName = '家屬',
+    this.familyId,
+    this.dailyLoader,
+    this.dailyAsker,
   });
 
   @override
@@ -37,6 +55,9 @@ class MemoirsGalleryScreen extends StatefulWidget {
 class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
   final MemoirService _service = MemoirService.instance;
   List<MemoirStory> _stories = [];
+  // ★ 2026-10-07 每日一問：長輩已回答的每日一問（來自後端 /history），與本機故事合併顯示。
+  List<MemoirStory> _dailyStories = [];
+  List<MemoirStory> _localStories = [];
   bool _isLoading = true;
   String _selectedTag = '全部';
   bool _isStorybookMode = false; // 是否切換至自傳翻頁書模式
@@ -50,7 +71,8 @@ class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
   UbanColors get _c => UbanColors.of(_themeCtx);
 
   static const String _favTag = '珍藏';
-  final List<String> _tags = ['全部', '經典回憶', '美食記憶', '溫馨寄語', '奮鬥歲月', _favTag];
+  static const String _dailyTag = '每日一問';
+  final List<String> _tags = ['全部', '經典回憶', '美食記憶', '溫馨寄語', '奮鬥歲月', _dailyTag, _favTag];
 
   @override
   void initState() {
@@ -58,6 +80,7 @@ class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
     _pageController = PageController();
     _service.addListener(_onServiceUpdate);
     _loadStories();
+    _loadDailyStories();
   }
 
   @override
@@ -77,9 +100,52 @@ class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
     final list = await _service.getMemoirs(widget.elderId);
     if (mounted) {
       setState(() {
-        _stories = list;
+        _localStories = list;
+        _stories = _merge(list, _dailyStories);
         _isLoading = false;
       });
+    }
+  }
+
+  /// 本機故事＋每日一問，新→舊。每日一問的 id 以 `dq_` 開頭，不會與本機 id 衝突。
+  List<MemoirStory> _merge(List<MemoirStory> local, List<MemoirStory> daily) {
+    if (daily.isEmpty) return local;
+    return [...local, ...daily]
+      ..sort((a, b) => b.recordedDate.compareTo(a.recordedDate));
+  }
+
+  /// 讀取長輩已回答的每日一問並轉成故事卡片；失敗時靜默略過（本機故事照常顯示）。
+  Future<void> _loadDailyStories() async {
+    try {
+      final fid = await resolveFamilyId(widget.familyId);
+      if (fid == null) return;
+      final items = widget.dailyLoader != null
+          ? await widget.dailyLoader!(widget.elderId, fid)
+          : await DailyQuestionApi.getHistory(elderId: widget.elderId, familyId: fid);
+      if (items == null || !mounted) return;
+      final stories = <MemoirStory>[
+        for (final q in items)
+          if (q.answered)
+            MemoirStory(
+              id: 'dq_${q.id}',
+              elderId: widget.elderId,
+              title: q.question,
+              tag: _dailyTag,
+              preview: q.answerSnippet,
+              fullStory: q.answerSnippet,
+              promptQuestion: q.question,
+              audioAssetOrUrl: q.answerAudioUrl,
+              recordedDate: DateTime.tryParse(q.answeredAt)?.toLocal() ??
+                  DateTime.tryParse(q.assignedDate) ??
+                  DateTime.now(),
+            ),
+      ];
+      setState(() {
+        _dailyStories = stories;
+        _stories = _merge(_localStories, stories);
+      });
+    } catch (e) {
+      debugPrint('⚠️ [MemoirsGallery] 讀取每日一問失敗: $e');
     }
   }
 
@@ -95,6 +161,7 @@ class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
     final textController = TextEditingController();
     final recommended = _service.getRecommendedPrompts();
     String selectedCategory = '經典回憶';
+    bool submitting = false; // 避免連點重複出題
     final messenger = ScaffoldMessenger.of(context);
 
     showFamDialog<void>(
@@ -108,7 +175,7 @@ class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
             children: [
               famDialogTitle(c, '委託小豬向${widget.elderName}提問'),
               const SizedBox(height: 2),
-              Text('小豬會在日常閒聊時主動幫您發問',
+              Text('題目會送到長輩的手機首頁，長輩可用說的回答',
                   style: famText(c.text2, 13, height: 1.5)),
               const SizedBox(height: 14),
               Text('點選推薦問題：',
@@ -180,24 +247,47 @@ class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
                       label: '託付給小豬',
                       onPressed: () async {
                         final q = textController.text.trim();
-                        if (q.isEmpty) return;
+                        if (q.isEmpty || submitting) return;
 
-                        final delegation = MemoirPromptDelegation(
-                          id: 'del_${DateTime.now().millisecondsSinceEpoch}',
-                          elderId: widget.elderId,
-                          question: q,
-                          category: selectedCategory,
-                          requestedBy: widget.familyUserName,
-                          createdAt: DateTime.now(),
-                        );
-
-                        await _service.delegatePrompt(delegation);
+                        // ★ 2026-10-07 每日一問：改走後端 /daily_question/ask，題目才會真的
+                        //   送到長輩手機（舊的 delegatePrompt 只寫本機，長輩永遠看不到）。
+                        if (q.length < DailyQuestionApi.minQuestionLength ||
+                            q.length > DailyQuestionApi.maxQuestionLength) {
+                          messenger.showSnackBar(famSnackBar(
+                              _themeCtx, '題目請寫 4 到 80 個字', error: true));
+                          return;
+                        }
+                        submitting = true;
+                        final fid = await resolveFamilyId(widget.familyId);
+                        final DailyAskResult r;
+                        if (widget.dailyAsker != null) {
+                          r = await widget.dailyAsker!(
+                              question: q, category: selectedCategory);
+                        } else if (fid == null) {
+                          r = const DailyAskResult(false, '請重新登入後再試一次');
+                        } else {
+                          r = await DailyQuestionApi.ask(
+                            familyId: fid,
+                            elderId: widget.elderId,
+                            question: q,
+                            category: selectedCategory,
+                          );
+                        }
+                        submitting = false;
+                        if (!mounted) return;
+                        if (!r.ok) {
+                          // 失敗時保留對話框，讓使用者可直接再送一次。
+                          messenger.showSnackBar(
+                              famSnackBar(_themeCtx, r.message, error: true));
+                          return;
+                        }
                         if (ctx.mounted) Navigator.pop(ctx);
 
                         if (mounted) {
                           messenger.showSnackBar(
-                            famSnackBar(_themeCtx, '小豬已收下委託！下次閒聊將主動向長輩提問', success: true),
+                            famSnackBar(_themeCtx, r.message, success: true),
                           );
+                          unawaited(_loadDailyStories());
                         }
                       },
                     ),

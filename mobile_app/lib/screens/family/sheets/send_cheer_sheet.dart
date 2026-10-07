@@ -29,6 +29,11 @@ class SendCheerSheet extends StatefulWidget {
   final int? reminderId;
   final String? localDate;
 
+  /// ★ 2026-10-07 每日一問：回覆長輩回答時帶題目 id 與題目文字（顯示「回覆：「…」」）；
+  /// 兩者皆 null 時行為與打卡鼓勵完全相同。
+  final int? questionId;
+  final String? replyQuestion;
+
   /// 測試注入點；null 時使用真實 API。
   final CheerSender? sender;
 
@@ -40,6 +45,8 @@ class SendCheerSheet extends StatefulWidget {
     required this.elderId,
     this.reminderId,
     this.localDate,
+    this.questionId,
+    this.replyQuestion,
     this.sender,
   });
 
@@ -56,6 +63,8 @@ class SendCheerSheet extends StatefulWidget {
     required String elderId,
     int? reminderId,
     String? localDate,
+    int? questionId,
+    String? replyQuestion,
   }) async {
     final r = await showUbanSheet<bool>(
       context,
@@ -66,6 +75,8 @@ class SendCheerSheet extends StatefulWidget {
         elderId: elderId,
         reminderId: reminderId,
         localDate: localDate,
+        questionId: questionId,
+        replyQuestion: replyQuestion,
       ),
     );
     return r == true;
@@ -224,6 +235,7 @@ class _SendCheerSheetState extends State<SendCheerSheet> {
         elderId: widget.elderId,
         reminderId: widget.reminderId,
         localDate: widget.localDate,
+        questionId: widget.questionId,
         text: text.isEmpty ? null : text,
         audioPath: _audioPath,
       );
@@ -266,7 +278,9 @@ class _SendCheerSheetState extends State<SendCheerSheet> {
         ),
         const SizedBox(height: 2),
         Text(
-          '完成了「${widget.itemTitle}」',
+          widget.replyQuestion != null
+              ? '回覆：「${widget.replyQuestion}」'
+              : '完成了「${widget.itemTitle}」',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: famText(c.text2, 13, height: 1.4),

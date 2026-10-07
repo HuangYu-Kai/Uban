@@ -16,6 +16,7 @@ import 'elder_screen.dart';
 import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
+import '../services/api/elder_daily_question_api.dart';
 import '../services/signaling.dart';
 import '../services/elder_location_service.dart';
 import 'dart:async';
@@ -778,6 +779,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   Function(String message)? _ownHeartbeatMessage;
   Function(dynamic data)? _ownElderQuestionAnswered;
   Function(dynamic data)? _ownCheckinCheer;
+  Function(dynamic data)? _ownDailyQuestionNew;
   void Function(Map<String, dynamic>)? _ownRemoteReminder;
   void Function(Map<String, dynamic>)? _ownReminderSync;
 
@@ -846,6 +848,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_cheerService.drain());
     });
+
+    // ★ 2026-10-07 每日一問：家人剛設定今天的問題。同 G102：每次都重新指派並記住
+    //   最後一份。一律先刷新首頁卡片；小嘎只在「通話外、首頁在最上層」才主動說，
+    //   通話中／在 ElderScreen 時略過（卡片仍會更新，回前景也會重讀），比照打卡加油。
+    _ownDailyQuestionNew = (data) {
+      if (!mounted) return;
+      ElderDailyQuestionApi.refreshSignal.value++;
+      if (Signaling().isInCall) return;
+      if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      unawaited(_handleProactiveMessage(
+          jsonEncode({'reply': '家人出了一個新問題給您', 'type': 'family'})));
+    };
+    Signaling().onDailyQuestionNew = _ownDailyQuestionNew;
 
     // ★ ⏰ 監聽排程提醒與同步信令
     _ownRemoteReminder = (data) {
@@ -1022,6 +1037,16 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     },
   );
 
+  /// ★ 2026-10-07 每日一問：「聽小嘎唸」。沿用首頁既有 TTS 引擎；通話中不唸。
+  Future<void> _speakDailyQuestion(String text) async {
+    if (Signaling().isInCall) return;
+    await _flutterTts.stop();
+    await _flutterTts.setLanguage("zh-TW");
+    await _flutterTts.setPitch(1.0);
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.speak(text);
+  }
+
   /// 留存為關懷訊息並顯示 HeartbeatOverlay（不朗讀；語音由 service 決定）。
   Future<void> _presentCheer(CheckinCheer c) async {
     await CareMessageStore.instance
@@ -1135,6 +1160,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     }
     if (identical(Signaling().onCheckinCheer, _ownCheckinCheer)) {
       Signaling().onCheckinCheer = null;
+    }
+    if (identical(Signaling().onDailyQuestionNew, _ownDailyQuestionNew)) {
+      Signaling().onDailyQuestionNew = null;
     }
     unawaited(_cheerService.dispose());
     if (identical(Signaling().onReminderSync, _ownReminderSync)) {
@@ -1388,6 +1416,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 moreNewsKey: _homeMoreNewsKey,
                 // 連勝慶祝畫面的「去餵小豬」：切到小豬分頁（沿用既有 _onNavTap）。
                 onGoFeedPig: () => _onNavTap(2),
+                // ★ 2026-10-07 每日一問：「聽小嘎唸」沿用本畫面既有 TTS；
+                // 回答成功後走既有關懷訊息路徑（CareMessageStore＋HeartbeatOverlay）。
+                onSpeak: _speakDailyQuestion,
+                onSayCare: (text) => _handleProactiveMessage(
+                    jsonEncode({'reply': text, 'type': 'family'})),
               ),
               // 1 電話（好友列表）
               FriendsScreen(

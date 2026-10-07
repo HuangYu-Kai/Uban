@@ -30,6 +30,19 @@ class CheckinTap {
   bool get isMissed => type == CheckinNotification.typeMissed;
 }
 
+/// ★ 2026-10-07 每日一問：點擊「長輩回答了今天的小問題」通知後要做的事
+/// （由家屬互動分頁的每日一問卡片消費，開啟 DailyQuestionScreen 並定位到該題）。
+class DailyAnswerTap {
+  final String elderId;
+  final String elderName;
+  final int? questionId;
+  const DailyAnswerTap({
+    required this.elderId,
+    required this.elderName,
+    required this.questionId,
+  });
+}
+
 /// ★ 2026-10-07 打卡雙向互動：家屬端「長輩打卡／漏打卡」本機通知。
 ///
 /// 管線比照 [LocationAlertNotification]（同一套硬規則 13／14）：
@@ -69,6 +82,180 @@ class CheckinNotification {
   /// 暖啟動點擊／冷啟動消費後的待處理動作；`HomeCheckinCard` 監聽並消費（消費後設回 null）。
   static final ValueNotifier<CheckinTap?> pendingTap =
       ValueNotifier<CheckinTap?>(null);
+
+  // ───────── ★ 2026-10-07 每日一問：長輩回答通知（沿用本類別的 plugin／守門／點擊轉交） ─────────
+
+  static const String typeDailyAnswer = 'daily-answer';
+  static const String dailyChannelId = 'daily_answer';
+  static const String dailyChannelName = '每日一問';
+  static const String dailyChannelDesc = '長輩回答了每日一問時的通知';
+
+  /// 裝置偏好鍵：是否顯示每日一問回答通知（預設 true；非 SessionManager session key，G58/G59）。
+  static const String dailyPrefKey = 'daily_answer_notify_enabled';
+
+  static bool _dailyChannelCreated = false;
+  static bool _dailyLaunchConsumed = false;
+
+  /// 暖啟動點擊／冷啟動消費後的待處理動作；每日一問卡片監聽並消費（消費後設回 null）。
+  static final ValueNotifier<DailyAnswerTap?> pendingDailyTap =
+      ValueNotifier<DailyAnswerTap?>(null);
+
+  static Future<bool> isDailyEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      try {
+        await prefs.reload();
+      } catch (_) {}
+      return prefs.getBool(dailyPrefKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setDailyEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(dailyPrefKey, value);
+  }
+
+  @visibleForTesting
+  static DailyAnswerTap? parseDailyTap(String? payload) {
+    if (payload == null || payload.isEmpty) return null;
+    try {
+      final d = jsonDecode(payload);
+      if (d is! Map) return null;
+      if (d['type']?.toString() != typeDailyAnswer) return null;
+      final elderId = (d['elderId'] ?? '').toString().trim();
+      if (elderId.isEmpty) return null;
+      final name = (d['elderName'] ?? '').toString().trim();
+      return DailyAnswerTap(
+        elderId: elderId,
+        elderName: name.isEmpty ? '長輩' : name,
+        questionId: int.tryParse((d['questionId'] ?? '').toString()),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 冷啟動：App 被殺死時點擊每日一問通知。與 [consumeLaunchTap] 各自獨立的「只消費一次」旗標。
+  static Future<void> consumeDailyLaunchTap() async {
+    if (kIsWeb || _dailyLaunchConsumed) return;
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details == null || !details.didNotificationLaunchApp) return;
+      final tap = parseDailyTap(details.notificationResponse?.payload);
+      if (tap == null) return;
+      _dailyLaunchConsumed = true;
+      if (!await LocationAlertNotification.isFamilyDevice()) return;
+      pendingDailyTap.value = tap;
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 讀取每日一問 launch details 失敗: $e');
+    }
+  }
+
+  /// 顯示「長輩回答了今天的小問題」。欄位對應後端 data：
+  /// elderId/elderName/questionId/question/answerText/hasAudio/answeredAt。
+  /// 角色守門（fail-closed）、開關、10 分鐘去重與打卡通知同一套；強度一般
+  /// （defaultImportance、不蓋屏、不繞勿擾、不改音量，硬規則 13）。
+  static Future<void> showDailyAnswer({
+    required String elderId,
+    required String elderName,
+    required String questionId,
+    required String question,
+    required String answerText,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      DartPluginRegistrant.ensureInitialized();
+
+      // 🔒 角色守門必須在任何初始化／顯示之前，fail-closed。
+      if (!await LocationAlertNotification.isFamilyDevice()) {
+        debugPrint('🔒 [CheckinNotification] 本機非確定的家屬端，略過每日一問通知');
+        return;
+      }
+      if (!await isDailyEnabled()) {
+        debugPrint('🔕 [CheckinNotification] 使用者已關閉每日一問通知');
+        return;
+      }
+
+      final dedupeKey = '$typeDailyAnswer|$elderId|$questionId';
+      if (seenRecently(dedupeKey)) {
+        debugPrint('♻️ [CheckinNotification] 重複事件略過: $dedupeKey');
+        return;
+      }
+
+      await _ensureInit();
+      await _ensureDailyChannel();
+
+      final name = elderName.trim().isEmpty ? '長輩' : elderName.trim();
+      final answer = answerText.trim();
+      final body = answer.isEmpty
+          ? '（語音回答）'
+          : (answer.length > 60 ? '${answer.substring(0, 60)}…' : answer);
+      final heading = '$name回答了今天的小問題';
+
+      // 專屬 id 區段（1.195e9～1.199e9：不與打卡 1.1e9～1.19e9、安心提醒 1.2e9～ 重疊）。
+      final int notificationId =
+          1195000000 + (_stableHash(dedupeKey) % 4000000);
+
+      final androidDetails = AndroidNotificationDetails(
+        dailyChannelId,
+        dailyChannelName,
+        channelDescription: dailyChannelDesc,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        styleInformation: BigTextStyleInformation(body, contentTitle: heading),
+        category: AndroidNotificationCategory.status,
+        // 🚫 不設 fullScreenIntent、不繞勿擾、不設鬧鐘音量。
+      );
+
+      await _plugin.show(
+        notificationId,
+        heading,
+        body,
+        NotificationDetails(android: androidDetails),
+        payload: jsonEncode(<String, String>{
+          'type': typeDailyAnswer,
+          'elderId': elderId,
+          'elderName': name,
+          'questionId': questionId,
+          'question': question,
+        }),
+      );
+      debugPrint('✅ [CheckinNotification] 已顯示 daily-answer questionId=$questionId');
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 每日一問通知顯示失敗: $e');
+    }
+  }
+
+  static Future<void> _ensureDailyChannel() async {
+    if (_dailyChannelCreated) return;
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        dailyChannelId,
+        dailyChannelName,
+        description: dailyChannelDesc,
+        importance: Importance.defaultImportance,
+        playSound: true,
+        enableVibration: true,
+      ));
+    }
+    _dailyChannelCreated = true;
+  }
+
+  /// 從 Socket／FCM 的 data map 顯示每日一問回答通知（camelCase 欄位兩邊相同）。
+  static Future<void> showDailyAnswerFromData(Map data) {
+    String s(String k) => (data[k] ?? '').toString();
+    return showDailyAnswer(
+      elderId: s('elderId'),
+      elderName: s('elderName'),
+      questionId: s('questionId'),
+      question: s('question'),
+      answerText: s('answerText'),
+    );
+  }
 
   static Future<bool> isEnabled() async {
     try {
@@ -166,6 +353,12 @@ class CheckinNotification {
   /// 供 `LocationAlertNotification._onResponse` 轉交——兩個類別共用全域 plugin 的單一
   /// 點擊回呼，最後 `initialize` 者獨佔，所以必須互相轉交，否則後註冊者會吞掉對方的點擊。
   static bool handleResponse(NotificationResponse response) {
+    // ★ 2026-10-07 每日一問：先認領每日一問通知（payload type=daily-answer）。
+    final dailyTap = parseDailyTap(response.payload);
+    if (dailyTap != null) {
+      pendingDailyTap.value = dailyTap;
+      return true;
+    }
     final tap = parseTap(response.payload);
     if (tap == null) return false;
     pendingTap.value = tap;

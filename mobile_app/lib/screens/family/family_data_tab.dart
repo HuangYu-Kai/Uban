@@ -269,6 +269,7 @@ class _FamilyDataTabState extends State<FamilyDataTab>
           elderId: elderId,
           elderName: name,
           familyUserName: widget.userName,
+          familyId: widget.userId,
         ),
       ),
     );

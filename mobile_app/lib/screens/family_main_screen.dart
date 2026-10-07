@@ -122,6 +122,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Function(dynamic)? _ownElderCheckinMissed;
   /// 遞增 token 推給首頁打卡卡片重讀（比照 `_questionRefreshToken`）。
   int _checkinRefreshToken = 0;
+  // ★ 2026-10-07 每日一問：長輩回答事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
+  Function(dynamic)? _ownDailyAnswer;
+  /// 遞增 token 推給互動分頁的每日一問卡片重讀。
+  int _dailyRefreshToken = 0;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
@@ -682,6 +686,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       setState(() => _checkinRefreshToken++);
     };
     _signaling.onElderCheckinMissed = _ownElderCheckinMissed;
+
+    // ★ 2026-10-07 每日一問：長輩回答了今天的小問題。補一則一般優先級本機通知
+    //    （角色守門／開關／去重都在 CheckinNotification.showDailyAnswer 內），並讓卡片重讀。
+    _ownDailyAnswer = (data) {
+      if (data is Map) CheckinNotification.showDailyAnswerFromData(data);
+      if (!mounted) return;
+      setState(() => _dailyRefreshToken++);
+    };
+    _signaling.onDailyAnswer = _ownDailyAnswer;
 
     _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
@@ -2368,6 +2381,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     if (identical(_signaling.onElderCheckinMissed, _ownElderCheckinMissed)) {
       _signaling.onElderCheckinMissed = null;
     }
+    if (identical(_signaling.onDailyAnswer, _ownDailyAnswer)) {
+      _signaling.onDailyAnswer = null;
+    }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
     }
@@ -2820,6 +2836,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   alertPreviewKey: _homeAlertPreviewKey,
                 ),
                 FamilyInteractionTab(
+                  dailyRefreshToken: _dailyRefreshToken,
                   currentElder: _currentElder,
                   signaling: _signaling,
                   monitorDevices: _monitorDevices,

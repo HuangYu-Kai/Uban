@@ -29,6 +29,8 @@ class CheckinApi {
     String? localDate,
     String? text,
     String? audioPath,
+    // ★ 2026-10-07 每日一問：回覆長輩某題的回答時帶上題目 id（後端 question_id，選填）。
+    int? questionId,
   }) async {
     try {
       final cleanText = (text ?? '').trim();
@@ -48,6 +50,7 @@ class CheckinApi {
       if (localDate != null && localDate.isNotEmpty) {
         request.fields['local_date'] = localDate;
       }
+      if (questionId != null) request.fields['question_id'] = questionId.toString();
       if (cleanText.isNotEmpty) request.fields['text'] = cleanText;
       if (audioPath != null) {
         final file = File(audioPath);
