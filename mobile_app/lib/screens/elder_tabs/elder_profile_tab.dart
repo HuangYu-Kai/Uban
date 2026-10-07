@@ -516,6 +516,7 @@ class _ElderProfileTabState extends State<ElderProfileTab>
     final celebration = await StreakService.syncToday(
       reminders: _reminders,
       completedIds: _completedReminderIds,
+      elderId: _myFriendElderId,
     );
     if (celebration == null || !mounted) return;
     // 抽屜若還開著就先收起來：否則按「去餵小豬」切到小豬分頁後，抽屜會還蓋在上面。

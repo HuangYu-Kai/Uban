@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../utils/display_text.dart';
+import '../screens/elder_tabs/streak/streak_service.dart';
 import 'elder_overlay_button.dart';
 import 'ui/pressable_scale.dart';
 import 'ui/uban_dialog.dart';
@@ -174,6 +175,8 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
         // 只有後端真的記錄成功才寫本機當日完成清單——這份清單同時餵給
         // 「我的」分頁與首頁卡片，寫錯了三個畫面會一起說謊。
         await _markCompletedLocally(widget.reminderId);
+        // 讓「我的」分頁的連勝卡重讀（後端打卡當下已寫好當天快照）。
+        StreakService.changes.value++;
       }
     } else {
       // reminderId <= 0：呼叫端（ElderReminderManager）在解析不出後端給的 id

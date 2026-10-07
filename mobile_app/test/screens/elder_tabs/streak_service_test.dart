@@ -1,11 +1,12 @@
 // 連勝紀錄（StreakService）單元測試：連續天數、跨週、中斷歸零、全部完成判斷、
-// 慶祝只放一次、取消打卡移除當天紀錄、胡蘿蔔數。
+// 慶祝只放一次、取消打卡移除當天紀錄、胡蘿蔔數、以後端校正本機（含慶祝天數）。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_application_1/screens/elder_tabs/streak/streak_service.dart';
 
 // 2026-10-01 是星期四；本週一是 09-28，週日是 10-04。
 final DateTime _thu = DateTime(2026, 10, 1, 9, 30);
+const String _elder = 'AB12';
 
 List<Map<String, dynamic>> _reminders(int n) => [
       for (var i = 1; i <= n; i++)
@@ -119,21 +120,42 @@ void main() {
   group('syncToday（讀寫 SharedPreferences）', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
+    // 後端讀不到：退回本機（離線情境）。
+    Future<List<String>> offline(String id, String until) async =>
+        throw Exception('offline');
+
     test('還沒全部完成：不寫入、不慶祝', () async {
       final c = await StreakService.syncToday(
-          reminders: _reminders(2), completedIds: {1}, now: _thu);
+          reminders: _reminders(2),
+          completedIds: {1},
+          elderId: _elder,
+          now: _thu,
+          fetchServerDates: offline);
       expect(c, isNull);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.containsKey('all_done_2026-10-01'), isFalse);
+      expect(prefs.containsKey(StreakService.doneKey(_elder, '2026-10-01')),
+          isFalse);
+    });
+
+    test('沒有 elderId：不寫入、不慶祝', () async {
+      final c = await StreakService.syncToday(
+          reminders: _reminders(1), completedIds: {1}, elderId: null, now: _thu);
+      expect(c, isNull);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getKeys(), isEmpty);
     });
 
     test('全部完成：寫入 all_done、回傳慶祝；同一天第二次不再慶祝', () async {
       SharedPreferences.setMockInitialValues({
-        'all_done_2026-09-30': true,
-        'all_done_2026-09-29': true,
+        StreakService.doneKey(_elder, '2026-09-30'): true,
+        StreakService.doneKey(_elder, '2026-09-29'): true,
       });
       final first = await StreakService.syncToday(
-          reminders: _reminders(3), completedIds: {1, 2, 3}, now: _thu);
+          reminders: _reminders(3),
+          completedIds: {1, 2, 3},
+          elderId: _elder,
+          now: _thu,
+          fetchServerDates: offline);
       expect(first, isNotNull);
       expect(first!.fromDays, 2);
       expect(first.toDays, 3);
@@ -143,77 +165,174 @@ void main() {
           reason: '慶祝開始時今天那格還沒補上');
 
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('all_done_2026-10-01'), isTrue);
+      expect(prefs.getBool(StreakService.doneKey(_elder, '2026-10-01')), isTrue);
 
       final second = await StreakService.syncToday(
-          reminders: _reminders(3), completedIds: {1, 2, 3}, now: _thu);
+          reminders: _reminders(3),
+          completedIds: {1, 2, 3},
+          elderId: _elder,
+          now: _thu,
+          fetchServerDates: offline);
       expect(second, isNull, reason: '今天已慶祝過');
+    });
+
+    test('慶祝的天數以後端為準：本機幽靈天被後端校正掉', () async {
+      SharedPreferences.setMockInitialValues({
+        // 本機以為前兩天都完成，後端只承認昨天。
+        StreakService.doneKey(_elder, '2026-09-30'): true,
+        StreakService.doneKey(_elder, '2026-09-29'): true,
+      });
+      final c = await StreakService.syncToday(
+        reminders: _reminders(1),
+        completedIds: {1},
+        elderId: _elder,
+        now: _thu,
+        fetchServerDates: (id, until) async => ['2026-09-30', '2026-10-01'],
+      );
+      expect(c, isNotNull);
+      expect(c!.fromDays, 1);
+      expect(c.toDays, 2);
+    });
+
+    test('後端說今天其實沒全部完成：不慶祝', () async {
+      final c = await StreakService.syncToday(
+        reminders: _reminders(1),
+        completedIds: {1},
+        elderId: _elder,
+        now: _thu,
+        fetchServerDates: (id, until) async => <String>[],
+      );
+      expect(c, isNull);
     });
 
     test('取消打卡：移除當天 all_done，連勝同步減少，且之後重打不會再慶祝', () async {
       await StreakService.syncToday(
-          reminders: _reminders(2), completedIds: {1, 2}, now: _thu);
-      var snap = await StreakService.load(now: _thu);
+          reminders: _reminders(2),
+          completedIds: {1, 2},
+          elderId: _elder,
+          now: _thu,
+          fetchServerDates: offline);
+      var snap = await StreakService.load(
+          now: _thu, elderId: _elder, fetchServerDates: offline);
       expect(snap.todayDone, isTrue);
 
       final undone = await StreakService.syncToday(
-          reminders: _reminders(2), completedIds: {1}, now: _thu);
+          reminders: _reminders(2),
+          completedIds: {1},
+          elderId: _elder,
+          now: _thu,
+          fetchServerDates: offline);
       expect(undone, isNull);
-      snap = await StreakService.load(now: _thu);
+      snap = await StreakService.load(
+          now: _thu, elderId: _elder, fetchServerDates: offline);
       expect(snap.todayDone, isFalse);
       expect(snap.days, 0);
 
       final again = await StreakService.syncToday(
-          reminders: _reminders(2), completedIds: {1, 2}, now: _thu);
+          reminders: _reminders(2),
+          completedIds: {1, 2},
+          elderId: _elder,
+          now: _thu,
+          fetchServerDates: offline);
       expect(again, isNull, reason: '慶祝旗標不清除，避免反覆取消／重打製造重複慶祝');
-      snap = await StreakService.load(now: _thu);
+      snap = await StreakService.load(
+          now: _thu, elderId: _elder, fetchServerDates: offline);
       expect(snap.todayDone, isTrue, reason: '但連勝紀錄會恢復');
     });
 
     test('寫入後 changes 通知遞增', () async {
       final before = StreakService.changes.value;
       await StreakService.syncToday(
-          reminders: _reminders(1), completedIds: {1}, now: _thu);
+          reminders: _reminders(1),
+          completedIds: {1},
+          elderId: _elder,
+          now: _thu,
+          fetchServerDates: offline);
       expect(StreakService.changes.value, greaterThan(before));
     });
   });
 
-  group('load 與後端聯集', () {
+  group('load 以後端為準', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    test('後端日期與本機取聯集並寫回本機', () async {
-      SharedPreferences.setMockInitialValues({'all_done_2026-09-30': true});
+    test('後端有、本機沒有的日期寫回本機；不合法格式忽略', () async {
+      SharedPreferences.setMockInitialValues(
+          {StreakService.doneKey(_elder, '2026-09-30'): true});
       final snap = await StreakService.load(
         now: _thu,
-        elderId: '1234',
+        elderId: _elder,
         fetchServerDates: (id, until) async {
-          expect(id, '1234');
+          expect(id, _elder);
           expect(until, '2026-10-01');
-          return ['2026-09-29', '2026-09-28', 'bad-date'];
+          return ['2026-09-30', '2026-09-29', '2026-09-28', 'bad-date'];
         },
       );
       expect(snap.days, 3);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('all_done_2026-09-29'), isTrue);
-      expect(prefs.containsKey('all_done_bad-date'), isFalse);
+      expect(prefs.getBool(StreakService.doneKey(_elder, '2026-09-29')), isTrue);
+      expect(prefs.containsKey(StreakService.doneKey(_elder, 'bad-date')),
+          isFalse);
+    });
+
+    test('本機有、後端沒有（窗口內）：視為幽靈天並刪除', () async {
+      SharedPreferences.setMockInitialValues({
+        StreakService.doneKey(_elder, '2026-09-30'): true,
+        StreakService.doneKey(_elder, '2026-09-29'): true,
+      });
+      final snap = await StreakService.load(
+        now: _thu,
+        elderId: _elder,
+        fetchServerDates: (id, until) async => <String>[],
+      );
+      expect(snap.days, 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey(StreakService.doneKey(_elder, '2026-09-30')),
+          isFalse);
     });
 
     test('後端失敗：只用本機、不丟例外', () async {
-      SharedPreferences.setMockInitialValues({'all_done_2026-09-30': true});
+      SharedPreferences.setMockInitialValues(
+          {StreakService.doneKey(_elder, '2026-09-30'): true});
       final snap = await StreakService.load(
         now: _thu,
-        elderId: '1234',
+        elderId: _elder,
         fetchServerDates: (id, until) async => throw Exception('offline'),
       );
       expect(snap.days, 1);
     });
 
-    test('mergeServerDates 只回傳本機沒有且格式合法者', () {
-      expect(
-        StreakService.mergeServerDates(
-            {'2026-09-30'}, ['2026-09-30', '2026-09-29', 'x']),
-        {'2026-09-29'},
+    test('不同長輩互不影響；舊版不帶 elderId 的鍵被清掉', () async {
+      SharedPreferences.setMockInitialValues({
+        StreakService.doneKey('OTHR', '2026-09-30'): true,
+        'all_done_2026-09-30': true,
+        'streak_celebrated_2026-09-30': true,
+      });
+      final snap = await StreakService.load(
+        now: _thu,
+        elderId: _elder,
+        fetchServerDates: (id, until) async => throw Exception('offline'),
       );
+      expect(snap.days, 0);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('all_done_2026-09-30'), isFalse);
+      expect(prefs.containsKey('streak_celebrated_2026-09-30'), isFalse);
+      expect(prefs.getBool(StreakService.doneKey('OTHR', '2026-09-30')), isTrue);
+    });
+
+    test('沒有 elderId：0 天', () async {
+      SharedPreferences.setMockInitialValues(
+          {StreakService.doneKey(_elder, '2026-09-30'): true});
+      expect((await StreakService.load(now: _thu)).days, 0);
+    });
+
+    test('reconcileWithServer：窗口外的本機日期保留', () {
+      final r = StreakService.reconcileWithServer(
+        {'2026-09-30', '2026-07-01'},
+        ['2026-09-29', 'x'],
+        _thu,
+      );
+      expect(r.add, {'2026-09-29'});
+      expect(r.remove, {'2026-09-30'}, reason: '07-01 超出 60 天窗口，不刪');
     });
   });
 }

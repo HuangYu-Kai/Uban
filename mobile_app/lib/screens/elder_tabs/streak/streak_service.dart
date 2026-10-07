@@ -69,17 +69,23 @@ class StreakCelebration {
 
 /// 連勝紀錄（新功能）：每天「所有提醒都完成」就算一天，連續天數往回數。
 ///
-/// - 存 SharedPreferences `all_done_<yyyy-MM-dd>`（本機日期，與
-///   `completed_tasks_<yyyy-MM-dd>` 同一種日期寫法）；`load` 傳入 elderId 時會再與後端
-///   `all-done-dates` 取聯集（跨裝置），並把後端日期寫回本機鍵供離線顯示。
-/// - `streak_celebrated_<yyyy-MM-dd>` 記錄今天是否已放過慶祝，避免同一天重複。
+/// - **後端是權威**：`GET /reminder/elder/{id}/all-done-dates` 回傳最近 [serverWindowDays]
+///   天的「全部完成」日（後端在打卡當下寫快照，事後停用／刪除提醒不會回溯改寫）。
+///   後端讀得到時，窗口內本機有、後端沒有的日期一律刪掉——過去只增不減，幽靈天會永久存在。
+/// - 本機 SharedPreferences `all_done_<elderId>_<yyyy-MM-dd>` 只是離線快取與窗口外的延續；
+///   鍵帶 elderId，同一支手機換過長輩帳號不會繼承別人的天數。舊的不帶 elderId 的鍵
+///   （`all_done_<date>`／`streak_celebrated_<date>`）在 [load] 時清掉、不再採用。
+/// - `streak_celebrated_<elderId>_<yyyy-MM-dd>` 記錄今天是否已放過慶祝，避免同一天重複。
 /// - 這個類別只做資料與判斷，不碰畫面、不改打卡本身的邏輯。
 class StreakService {
   StreakService._();
 
   static const String allDonePrefix = 'all_done_';
   static const String celebratedPrefix = 'streak_celebrated_';
+  static const int serverWindowDays = 60;
   static const List<String> weekLabels = ['一', '二', '三', '四', '五', '六', '日'];
+
+  static final RegExp _dateRe = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
   /// 每次寫入連勝紀錄後遞增，讓已建好的畫面（IndexedStack 保活的「我的」）重讀。
   static final ValueNotifier<int> changes = ValueNotifier<int>(0);
@@ -89,6 +95,12 @@ class StreakService {
     String p(int n, int w) => n.toString().padLeft(w, '0');
     return '${p(d.year, 4)}-${p(d.month, 2)}-${p(d.day, 2)}';
   }
+
+  static String doneKey(String elderId, String day) =>
+      '$allDonePrefix${elderId}_$day';
+
+  static String celebratedKey(String elderId, String day) =>
+      '$celebratedPrefix${elderId}_$day';
 
   /// 往前（負）或往後（正）[delta] 天，用日曆日運算避開夏令時間的 24 小時誤差。
   static DateTime shiftDay(DateTime d, int delta) =>
@@ -147,20 +159,35 @@ class StreakService {
     return n < 1 ? 1 : n;
   }
 
-  static Future<Set<String>> _readDoneKeys(SharedPreferences prefs) async {
+  static Set<String> _readDoneKeys(SharedPreferences prefs, String elderId) {
+    final prefix = '$allDonePrefix${elderId}_';
     final out = <String>{};
     for (final k in prefs.getKeys()) {
-      if (k.startsWith(allDonePrefix) && prefs.getBool(k) == true) {
-        out.add(k.substring(allDonePrefix.length));
+      if (k.startsWith(prefix) && prefs.getBool(k) == true) {
+        final d = k.substring(prefix.length);
+        if (_dateRe.hasMatch(d)) out.add(d);
       }
     }
     return out;
   }
 
+  /// 清掉舊版不帶 elderId 的鍵（`all_done_<date>`／`streak_celebrated_<date>`）：
+  /// 它們分不出是哪位長輩的，繼續採用就會把別人的天數算進來。
+  static Future<void> _purgeLegacyKeys(SharedPreferences prefs) async {
+    for (final k in prefs.getKeys().toList()) {
+      for (final prefix in const [allDonePrefix, celebratedPrefix]) {
+        if (k.startsWith(prefix) && _dateRe.hasMatch(k.substring(prefix.length))) {
+          await prefs.remove(k);
+        }
+      }
+    }
+  }
+
   /// 讀取連勝卡資料。
   ///
-  /// 有 [elderId] 時額外向後端要「全部完成」的日期，與本機取聯集並寫回本機
-  /// `all_done_` 鍵；後端失敗只用本機。[fetchServerDates] 供單元測試注入。
+  /// 沒有 [elderId]（還沒解析出長輩）時回傳 0 天、不讀本機——等 id 出來再讀。
+  /// 後端讀取成功：窗口內以後端為準（同步增刪本機鍵）；失敗才只用本機。
+  /// [fetchServerDates] 供單元測試注入。
   static Future<StreakSnapshot> load({
     DateTime? now,
     String? elderId,
@@ -168,52 +195,76 @@ class StreakService {
         fetchServerDates,
   }) async {
     final t = now ?? DateTime.now();
+    if (elderId == null || elderId.isEmpty) return buildSnapshot({}, t);
     final prefs = await SharedPreferences.getInstance();
-    var keys = await _readDoneKeys(prefs);
-    if (elderId != null && elderId.isNotEmpty) {
-      try {
-        final until = dayKey(t);
-        final fetch = fetchServerDates ??
-            (id, u) => ApiService.getAllDoneDates(id, until: u, days: 60);
-        final server = await fetch(elderId, until);
-        final fresh = mergeServerDates(keys, server);
-        for (final d in fresh) {
-          await prefs.setBool('$allDonePrefix$d', true);
-        }
-        if (fresh.isNotEmpty) keys = {...keys, ...fresh};
-      } catch (e) {
-        debugPrint('⚠️ [StreakService] 後端連勝日期讀取失敗，僅用本機: $e');
+    await _purgeLegacyKeys(prefs);
+    var keys = _readDoneKeys(prefs, elderId);
+    try {
+      final until = dayKey(t);
+      final fetch = fetchServerDates ??
+          (id, u) =>
+              ApiService.getAllDoneDates(id, until: u, days: serverWindowDays);
+      final server = await fetch(elderId, until);
+      final r = reconcileWithServer(keys, server, t);
+      for (final d in r.add) {
+        await prefs.setBool(doneKey(elderId, d), true);
       }
+      for (final d in r.remove) {
+        await prefs.remove(doneKey(elderId, d));
+      }
+      keys = {...keys.difference(r.remove), ...r.add};
+    } catch (e) {
+      debugPrint('⚠️ [StreakService] 後端連勝日期讀取失敗，僅用本機: $e');
     }
     return buildSnapshot(keys, t);
   }
 
-  /// 純函式：後端日期中「本機還沒有」且格式合法的部分（需寫回本機）。
-  static Set<String> mergeServerDates(
-      Set<String> local, Iterable<String> server) {
-    final re = RegExp(r'^\d{4}-\d{2}-\d{2}$');
-    return {
+  /// 純函式：後端在窗口（今天往回 [serverWindowDays] 天）內是權威。
+  /// 回傳要寫入本機的日期（後端有、本機沒有、格式合法）與要刪掉的日期
+  /// （窗口內本機有、後端沒有）。窗口外的本機日期保留，讓超過 60 天的連勝能延續。
+  static ({Set<String> add, Set<String> remove}) reconcileWithServer(
+      Set<String> local, Iterable<String> server, DateTime now) {
+    final serverSet = {
       for (final d in server)
-        if (re.hasMatch(d) && !local.contains(d)) d,
+        if (_dateRe.hasMatch(d)) d,
     };
+    final today = DateTime(now.year, now.month, now.day);
+    final windowStart = dayKey(shiftDay(today, -(serverWindowDays - 1)));
+    final until = dayKey(today);
+    return (
+      add: serverSet.difference(local),
+      remove: {
+        for (final d in local)
+          if (d.compareTo(windowStart) >= 0 &&
+              d.compareTo(until) <= 0 &&
+              !serverSet.contains(d))
+            d,
+      },
+    );
   }
 
   /// 打卡「成功之後」呼叫：依今天的提醒完成狀況更新紀錄。
   ///
-  /// - 全部完成：寫入 `all_done_<今天>`；若今天尚未慶祝過，回傳 [StreakCelebration]
-  ///   並標記已慶祝。
+  /// - 全部完成：寫入今天的 `all_done`；若今天尚未慶祝過，**以後端校正後的天數**
+  ///   （[load]）組成 [StreakCelebration] 回傳並標記已慶祝——慶祝畫面上的「連續 N 天」
+  ///   與「我的」分頁連勝卡是同一個數字。後端若說今天其實沒全部完成，就不慶祝。
   /// - 尚未全部完成（含取消打卡）：移除今天的 `all_done`，連勝才不會被取消後的
   ///   狀態灌水；慶祝旗標不清除，避免反覆取消／重打製造重複慶祝。
-  /// 任何 SharedPreferences 例外都吞掉並回傳 null——連勝是附加功能，不能影響打卡。
+  /// - 沒有 [elderId] 不寫也不慶祝。
+  /// 任何例外都吞掉並回傳 null——連勝是附加功能，不能影響打卡。
   static Future<StreakCelebration?> syncToday({
     required List<Map<String, dynamic>> reminders,
     required Set<int> completedIds,
+    required String? elderId,
     DateTime? now,
+    Future<List<String>> Function(String elderId, String until)?
+        fetchServerDates,
   }) async {
     try {
+      if (elderId == null || elderId.isEmpty) return null;
       final t = now ?? DateTime.now();
       final prefs = await SharedPreferences.getInstance();
-      final key = '$allDonePrefix${dayKey(t)}';
+      final key = doneKey(elderId, dayKey(t));
       final allDone = allDoneToday(reminders, completedIds, t);
 
       if (!allDone) {
@@ -226,13 +277,19 @@ class StreakService {
 
       final wasMarked = prefs.getBool(key) == true;
       await prefs.setBool(key, true);
-      if (!wasMarked) changes.value++;
 
-      final celebratedKey = '$celebratedPrefix${dayKey(t)}';
-      if (prefs.getBool(celebratedKey) == true) return null;
-      await prefs.setBool(celebratedKey, true);
+      final celebrated = celebratedKey(elderId, dayKey(t));
+      if (prefs.getBool(celebrated) == true) {
+        if (!wasMarked) changes.value++;
+        return null;
+      }
 
-      final snap = buildSnapshot(await _readDoneKeys(prefs), t);
+      final snap = await load(
+          now: t, elderId: elderId, fetchServerDates: fetchServerDates);
+      changes.value++;
+      if (!snap.todayDone) return null;
+      await prefs.setBool(celebrated, true);
+
       final checkins = groupByStatus(reminders, completedIds, t).done.length;
       return StreakCelebration(
         fromDays: snap.days - 1,
