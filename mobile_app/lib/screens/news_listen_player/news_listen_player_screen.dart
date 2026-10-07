@@ -68,8 +68,18 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
   // 小豬對話框縮放動畫
   late Animation<double> _pigScaleAnim;
 
+  /// ★ 2026-10-07 喚醒詞修正：是否由本畫面把 isMediaPlayingNotifier 設成 true。
+  bool _setMediaFlag = false;
+
   @override
   void dispose() {
+    // ★ 2026-10-07 喚醒詞修正：新聞播放中直接離開本頁時，播放器停止的回呼會被
+    //   下方 `if (!mounted) return` 擋掉，旗標永遠卡在 true，首頁「嘿嘎蛙」喚醒詞
+    //   就一直被暫停到 App 重開。離開時若旗標是本頁設的，必須還原。
+    if (_setMediaFlag) {
+      _setMediaFlag = false;
+      isMediaPlayingNotifier.value = false;
+    }
     _newsScrollController.dispose();
     _audioPlayer.dispose();
     _aiAudioPlayer.dispose();
@@ -135,6 +145,7 @@ class _NewsListenPlayerScreenState extends State<NewsListenPlayerScreen>
       if (!mounted) return;
       final playing = state == PlayerState.playing;
       isMediaPlayingNotifier.value = playing;
+      _setMediaFlag = playing;
       setState(() => _isPlaying = playing);
     });
 
