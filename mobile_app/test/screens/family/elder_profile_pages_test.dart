@@ -57,7 +57,7 @@ class FakeGateway {
           }
           return r;
         },
-        deleteTopic: (tid) async {
+        deleteTopic: (tid, _) async {
           deletes.add(tid);
           final r = deleteResult ?? {'status': 'success', 'data': {}};
           if (r['status'] == 'success') {

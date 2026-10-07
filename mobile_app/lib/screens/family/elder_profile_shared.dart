@@ -22,7 +22,7 @@ class ElderProfileGateway {
   /// 新增話題（`priority`／`avoid`／`forbidden`）。
   final Future<Map<String, dynamic>> Function(String elderId, String keyword, String type) addTopic;
 
-  final Future<Map<String, dynamic>> Function(int topicId) deleteTopic;
+  final Future<Map<String, dynamic>> Function(int topicId, String elderId) deleteTopic;
 
   const ElderProfileGateway({
     required this.load,

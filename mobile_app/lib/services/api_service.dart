@@ -257,7 +257,8 @@ class ApiService {
   static Future<Map<String, dynamic>> getTalkTopics(String elderId) => ElderDataApi.getTalkTopics(elderId);
   static Future<Map<String, dynamic>> createTalkTopic(String elderId, String keyword, String topicType) =>
       ElderDataApi.createTalkTopic(elderId, keyword, topicType);
-  static Future<Map<String, dynamic>> deleteTalkTopic(int topicId) => ElderDataApi.deleteTalkTopic(topicId);
+  static Future<Map<String, dynamic>> deleteTalkTopic(int topicId, String elderId) =>
+      ElderDataApi.deleteTalkTopic(topicId, elderId);
 
   // --- Family Insight（情緒／健康趨勢真實資料，第四十九輪）---
   static Future<Map<String, dynamic>> getStepsTrend(

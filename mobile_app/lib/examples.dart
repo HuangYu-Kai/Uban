@@ -2,7 +2,7 @@
 
 /// 示例 1: 在 Dashboard 中使用健康儀表板
 void exampleHealthDashboard() {
-  // family_dashboard_view.dart 已自動集成
+  // （family_dashboard_view.dart 已於 ★ 2026-10-07 收尾 移除，功能由 family_main_screen 承接）
   // 組件會在首屏自動顯示
   // 顯示長者的實時健康數據
 }

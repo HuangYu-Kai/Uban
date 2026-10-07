@@ -366,10 +366,12 @@ class ElderDataApi {
     }
   }
 
-  static Future<Map<String, dynamic>> deleteTalkTopic(int topicId) async {
+  static Future<Map<String, dynamic>> deleteTalkTopic(int topicId, String elderId) async {
     try {
+      // ★ 2026-10-07 收尾：後端要求 elder_id 必填（話題歸屬驗證），GET／PATCH 單筆同理。
       final response = await http
-          .delete(Uri.parse('${ApiClient.baseUrl}/ai/topics/$topicId'))
+          .delete(Uri.parse(
+              '${ApiClient.baseUrl}/ai/topics/$topicId?elder_id=${Uri.encodeQueryComponent(elderId)}'))
           .timeout(ApiClient.timeout);
       return _normalizeResult(response);
     } on TimeoutException {
