@@ -65,7 +65,7 @@ class CommunityPost {
   final DateTime createdAt;
   final int likeCount;
   final bool isLiked;
-  final List<String> likedBy; // 按過爪印的人名（後端 liked_by）
+  final List<String> likedBy; // 按過讚的人名（後端 liked_by）
   final List<CommunityComment> comments;
 
   const CommunityPost({

@@ -489,6 +489,13 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-07 交接 A：回憶錄改名、每日一問併入 AI 照護秘書、家庭近況卡、家屬社群修正（`feat/handover-a` 分支）
+
+- **A1 改名**：家屬看得到的「人生故事」全改「回憶錄」；首頁近況分析第三分頁改「情緒與回憶錄」。類別與檔名不動。
+- **A2 每日一問併入秘書（前端）**：互動分頁移除每日一問卡與 `dailyRefreshToken`（刪除 `daily_question_card.dart`；`daily_question_screen.dart` 保留，內含 `resolveFamilyId`／`DailyAudioButton`／出題對話框供共用）。秘書快捷鈕改為「分享近況／問近況／想問○○一個問題」（預填「想問{稱呼}：」）；後端回 `question_draft`（意圖 `ASK_DAILY_QUESTION`）時顯示出題卡（新增 `family/family_question_draft.dart`），按「交給小嘎問」才呼叫既有 `POST /api/daily_question/ask`，成功顯示「小嘎會在○○下次聊天時問」、失敗顯示真實原因。打開秘書時讀 `GET /api/daily_question/history`，近 7 天、本機未看過（`copilot_seen_daily_answers_<elderId>`）的回答以秘書訊息轉告，有語音附播放鈕。`daily-answer` 通知點擊改開秘書（`onDailyAnswer` 註冊不變）。
+- **A3 家庭近況卡**：互動分頁秘書卡下方新增「家庭近況」卡，開啟 `ElderCommunityScreen`；秘書右上「分享紀錄」移除。
+- **A4 家屬社群**：家屬入口不再有朋友分頁、不顯示「只有家人和認識的朋友」提示條（`ElderCommunityScreen.isFamilyMode`）；「爪印」改「讚」（❤️）；修 `author_role`：發文／留言改依真實登入角色送出（家屬模式一律 `family`，否則讀 `user_role`／`saved_role`，讀不到才 `elder`）。
+
 ### 2026-10-07 💬 家人分享經由小嘎轉達；家屬首頁「近況分析」
 
 - **家屬互動分頁三合一**：「留言給 XX」與「家庭生活時光牆」兩張卡移除，「AI 照護秘書」成為唯一入口（快捷鈕：分享近況、問近況、設提醒）。秘書可附照片；說「跟媽說我升職了」或附照片會出現「分享草稿卡」，可修改，按「送出給○○」才存檔（存成時光牆貼文）。右上「分享紀錄」開原本的時光牆畫面。

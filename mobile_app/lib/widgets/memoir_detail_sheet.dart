@@ -9,7 +9,7 @@ import '../theme/family_theme.dart';
 import '../screens/family/widgets/fam_data_ui.dart';
 import '../screens/family/widgets/fam_ui.dart';
 
-/// 長輩人生故事膠囊詳細視窗 (MemoirDetailSheet)
+/// 長輩回憶錄膠囊詳細視窗 (MemoirDetailSheet)
 ///
 /// 提供懷舊繪本式排版、長輩原聲語音播放模擬（具備聲波動畫）、
 /// 完整文字、以及子女「給長輩的悄悄話筆記」留言互動區。

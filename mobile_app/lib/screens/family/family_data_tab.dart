@@ -19,7 +19,7 @@ import '../../widgets/error_boundary.dart';
 
 /// ⚙️ 子女端「資料與設定」Tab (FamilyDataTab)
 /// 包含：照顧者資訊、關照長輩完整檔案、AI 陪伴偏好、安全通知設定、裝置與訂閱管理
-/// （健康／外出／情緒與人生故事的分析已移到首頁「近況分析」卡片，本分頁以設定為主）
+/// （健康／外出／情緒與回憶錄的分析已移到首頁「近況分析」卡片，本分頁以設定為主）
 ///
 /// 2026-10 起外觀改家屬新設計（海灣藍）：`.me-card`、`.group2`／`.setrow`（不放圖示方塊）、
 /// `.entry`、`.story`；對話框改 [UbanDialog]（經 [showFamDialog]，內容與回傳值不變）。
@@ -602,7 +602,7 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 ErrorBoundary(name: '長輩檔案摘要卡片', builder: () => _buildElderSummaryCard()),
                 const SizedBox(height: 14),
 
-                // 健康／外出／情緒與人生故事的分析已移到首頁的「近況分析」卡片
+                // 健康／外出／情緒與回憶錄的分析已移到首頁的「近況分析」卡片
                 // （見 home/widgets/home_analysis_card.dart），本分頁只放設定。
                 // 4. 長輩互動與對話偏好 (Companion Preferences)
                 ErrorBoundary(name: 'AI 互動偏好卡片', builder: () => _buildAiHelperCard()),

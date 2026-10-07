@@ -95,4 +95,30 @@ void main() {
         reason: '文案必須與 friends_screen.dart 既有的 _buildAddFriendButton 一致（「加好友」），'
             '不要另外造一個「加朋友」的說法');
   });
+
+  // ★ 2026-10-07 交接 A4：家屬模式——只有家庭動態（無朋友分頁）、無「只有家人和認識的朋友」提示條。
+  Future<void> pumpMode(WidgetTester tester, {required bool family}) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ElderCommunityScreen(
+        userId: 1,
+        userName: '測試',
+        isFamilyMode: family,
+      ),
+    ));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+  }
+
+  testWidgets('家屬模式：沒有朋友分頁、沒有「這裡只有家人和認識的朋友」提示條', (tester) async {
+    await pumpMode(tester, family: true);
+    expect(find.byType(Tab), findsNothing);
+    expect(find.text('這裡只有家人和認識的朋友'), findsNothing);
+    expect(find.text('分享我的近況'), findsOneWidget);
+  });
+
+  testWidgets('長輩模式：仍顯示提示條（行為不變）', (tester) async {
+    await pumpMode(tester, family: false);
+    expect(find.text('這裡只有家人和認識的朋友'), findsOneWidget);
+  });
 }

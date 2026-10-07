@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/community_post.dart';
 import '../services/api_service.dart';
@@ -39,6 +40,11 @@ class ElderCommunityScreen extends StatefulWidget {
   final String familyTabLabel;
   final Widget? friendTabContent;
 
+  // ★ 2026-10-07 交接 A4：家屬模式。家屬端入口（互動分頁「家庭近況」卡）傳 true：
+  //   不顯示「這裡只有家人和認識的朋友」提示條，且發文／留言一律以 'family' 身分送出
+  //   （修掉原本寫死 'elder' 讓家屬被標成「長輩」的 bug）。預設 false＝長輩端行為不變。
+  final bool isFamilyMode;
+
   // ★ 第四十一輪（item 2）：新手指引用的高光目標 GlobalKey，全部選填。由上層
   //   ElderHomeScreen 持有並傳入，傳 null 時完全不影響現有畫面。
   //   firstPostLikeKey / firstPostCommentKey 只點亮「大家的近況」清單第一則
@@ -56,6 +62,7 @@ class ElderCommunityScreen extends StatefulWidget {
     this.showFriendTab = false,
     this.familyTabLabel = '家人',
     this.friendTabContent,
+    this.isFamilyMode = false,
     this.privacyCardKey,
     this.createPostButtonKey,
     this.firstPostLikeKey,
@@ -95,6 +102,19 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
     if (widget.showFriendTab && widget.friendTabContent == null) {
       _loadMyFriendElderId();
     }
+  }
+
+  /// ★ 2026-10-07 交接 A4：發文／留言送出的 author_role。
+  /// 家屬模式一律 'family'；否則讀本機登入角色（`user_role`／`saved_role`），
+  /// 是 family 就送 family，其餘（含讀不到）才退回長輩端預設 'elder'。
+  Future<String> _resolveAuthorRole() async {
+    if (widget.isFamilyMode) return 'family';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('user_role') ?? prefs.getString('saved_role');
+      if (role == 'family') return 'family';
+    } catch (_) {}
+    return 'elder';
   }
 
   Future<void> _loadMyFriendElderId() async {
@@ -382,7 +402,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                           final posts = await _communityService.createPost(
                             userId: widget.userId,
                             userName: widget.userName,
-                            userRole: 'elder',
+                            userRole: await _resolveAuthorRole(),
                             familyId: widget.familyId,
                             content: controller.text.isEmpty
                                 ? '分享了生活照片'
@@ -575,7 +595,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                                 final posts = await _communityService.addComment(
                                   userId: widget.userId,
                                   userName: widget.userName,
-                                  userRole: 'elder',
+                                  userRole: await _resolveAuthorRole(),
                                   familyId: widget.familyId,
                                   postId: post.id,
                                   message: controller.text.trim(),
@@ -815,8 +835,11 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 132),
               children: [
-                _buildPrivacyCard(),
-                const SizedBox(height: 14),
+                // ★ 2026-10-07 交接 A4：家屬模式不顯示「只有家人和認識的朋友」提示條。
+                if (!widget.isFamilyMode) ...[
+                  _buildPrivacyCard(),
+                  const SizedBox(height: 14),
+                ],
                 _buildCreatePostButton(),
                 const SizedBox(height: 20),
                 Text('大家的近況', style: ubanText(22, FontWeight.w900, c.text)),

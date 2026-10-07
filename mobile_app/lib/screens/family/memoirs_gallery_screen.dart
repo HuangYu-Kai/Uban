@@ -317,7 +317,7 @@ class _MemoirsGalleryScreenState extends State<MemoirsGalleryScreen> {
       backgroundColor: c.bg,
       appBar: famSubBar(
         context,
-        title: '${widget.elderName}的人生故事',
+        title: '${widget.elderName}的回憶錄',
         trailing: [
           // 模式切換（列表 vs 翻頁自傳書）
           FamIconButton(

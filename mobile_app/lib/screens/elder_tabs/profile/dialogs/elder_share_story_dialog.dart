@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../models/memoir_story.dart';
 import '../../../../services/memoir_service.dart';
 
-/// 顯示長輩口述人生故事分享彈窗
+/// 顯示長輩口述回憶錄分享彈窗
 void showElderShareStoryDialog({
   required BuildContext context,
   required String promptQuestion,
@@ -245,7 +245,7 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '人生故事已珍藏！AI 已自動歸檔至「$_aiTag」❤️',
+                '回憶錄已珍藏！AI 已自動歸檔至「$_aiTag」❤️',
                 style: GoogleFonts.notoSansTc(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -302,7 +302,7 @@ class _ElderShareStoryDialogState extends State<ElderShareStoryDialog>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '口述人生故事膠囊',
+                          '口述回憶錄膠囊',
                           style: GoogleFonts.notoSansTc(
                             fontSize: 19,
                             fontWeight: FontWeight.w900,

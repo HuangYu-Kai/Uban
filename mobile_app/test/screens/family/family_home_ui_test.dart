@@ -186,7 +186,7 @@ void main() {
             MemoirStory(
               id: 'm$i',
               elderId: id,
-              title: '這是一個故意取得很長很長很長很長很長很長很長的人生故事標題 $i',
+              title: '這是一個故意取得很長很長很長很長很長很長很長的回憶錄標題 $i',
               tag: '經典回憶與奮鬥歲月',
               preview: '',
               fullStory: '',
@@ -206,10 +206,10 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(tester.takeException(), isNull);
       expect(find.textContaining('外出 4 天，共 6 次'), findsOneWidget);
-      await tester.tap(find.text('情緒與故事'));
+      await tester.tap(find.text('情緒與回憶錄'));
       await tester.pump(const Duration(seconds: 1));
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('已珍藏 3 篇人生故事'), findsOneWidget);
+      expect(find.textContaining('已珍藏 3 篇回憶錄'), findsOneWidget);
       expect(find.text('委託小豬提問'), findsOneWidget);
     });
   }

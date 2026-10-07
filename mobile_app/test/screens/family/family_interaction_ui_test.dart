@@ -137,7 +137,12 @@ void main() {
     expect(find.text('AI 照護秘書'), findsOneWidget);
     expect(find.text('分享近況'), findsOneWidget);
     expect(find.text('問近況'), findsOneWidget);
-    expect(find.text('設提醒'), findsOneWidget);
+    // ★ 2026-10-07 交接 A2：第三顆快捷鈕改為「想問○○一個問題」。
+    expect(find.text('想問${elder.displayName}一個問題'), findsOneWidget);
+    expect(find.text('設提醒'), findsNothing);
+    // 每日一問卡已移除；A3 新增「家庭近況」卡。
+    expect(find.text('每日一問'), findsNothing);
+    expect(find.text('家庭近況'), findsOneWidget);
     expect(find.text('家庭生活時光牆'), findsNothing);
     expect(find.textContaining('留言給'), findsNothing);
     expect(find.byTooltip('送出'), findsNothing);
@@ -152,6 +157,19 @@ void main() {
     await tester.pump(const Duration(milliseconds: 800));
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller!.text, '跟${elder.displayName}說：');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('點「想問○○一個問題」開啟秘書並預填「想問{稱呼}：」', (tester) async {
+    await pumpCase(tester, interactionTab(), dark: false);
+    final chip = find.text('想問${elder.displayName}一個問題');
+    await tester.ensureVisible(chip);
+    await tester.pump();
+    await tester.tap(chip);
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(milliseconds: 800));
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, '想問${elder.displayName}：');
     expect(tester.takeException(), isNull);
   });
 
