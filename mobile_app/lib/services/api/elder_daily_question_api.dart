@@ -82,8 +82,27 @@ class ElderDailyQuestionApi {
   static const String networkErrorMessage = '目前連不上伺服器，請稍後再試一次';
 
   /// 長輩端 App 內刷新訊號：Socket `daily-question-new`、回答成功後遞增，
-  /// 首頁卡片監聽後重讀（不放進 Signaling，避免顯示狀態旗標，見護欄）。
+  /// 外殼（elder_home_screen）監聽後重讀並更新 [hasUnanswered]
+  /// （不放進 Signaling，避免顯示狀態旗標，見護欄）。
   static final ValueNotifier<int> refreshSignal = ValueNotifier<int>(0);
+
+  /// ★ 2026-10-07 每日一問改留聊天：今天的題目存在且尚未回答 → true，
+  /// 底部導覽「聊天」分頁顯示小紅點。只有回答後才會變 false（切到聊天分頁不清除）。
+  static final ValueNotifier<bool> hasUnanswered = ValueNotifier<bool>(false);
+
+  /// 讀 GET /daily_question/today 更新 [hasUnanswered]。
+  /// 失敗（網路／非 success）保留前一個值，避免紅點閃爍；成功但沒有題目 → false。
+  static Future<void> refreshBadge(Object elderId) async {
+    try {
+      final res = await ApiClient.get('/daily_question/today?elder_id=$elderId');
+      if (res == null || res['status'] != 'success') return;
+      final data = res['data'];
+      final q = data is Map ? DailyQuestion.tryParse(data['question']) : null;
+      hasUnanswered.value = q != null && !q.answered;
+    } catch (e) {
+      debugPrint('⚠️ ElderDailyQuestionApi.refreshBadge error: $e');
+    }
+  }
 
   /// 讀取今天的問題；沒有題目或失敗一律回 null（不打擾長輩）。
   static Future<DailyQuestion?> getToday(Object elderId) async {

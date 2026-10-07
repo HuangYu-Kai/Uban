@@ -16,11 +16,18 @@ class UbanNavItem {
   /// 掛在該項的 GestureDetector 上（外部教學／spotlight 用的 GlobalKey）。
   final Key? key;
 
+  /// ★ 2026-10-07 每日一問改留聊天：true 時在圖示右上角畫小紅點，
+  /// 無障礙標籤改為「$label，$badgeLabel」。
+  final bool showBadge;
+  final String badgeLabel;
+
   const UbanNavItem({
     required this.icon,
     required this.selectedIcon,
     required this.label,
     this.key,
+    this.showBadge = false,
+    this.badgeLabel = '',
   });
 }
 
@@ -189,7 +196,9 @@ class _UbanGlassNavBarState extends State<UbanGlassNavBar>
       child: Semantics(
         button: true,
         selected: selected,
-        label: item.label,
+        label: item.showBadge && item.badgeLabel.isNotEmpty
+            ? '${item.label}，${item.badgeLabel}'
+            : item.label,
         excludeSemantics: true,
         child: Padding(
           padding: const EdgeInsets.only(top: 9),
@@ -198,14 +207,39 @@ class _UbanGlassNavBarState extends State<UbanGlassNavBar>
             children: [
               SizedBox(
                 height: 38,
-                child: Center(
-                  child: AnimatedBuilder(
-                    animation: _pop,
-                    builder: (context, child) =>
-                        Transform.scale(scale: _popScale(i), child: child),
-                    child: Icon(selected ? item.selectedIcon : item.icon,
-                        size: 27, color: color),
-                  ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Center(
+                      child: AnimatedBuilder(
+                        animation: _pop,
+                        builder: (context, child) =>
+                            Transform.scale(scale: _popScale(i), child: child),
+                        child: Icon(selected ? item.selectedIcon : item.icon,
+                            size: 27, color: color),
+                      ),
+                    ),
+                    // ★ 2026-10-07 每日一問改留聊天：小紅點（12px，疊在圖示右上，
+                    // 不佔版面、不吃點擊，不會造成溢位）。
+                    if (item.showBadge)
+                      Positioned(
+                        top: 3,
+                        right: 0,
+                        child: IgnorePointer(
+                          child: Container(
+                            key: const ValueKey('nav_badge_dot'),
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE53935),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: c.glass, width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 3),
