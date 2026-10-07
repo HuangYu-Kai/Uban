@@ -246,8 +246,18 @@ class ApiService {
   static Future<Map<String, dynamic>> uploadImage(String filePath) =>
       ElderDataApi.uploadImage(filePath);
 
-  static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10}) =>
-      ElderDataApi.getElderActivityLogs(elderId, limit: limit);
+  static Future<List<dynamic>> getElderActivityLogs(String elderId, {int limit = 10, int? familyId}) =>
+      ElderDataApi.getElderActivityLogs(elderId, limit: limit, familyId: familyId);
+
+  // ★ 2026-10-07 交接 B1：長輩檔案／對話偏好頁用（部分更新＋話題偏好）
+  static String failureMessageOf(Map<String, dynamic>? r, {String fallback = '儲存失敗，請稍後再試'}) =>
+      ElderDataApi.failureMessageOf(r, fallback: fallback);
+  static Future<Map<String, dynamic>> putProfileFields(int userId, Map<String, dynamic> fields) =>
+      ElderDataApi.putProfileFields(userId, fields);
+  static Future<Map<String, dynamic>> getTalkTopics(String elderId) => ElderDataApi.getTalkTopics(elderId);
+  static Future<Map<String, dynamic>> createTalkTopic(String elderId, String keyword, String topicType) =>
+      ElderDataApi.createTalkTopic(elderId, keyword, topicType);
+  static Future<Map<String, dynamic>> deleteTalkTopic(int topicId) => ElderDataApi.deleteTalkTopic(topicId);
 
   // --- Family Insight（情緒／健康趨勢真實資料，第四十九輪）---
   static Future<Map<String, dynamic>> getStepsTrend(
@@ -365,11 +375,13 @@ class ApiService {
     required int userId,
     String? status,
     int limit = 20,
+    int? days, // ★ 2026-10-07 交接 D4：首頁帶 30（滑掉紀錄只保留 30 天，警報不限天數會重現）
   }) => CctvAlertApi.getEmergencyAlerts(
         elderId,
         userId: userId,
         status: status,
         limit: limit,
+        days: days,
       );
 
   static Future<List<dynamic>> getZoneConfig(
@@ -447,6 +459,25 @@ class ApiService {
         content: content,
         mood: mood,
         stampType: stampType,
+        imageUrl: imageUrl,
+      );
+
+  /// ★ 2026-10-07 交接 C1：失敗時帶回真實原因的版本（見 CommunityApi）。
+  static Future<(Map<String, dynamic>?, String?)> createCommunityPostChecked({
+    required int familyId,
+    required int authorId,
+    required String authorName,
+    String authorRole = 'elder',
+    required String content,
+    String mood = '😊',
+    String? imageUrl,
+  }) => CommunityApi.createCommunityPostChecked(
+        familyId: familyId,
+        authorId: authorId,
+        authorName: authorName,
+        authorRole: authorRole,
+        content: content,
+        mood: mood,
         imageUrl: imageUrl,
       );
 

@@ -5,9 +5,12 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
+import '../../services/checkin_notification.dart';
 import '../../services/session_manager.dart';
 import '../../theme/family_theme.dart';
-import '../elder_profile_edit_screen.dart';
+import 'elder_basic_profile_screen.dart';
+import 'elder_profile_shared.dart' show normalizeGender;
+import 'elder_talk_preference_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../identification_screen.dart';
 import 'family_subscription_screen.dart';
@@ -80,10 +83,12 @@ class _FamilyDataTabState extends State<FamilyDataTab>
   String _subscriptionDisplay = '一般會員';
 
   // 智慧防護與通知開關
-  bool _isEmergencyOn = true;
-  bool _isDailySummaryOn = true;
-  bool _isAiInsightOn = true;
-  bool _isMedicationPushOn = true;
+  // ★ 2026-10-07 交接 B3：原四個假開關（只存記憶體、沒人讀）改為真的本機通知偏好
+  //   （G58/G59：裝置偏好，存 SharedPreferences、不隨登出清除），預設值同 CheckinNotification。
+  bool _notifyCheckin = true;
+  bool _notifyDailyAnswer = true;
+  bool _notifyPetGift = true;
+  bool _notifyStepChallenge = true;
   bool _isGeneratingRecovery = false;
 
   // AI 與長輩資料狀態
@@ -98,6 +103,37 @@ class _FamilyDataTabState extends State<FamilyDataTab>
     _loadCaregiverName();
     _loadSubscriptionInfo();
     _loadAiProfile();
+    _loadNotifyPrefs();
+  }
+
+  // ★ 2026-10-07 交接 B3：讀四個真開關目前值
+  Future<void> _loadNotifyPrefs() async {
+    try {
+      final r = await Future.wait([
+        CheckinNotification.isEnabled(),
+        CheckinNotification.isDailyEnabled(),
+        CheckinNotification.isPetGiftEnabled(),
+        CheckinNotification.isStepChallengeEnabled(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _notifyCheckin = r[0];
+        _notifyDailyAnswer = r[1];
+        _notifyPetGift = r[2];
+        _notifyStepChallenge = r[3];
+      });
+    } catch (_) {}
+  }
+
+  /// 樂觀更新，寫入失敗則還原。
+  Future<void> _setNotify(bool val, void Function(bool) assign,
+      Future<void> Function(bool) save) async {
+    setState(() => assign(val));
+    try {
+      await save(val);
+    } catch (_) {
+      if (mounted) setState(() => assign(!val));
+    }
   }
 
   // ── 重新整理三種觸發（下拉／切回此分頁／App 回前景）共用 ──
@@ -180,8 +216,10 @@ class _FamilyDataTabState extends State<FamilyDataTab>
   Future<void> _loadSubscriptionInfo() async {
     try {
       final res = await ApiService.getSubscriptionTier(widget.userId);
-      if (mounted && (res['status'] == 'success' || res['tier_level'] != null)) {
-        final tier = (res['tier_level'] ?? 'free').toString();
+      // ★ 2026-10-07 交接 B2：tier_level 在 data 裡（原讀最外層 → 永遠一般會員）
+      final d = res['data'] is Map ? res['data'] as Map : const {};
+      if (mounted && res['status'] == 'success') {
+        final tier = (d['tier_level'] ?? 'free').toString();
         setState(() {
           if (tier == 'diamond') {
             _subscriptionDisplay = '鑽石守護版';
@@ -327,36 +365,51 @@ class _FamilyDataTabState extends State<FamilyDataTab>
     );
   }
 
+  // ★ 2026-10-07 交接 B1：原本「長輩檔案」與「對話偏好」都開同一頁；現在拆成兩頁。
+  Map<String, dynamic> _elderEditData() {
+    final e = widget.currentElder!;
+    return {
+      'id': e.id,
+      'user_id': e.id,
+      'user_name': e.name,
+      'gender': e.gender, // 沒填就是 null，不再預設成 'M'
+      'age': e.age,
+      'location': e.location,
+    };
+  }
+
+  void _afterElderEdit() {
+    if (!mounted) return;
+    _loadAiProfile();
+    widget.onElderUpdated?.call();
+  }
+
+  /// 「受關照長輩檔案」→ 長輩檔案頁（姓名／年齡／性別／地區／慢性病／用藥）。
   void _navigateToElderEdit() {
     if (widget.currentElder == null) return;
-
-    final elderData = {
-      'id': widget.currentElder!.id,
-      'user_id': widget.currentElder!.id,
-      'user_name': widget.currentElder!.name,
-      'gender': widget.currentElder!.gender ?? 'M',
-      'age': widget.currentElder!.age,
-      'location': widget.currentElder!.location,
-    };
-
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ElderProfileEditScreen(
-          elderData: elderData,
-          familyId: widget.userId,
+        builder: (context) => ElderBasicProfileScreen(
+          elderData: _elderEditData(),
           onUnbind: () {
             Navigator.pop(context);
             _showUnbindConfirmDialog();
           },
         ),
       ),
-    ).then((_) {
-      _loadAiProfile();
-      if (widget.onElderUpdated != null) {
-        widget.onElderUpdated!();
-      }
-    });
+    ).then((_) => _afterElderEdit());
+  }
+
+  /// 「長輩互動與對話偏好」→ 對話偏好頁（稱呼／語氣／篇幅／興趣／話題／主動關懷）。
+  void _navigateToTalkPreference() {
+    if (widget.currentElder == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ElderTalkPreferenceScreen(elderData: _elderEditData()),
+      ),
+    ).then((_) => _afterElderEdit());
   }
 
   void _showUnbindConfirmDialog() {
@@ -619,28 +672,32 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 builder: () => _fadeIn(
                   FamGroup(title: '通知', children: [
                     _switchRow(
-                      '跌倒與緊急求救',
-                      '長輩端觸發緊急警報時，第一時間彈窗並強制響鈴提醒',
-                      _isEmergencyOn,
-                      (val) => setState(() => _isEmergencyOn = val),
+                      '長輩打卡通知',
+                      '長輩完成或漏掉打卡事項時，推播通知您',
+                      _notifyCheckin,
+                      (val) => _setNotify(val, (v) => _notifyCheckin = v,
+                          CheckinNotification.setEnabled),
                     ),
                     _switchRow(
-                      '吃藥打卡',
-                      '長輩完成吃藥打卡或未按時服藥時，即時推播回報',
-                      _isMedicationPushOn,
-                      (val) => setState(() => _isMedicationPushOn = val),
+                      '每日一問回答通知',
+                      '長輩回答了您出的每日一問時，推播通知您',
+                      _notifyDailyAnswer,
+                      (val) => _setNotify(val, (v) => _notifyDailyAnswer = v,
+                          CheckinNotification.setDailyEnabled),
                     ),
                     _switchRow(
-                      '每天 18:00 健康日誌',
-                      '每日 18:00 推播長輩今日活動紀錄與心情簡報',
-                      _isDailySummaryOn,
-                      (val) => setState(() => _isDailySummaryOn = val),
+                      '小豬共養通知',
+                      '長輩用您送的點心餵了小豬時，推播通知您',
+                      _notifyPetGift,
+                      (val) => _setNotify(val, (v) => _notifyPetGift = v,
+                          CheckinNotification.setPetGiftEnabled),
                     ),
                     _switchRow(
-                      '作息與情緒預警',
-                      '長輩生活作息不規律或情緒低落時的主動關懷建議',
-                      _isAiInsightOn,
-                      (val) => setState(() => _isAiInsightOn = val),
+                      '全家一起走通知',
+                      '全家本週步數挑戰過半或達標時，推播通知您',
+                      _notifyStepChallenge,
+                      (val) => _setNotify(val, (v) => _notifyStepChallenge = v,
+                          CheckinNotification.setStepChallengeEnabled),
                     ),
                   ]),
                   200,
@@ -812,6 +869,11 @@ class _FamilyDataTabState extends State<FamilyDataTab>
 
   // ─── 2. 長輩基本資料與健康摘要卡 ───
 
+  String _genderLabel(String? raw) {
+    final g = normalizeGender(raw);
+    return g == 'F' ? '女性' : (g == 'M' ? '男性' : '性別未填');
+  }
+
   Widget _buildElderSummaryCard() {
     if (widget.currentElder == null) return const SizedBox.shrink();
     final elder = widget.currentElder!;
@@ -863,7 +925,8 @@ class _FamilyDataTabState extends State<FamilyDataTab>
             ),
             const SizedBox(height: 8),
             Text(
-              '${elder.age != null ? "${elder.age} 歲" : "年齡未填"}・${elder.gender == "F" ? "女性" : "男性"}・居於 ${(elder.location != null && elder.location!.isNotEmpty) ? elder.location : "台北市"}',
+              // ★ 2026-10-07 交接 B1：沒填就顯示「未填」，不再寫死「男性」「台北市」假預設。
+              '${elder.age != null ? "${elder.age} 歲" : "年齡未填"}・${_genderLabel(elder.gender)}・居於 ${(elder.location != null && elder.location!.trim().isNotEmpty) ? elder.location : "未填"}',
               style: famText(c.text2, 14, height: 1.5),
             ),
             const SizedBox(height: 12),
@@ -956,7 +1019,7 @@ class _FamilyDataTabState extends State<FamilyDataTab>
               label: '調整互動對話設定',
               kind: FamButtonKind.tonal,
               height: 46,
-              onPressed: _navigateToElderEdit,
+              onPressed: _navigateToTalkPreference,
             ),
           ],
         ),

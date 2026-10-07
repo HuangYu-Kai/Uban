@@ -5,9 +5,11 @@ import '../../../../models/elder.dart';
 import '../../../../models/memoir_story.dart';
 import '../../../../services/api/location_api.dart';
 import '../../../../services/api_service.dart';
-import '../../../../services/memoir_service.dart';
+import '../../../../services/api/daily_question_api.dart';
+import '../../../../services/friend_service.dart';
 import '../../../../widgets/ui/ui.dart';
 import '../../emotion_timeline_screen.dart';
+import '../../daily_question_screen.dart' show resolveFamilyId;
 import '../../health_trends_screen.dart';
 import '../../memoirs_gallery_screen.dart';
 import '../../outing_trends_screen.dart';
@@ -68,20 +70,32 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
   List<DayValue> _emotion = const [];
   List<MemoirStory> _stories = const [];
 
-  /// 與資料庫 id 不同：這是長輩端的字串 id（GPS／回憶錄用），缺漏退回資料庫 id。
-  String? get _elderKey => widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
+  /// 與資料庫 id 不同：這是長輩端的 4 碼字串 id（GPS／回憶錄用）。
+  /// ★ 2026-10-07 交接 D7：不再退回 user_id（外出／回憶錄會用錯 id 而載入失敗）。
+  ///   Elder.elderId 缺漏時由 [_resolveElderKey] 用 FriendService.resolveMyElderId 解析並快取於此。
+  String? _resolvedKey;
+  String? get _elderKey {
+    final direct = widget.currentElder?.elderId;
+    if (direct != null && direct.isNotEmpty) return direct;
+    return _resolvedKey;
+  }
+
+  /// 取得 4 碼 elderId：先用 Elder.elderId，缺漏才打 `GET /api/user/profile/{userId}` 解析；
+  /// 解析不到回傳 null（呼叫端顯示載入失敗，不用 user_id 代替）。
+  Future<String?> _resolveElderKey() async {
+    final direct = _elderKey;
+    if (direct != null) return direct;
+    final elder = widget.currentElder;
+    if (elder == null) return null;
+    final id = await FriendService.resolveMyElderId(elder.id);
+    if (mounted && widget.currentElder?.id == elder.id) _resolvedKey = id;
+    return id;
+  }
 
   @override
   void initState() {
     super.initState();
-    MemoirService.instance.addListener(_onMemoirsChanged);
     _ensureLoaded();
-  }
-
-  @override
-  void dispose() {
-    MemoirService.instance.removeListener(_onMemoirsChanged);
-    super.dispose();
   }
 
   @override
@@ -91,17 +105,12 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
         old.currentElder?.elderId != widget.currentElder?.elderId ||
         old.userId != widget.userId ||
         old.refreshToken != widget.refreshToken) {
+      if (old.currentElder?.id != widget.currentElder?.id) _resolvedKey = null;
       for (final s in _Seg.values) {
         _status[s] = _St.idle;
         _seq[s] = (_seq[s] ?? 0) + 1; // 丟棄還在路上的舊請求
       }
       _ensureLoaded();
-    }
-  }
-
-  void _onMemoirsChanged() {
-    if (mounted && _status[_Seg.emotion] == _St.ready) {
-      _load(_Seg.emotion, silent: true);
     }
   }
 
@@ -150,7 +159,8 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
           });
         case _Seg.outing:
           final uid = widget.userId;
-          final key = _elderKey;
+          final key = await _resolveElderKey();
+          if (!mounted || seq != _seq[seg]) return;
           if (uid == null || key == null) return _fail(seg, '載入失敗，請稍後再試');
           final data = await (widget.outingLoader ?? _defaultOuting)(key, uid);
           if (!mounted || seq != _seq[seg]) return;
@@ -170,11 +180,15 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
           });
         case _Seg.emotion:
           final fid = await _familyId();
-          final key = _elderKey;
+          final key = await _resolveElderKey();
+          // ★ 2026-10-07 交接 C4：回憶錄改讀後端（每日一問已回答），不再只讀本機 MemoirService
+          //   （家屬手機永遠 0 篇）。key 解析不到時回憶錄當 0 篇、不影響情緒圖。
           final results = await Future.wait([
             (widget.emotionLoader ?? _defaultEmotion)(elder.id.toString(), fid),
-            (widget.memoirLoader ?? MemoirService.instance.getMemoirs)(key ?? 'default_elder')
-                .catchError((_) => <MemoirStory>[]),
+            key == null
+                ? Future.value(<MemoirStory>[])
+                : (widget.memoirLoader ?? _defaultMemoirs)(key)
+                    .catchError((_) => <MemoirStory>[]),
           ]);
           if (!mounted || seq != _seq[seg]) return;
           final resp = results[0] as Map<String, dynamic>;
@@ -204,6 +218,32 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
       ApiService.getStepsTrend(id, familyId: fid, days: 7);
   static Future<Map<String, dynamic>?> _defaultOuting(String id, int uid) =>
       LocationApi.getDaily(elderId: id, userId: uid, days: 7);
+  /// 已回答的每日一問 → 故事（同 memoirs_gallery_screen 的轉換），新→舊。
+  Future<List<MemoirStory>> _defaultMemoirs(String elderId) async {
+    final fid = await resolveFamilyId(widget.userId);
+    if (fid == null) return <MemoirStory>[];
+    final items = await DailyQuestionApi.getHistory(elderId: elderId, familyId: fid);
+    if (items == null) return <MemoirStory>[];
+    final list = <MemoirStory>[
+      for (final q in items)
+        if (q.answered)
+          MemoirStory(
+            id: 'dq_${q.id}',
+            elderId: elderId,
+            title: q.question,
+            tag: '每日一問',
+            preview: q.answerSnippet,
+            fullStory: q.answerSnippet,
+            promptQuestion: q.question,
+            audioAssetOrUrl: q.answerAudioUrl,
+            recordedDate: DateTime.tryParse(q.answeredAt)?.toLocal() ??
+                DateTime.tryParse(q.assignedDate) ??
+                DateTime.now(),
+          ),
+    ]..sort((a, b) => b.recordedDate.compareTo(a.recordedDate));
+    return list;
+  }
+
   static Future<Map<String, dynamic>> _defaultEmotion(String id, int? fid) =>
       ApiService.getEmotionEvents(id, familyId: fid, days: 7, limit: 100);
 
@@ -219,19 +259,28 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
 
   void _push(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
 
-  void _openHealth() => _push(HealthTrendsScreen(elderName: _name, elderId: widget.currentElder?.id));
+  void _openHealth() => _push(HealthTrendsScreen(elderName: _name, elderId: widget.currentElder?.id, userId: widget.userId));
 
-  void _openOuting() {
+  Future<void> _openOuting() async {
     final uid = widget.userId;
-    final key = _elderKey;
-    if (uid == null || key == null) return;
+    final key = await _resolveElderKey();
+    if (!mounted || uid == null || key == null) return;
     _push(OutingTrendsScreen(elderId: key, userId: uid, elderName: _name));
   }
 
   void _openEmotion() => _push(EmotionTimelineScreen(elderName: _name, elderId: widget.currentElder?.id));
 
   Future<void> _openGallery() async {
-    final key = _elderKey ?? 'default_elder';
+    // ★ D7：不再退回 'default_elder'／user_id；解析不到就不開，提示再試。
+    final key = await _resolveElderKey();
+    if (key == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('目前無法取得長輩代碼，請稍後再試')),
+        );
+      }
+      return;
+    }
     String familyName = '家人';
     try {
       final prefs = await SharedPreferences.getInstance();

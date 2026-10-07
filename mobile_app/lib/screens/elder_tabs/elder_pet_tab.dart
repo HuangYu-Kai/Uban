@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/step_upload_delta.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' hide Path;
@@ -512,6 +513,10 @@ class _ElderPetTabState extends State<ElderPetTab>
       await prefs.setDouble('total_distance', 0.0);
       await prefs.setInt('session_pedometer_steps', 0);
       await prefs.setString('last_track_date', today);
+      // ★ 2026-10-07 交接 C/D（長輩端）D1：跨日歸零「已上傳步數」。
+      await prefs.setInt(kLastUploadedStepsKey, 0);
+      await prefs.setString(kLastUploadedStepsDateKey, today);
+      _lastUploadedSteps = 0;
       setState(() {
         _routePoints.clear();
         _totalDistance = 0.0;
@@ -519,6 +524,13 @@ class _ElderPetTabState extends State<ElderPetTab>
       });
       return;
     }
+
+    // ★ 2026-10-07 交接 C/D（長輩端）D1：還原今日已上傳步數，重開 App 不重送整天步數。
+    _lastUploadedSteps = restoreUploadedSteps(
+      storedSteps: prefs.getInt(kLastUploadedStepsKey),
+      storedDate: prefs.getString(kLastUploadedStepsDateKey),
+      today: today,
+    );
 
     final pointsJson = prefs.getString('route_points');
     if (pointsJson != null) {
@@ -627,7 +639,8 @@ class _ElderPetTabState extends State<ElderPetTab>
     if (eid == null) return;
 
     final int fused = _computeFusedSteps();
-    final int delta = fused - _lastUploadedSteps;
+    final int delta =
+        stepUploadDelta(fusedSteps: fused, lastUploaded: _lastUploadedSteps);
     if (delta <= 0) return;
 
     final now = DateTime.now();
@@ -638,6 +651,13 @@ class _ElderPetTabState extends State<ElderPetTab>
 
     _lastUploadedSteps = fused;
     _lastStepUploadAt = now;
+    // ★ 2026-10-07 交接 C/D（長輩端）D1：持久化（含日期），失敗不影響上傳。
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(kLastUploadedStepsKey, fused);
+      await prefs.setString(kLastUploadedStepsDateKey,
+          now.toIso8601String().substring(0, 10));
+    } catch (_) {}
 
     try {
       await _gameService.updateSteps(eid, delta);

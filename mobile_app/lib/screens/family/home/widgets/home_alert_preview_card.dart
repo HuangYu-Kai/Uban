@@ -51,16 +51,34 @@ class HomeAlertPreviewCard extends StatelessWidget {
     this.userId,
   });
 
+  /// ★ 2026-10-07 交接 D4：警報是否已結案（resolved）或被標為誤報。
+  static bool _isClosedAlert(Map row) {
+    final status = (row['status'] ?? '').toString().toLowerCase();
+    if (status == 'resolved') return true;
+    final fa = row['is_false_alarm'] ?? row['isFalseAlarm'];
+    return fa == true || fa == 1 || fa == '1' || fa.toString().toLowerCase() == 'true';
+  }
+
   @override
   Widget build(BuildContext context) {
     // ★ 整合即時跌倒／異常警報（activeAlerts）至首頁「最新警示」
     final List<Map<String, dynamic>> activeItems = [];
+    // ★ 2026-10-07 交接 D4：已結案（resolved）或誤報的警報不可再當「待處理」顯示。
+    //   即時推播（activeAlerts）若對應的持久化列已結案／誤報，一併略過。
+    final Set<String> closedAlertIds = {
+      for (final row in emergencyAlerts)
+        if (row is Map && _isClosedAlert(row))
+          if ((row['alert_id'] ?? row['alertId']) != null)
+            (row['alert_id'] ?? row['alertId']).toString(),
+    };
     final currentElderIdStr = currentElder?.elderId ?? currentElder?.id.toString();
     for (final a in activeAlerts) {
       final aElderId = (a['elder_id'] ?? a['elderId'])?.toString();
       if (currentElderIdStr != null && aElderId != null && aElderId != currentElderIdStr) {
         continue; // 隔離不同長輩的警報
       }
+      final liveClosedId = (a['alert_id'] ?? a['alertId'])?.toString();
+      if (liveClosedId != null && closedAlertIds.contains(liveClosedId)) continue;
       final type = (a['alert_type'] ?? a['alertType'] ?? 'fall').toString();
       final conf = a['confidence'];
       final confText = conf != null ? ' (信心度 ${(conf * 100).toStringAsFixed(0)}%)' : '';
@@ -93,9 +111,10 @@ class HomeAlertPreviewCard extends StatelessWidget {
     }
 
     final alertItems = realLogs.where((log) {
-      final text = log['content']?.toString() ?? '';
       final etype = log['event_type']?.toString() ?? '';
-      return etype == 'alert' || text.contains('警示') || text.contains('提醒') || text.contains('未確認');
+      // ★ 2026-10-07 交接 D4：只認真正的警示來源（event_type == 'alert'）。
+      //   原本聊天文字出現「警示／提醒／未確認」就被當警示，長輩隨口一句就誤報。
+      return etype == 'alert';
     }).map((log) {
       final desc = log['content']?.toString() ?? '';
       final title = desc.split('|').first.replaceAll(RegExp(r'【.*?】'), '').trim();
@@ -128,6 +147,7 @@ class HomeAlertPreviewCard extends StatelessWidget {
         .toSet();
 
     final persistedAlertItems = emergencyAlerts.where((row) {
+      if (row is Map && _isClosedAlert(row)) return false; // ★ D4：結案／誤報不顯示
       final rElderId = (row['elder_id'] ?? row['elderId'])?.toString();
       if (currentElderIdStr != null && rElderId != null && rElderId != currentElderIdStr) {
         return false;

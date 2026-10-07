@@ -17,7 +17,6 @@ import 'package:flutter_application_1/screens/elder_profile_onboarding_screen.da
 import 'package:flutter_application_1/screens/elder_tabs/elder_home_tab.dart';
 import 'package:flutter_application_1/screens/elder_tabs/elder_greeting_tab.dart';
 import 'package:flutter_application_1/screens/elder_community_screen.dart';
-import 'package:flutter_application_1/screens/elder_tabs/elder_chat_tab.dart';
 import 'package:flutter_application_1/screens/elder_tabs/elder_profile_tab.dart';
 import 'package:flutter_application_1/screens/almanac/farmer_almanac_screen.dart';
 import 'package:flutter_application_1/screens/news_listen_player/news_listen_player_screen.dart';
@@ -1039,16 +1038,7 @@ void main() {
     );
   }, timeout: const Timeout(Duration(seconds: 15)));
 
-  testWidgets('12-2-6 Elder chat tab', (tester) async {
-    await captureScreen(
-      tester,
-      ElderChatTab(
-        userId: 1,
-        onBackToHome: () {},
-      ),
-      'fig_12_2_6_elder_chat.png',
-    );
-  }, timeout: const Timeout(Duration(seconds: 15)));
+  // ★ 2026-10-07 交接 E：ElderChatTab 為死碼已刪除（長輩聊天頁為 elder_chat_screen.dart），移除 12-2-6 截圖案例。
 
   testWidgets('12-2-7 Elder profile pet tab', (tester) async {
     await captureScreen(

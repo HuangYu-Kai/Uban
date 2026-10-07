@@ -50,18 +50,26 @@ class _FamilySubscriptionScreenState extends State<FamilySubscriptionScreen> {
           ApiService.getSubscriptionRecords(_userId!),
         ]);
 
-        final tierData = results[0];
-        if (tierData['status'] == 'success' || tierData['tier_level'] != null) {
+        // ★ 2026-10-07 交接 B2：後端回 {status, data:{tier_level, devices_max, ...}} /
+        //   {status, data:{records:[...]}}，原本讀最外層 → 永遠顯示一般會員；改讀 data。
+        final tierRes = results[0];
+        final tierData = tierRes['data'] is Map
+            ? Map<String, dynamic>.from(tierRes['data'] as Map)
+            : <String, dynamic>{};
+        if (tierRes['status'] == 'success' && tierData['tier_level'] != null) {
           if (!mounted) return;
           setState(() {
-            _currentTier = (tierData['tier_level'] ?? 'free').toString();
-            _devicesMax = (tierData['devices_max'] ?? 2) as int;
+            _currentTier = tierData['tier_level'].toString();
+            _devicesMax = (tierData['devices_max'] as num?)?.toInt() ?? 2;
           });
         }
 
-        final recordsData = results[1];
-        if (recordsData['status'] == 'success' || recordsData['records'] != null) {
-          final list = (recordsData['records'] as List<dynamic>?) ?? [];
+        final recRes = results[1];
+        final recData = recRes['data'] is Map
+            ? Map<String, dynamic>.from(recRes['data'] as Map)
+            : <String, dynamic>{};
+        if (recRes['status'] == 'success') {
+          final list = (recData['records'] as List<dynamic>?) ?? [];
           if (!mounted) return;
           setState(() {
             _records = list.map((r) => Map<String, dynamic>.from(r as Map)).toList();

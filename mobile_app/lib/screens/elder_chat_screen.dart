@@ -372,8 +372,10 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       // ★ 2026-10-07 每日一問：問題來源改為後端「今天的問題」（家人出題或題庫），
       // 取代本機 MemoirService 選題。已回答就不再問。
       final resolvedElderId = await FriendService.resolveMyElderId(widget.userId);
-      final elderKey = resolvedElderId ?? 'elder_${widget.userId}';
-      final dq = await ElderDailyQuestionApi.getToday(elderKey);
+      // ★ 2026-10-07 交接 C/D（長輩端）C4：解析不到 elder_id 就先略過（下次再試），
+      // 不再退回 elder_${userId}（會產生家屬查不到的資料）。
+      if (resolvedElderId == null || resolvedElderId.isEmpty) return;
+      final dq = await ElderDailyQuestionApi.getToday(resolvedElderId);
       if (!mounted || dq == null || dq.answered) return;
 
       // 每個題目只問一次（SharedPreferences 旗標），避免每次切分頁都重問。
@@ -405,9 +407,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   Future<void> _openDailyAnswer(_ChatMessage msg) async {
     final dq = msg.dailyQuestion;
     if (dq == null) return;
-    final elderId = await FriendService.resolveMyElderId(widget.userId) ??
-        'elder_${widget.userId}';
-    if (!mounted) return;
+    // ★ 2026-10-07 交接 C/D（長輩端）C4：移除 elder_${userId} 退路，解析不到就不開面板。
+    final elderId = await FriendService.resolveMyElderId(widget.userId);
+    if (!mounted || elderId == null || elderId.isEmpty) return;
     final ok = await showDailyQuestionAnswerSheet(context,
         question: dq, elderId: elderId);
     if (!ok || !mounted) return;

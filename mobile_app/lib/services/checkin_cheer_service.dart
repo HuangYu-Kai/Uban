@@ -92,14 +92,16 @@ class CheerQueue {
 /// 長輩端加油的取得、佇列與播放。畫面相關動作（留存、對話框、TTS）由呼叫端注入。
 class CheckinCheerService {
   CheckinCheerService({
-    required this.elderId,
+    required this.resolveElderId,
     required this.canPresent,
     required this.isInCall,
     required this.present,
     required this.speak,
   });
 
-  final int elderId;
+  /// ★ 2026-10-07 交接 C/D（長輩端）：後端以 4 碼 elder_id 比對，
+  /// 不可傳 userId；由呼叫端解析（解析不到回 null → 本次略過，下次再試）。
+  final Future<String?> Function() resolveElderId;
 
   /// 開始處理前檢查：首頁是否在最上層（非 ElderScreen 等）。
   final bool Function() canPresent;
@@ -123,6 +125,8 @@ class CheckinCheerService {
 
   /// 啟動與回前景：撈未讀。網路錯誤靜默，下次回前景再試。
   Future<void> fetchUnread() async {
+    final elderId = await resolveElderId();
+    if (elderId == null || elderId.isEmpty) return;
     final raw = await CheckinCheerApi.listUnreadForElder(elderId);
     for (final m in raw) {
       final c = CheckinCheer.tryParse(m);
@@ -151,7 +155,12 @@ class CheckinCheerService {
           debugPrint('⚠️ [CheckinCheer] 呈現失敗（不顯示給長輩）: $e');
         }
         _queue.removeFirst();
-        unawaited(CheckinCheerApi.markRead(c.cheerId, elderId));
+        unawaited(() async {
+          final id = await resolveElderId();
+          if (id != null && id.isNotEmpty) {
+            await CheckinCheerApi.markRead(c.cheerId, id);
+          }
+        }());
       }
     } finally {
       _draining = false;
