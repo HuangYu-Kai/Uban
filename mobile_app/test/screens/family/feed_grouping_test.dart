@@ -48,6 +48,26 @@ void main() {
     });
   });
 
+  group('FeedGrouping.splitRecent', () {
+    test('最近 7 天（含今天）顯示，更早的收起來', () {
+      final days = FeedGrouping.group([
+        _item('2026-10-07', 9, 'medication'),
+        _item('2026-10-01', 9, 'medication'), // 第 7 天（含今天），仍在窗口內
+        _item('2026-09-30', 9, 'medication'), // 第 8 天
+        _item('2026-09-14', 9, 'medication'),
+      ]);
+      final r = FeedGrouping.splitRecent(days, DateTime(2026, 10, 7, 11));
+      expect(r.recent.map((d) => d.date), ['2026-10-07', '2026-10-01']);
+      expect(r.older.map((d) => d.date), ['2026-09-30', '2026-09-14']);
+    });
+
+    test('跨月計算正確', () {
+      final days = FeedGrouping.group([_item('2026-09-26', 9, 'chat')]);
+      final r = FeedGrouping.splitRecent(days, DateTime(2026, 10, 2));
+      expect(r.recent.single.date, '2026-09-26');
+    });
+  });
+
   group('FamilyAlertDismissalApi.reconcile', () {
     test('後端有本機沒有 → 補進本機；本機有後端沒有 → 補送後端', () {
       final r = FamilyAlertDismissalApi.reconcile(

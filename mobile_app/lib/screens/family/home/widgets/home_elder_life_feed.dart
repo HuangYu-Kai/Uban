@@ -39,6 +39,9 @@ class _HomeElderLifeFeedState extends State<HomeElderLifeFeed> {
   int _selectedDateFilterIndex = 0; // 0: 全部, 1: 今天, 2: 昨天, 3: 歷史月曆
   DateTime? _selectedHistoricalDate;
 
+  /// 「全部」只先顯示最近 7 天，更早的日子收在「顯示更早的紀錄」裡。
+  bool _showOlderDays = false;
+
   /// 把後端 activity_log 列轉成時光牆項目（時間換成本地時間）。
   static Map<String, dynamic> _toItem(
       dynamic log, String todayStr, String yesterdayStr) {
@@ -254,7 +257,8 @@ class _HomeElderLifeFeedState extends State<HomeElderLifeFeed> {
             const SizedBox(height: 16),
           ] else ...[
             ..._buildDayCards(
-                context, activeFilteredItems, todayStr, yesterdayStr),
+                context, activeFilteredItems, todayStr, yesterdayStr,
+                collapseOlder: _selectedDateFilterIndex == 0, now: now),
           ],
         ],
       ),
@@ -265,50 +269,95 @@ class _HomeElderLifeFeedState extends State<HomeElderLifeFeed> {
     BuildContext context,
     List<Map<String, dynamic>> items,
     String todayStr,
+    String yesterdayStr, {
+    required bool collapseOlder,
+    required DateTime now,
+  }) {
+    final c = UbanColors.of(context);
+    final days = FeedGrouping.group(items);
+    if (!collapseOlder) {
+      return [
+        for (final day in days)
+          ..._buildDay(context, day, todayStr, yesterdayStr)
+      ];
+    }
+
+    // ★ 2026-10-07：「全部」只先顯示最近 7 天（含今天），更早的收進展開。
+    final split = FeedGrouping.splitRecent(days, now,
+        recentDays: FeedGrouping.recentWindowDays);
+    final widgets = <Widget>[
+      for (final day in split.recent)
+        ..._buildDay(context, day, todayStr, yesterdayStr),
+    ];
+    if (split.older.isEmpty) return widgets;
+
+    if (split.recent.isEmpty) {
+      widgets.add(Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 12),
+        child: Text('最近 7 天沒有生活紀錄',
+            style: famText(c.text2, 14, weight: FontWeight.w700)),
+      ));
+    }
+    if (_showOlderDays) {
+      for (final day in split.older) {
+        widgets.addAll(_buildDay(context, day, todayStr, yesterdayStr));
+      }
+    }
+    widgets.add(
+      FamButton(
+        label: _showOlderDays ? '收起更早的紀錄' : '顯示更早的紀錄（${split.older.length} 天）',
+        kind: FamButtonKind.outline,
+        height: 46,
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          setState(() => _showOlderDays = !_showOlderDays);
+        },
+      ),
+    );
+    return widgets;
+  }
+
+  List<Widget> _buildDay(
+    BuildContext context,
+    FeedDay day,
+    String todayStr,
     String yesterdayStr,
   ) {
     final c = UbanColors.of(context);
-    final widgets = <Widget>[];
-    for (final day in FeedGrouping.group(items)) {
-      final String dateLabel;
-      if (day.date == todayStr) {
-        dateLabel = '今日生活動態';
-      } else if (day.date == yesterdayStr) {
-        dateLabel = '昨天生活動態';
-      } else if (day.date.length >= 10) {
-        final m = int.tryParse(day.date.substring(5, 7)) ?? 0;
-        final d = int.tryParse(day.date.substring(8, 10)) ?? 0;
-        dateLabel = '$m月$d日 生活動態';
-      } else {
-        dateLabel = day.date;
-      }
-      widgets.add(
+    final String dateLabel;
+    if (day.date == todayStr) {
+      dateLabel = '今日生活動態';
+    } else if (day.date == yesterdayStr) {
+      dateLabel = '昨天生活動態';
+    } else if (day.date.length >= 10) {
+      final m = int.tryParse(day.date.substring(5, 7)) ?? 0;
+      final d = int.tryParse(day.date.substring(8, 10)) ?? 0;
+      dateLabel = '$m月$d日 生活動態';
+    } else {
+      dateLabel = day.date;
+    }
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 10),
+        child: Text(
+          dateLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style:
+              famText(c.text3, 13, weight: FontWeight.w700, letterSpacing: 1.3),
+        ),
+      ),
+      for (final g in day.groups)
         Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 10),
-          child: Text(
-            dateLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: famText(c.text3, 13,
-                weight: FontWeight.w700, letterSpacing: 1.3),
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildCategoryCard(
+            context,
+            categoryTitle: g.title,
+            tagline: g.tagline,
+            items: g.items,
           ),
         ),
-      );
-      for (final g in day.groups) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _buildCategoryCard(
-              context,
-              categoryTitle: g.title,
-              tagline: g.tagline,
-              items: g.items,
-            ),
-          ),
-        );
-      }
-    }
-    return widgets;
+    ];
   }
 
   Widget _buildCategoryCard(

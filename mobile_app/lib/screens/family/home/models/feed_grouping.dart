@@ -129,6 +129,30 @@ class FeedGrouping {
     return days;
   }
 
+  /// 「全部」預設顯示的天數（含今天）。
+  static const int recentWindowDays = 7;
+
+  /// 依 [now] 把已分好的天切成「最近 [recentDays] 天（含今天）」與「更早」。
+  static ({List<FeedDay> recent, List<FeedDay> older}) splitRecent(
+    List<FeedDay> days,
+    DateTime now, {
+    int recentDays = recentWindowDays,
+  }) {
+    final c = DateTime(now.year, now.month, now.day - (recentDays - 1));
+    final cutoff =
+        '${c.year.toString().padLeft(4, '0')}-${c.month.toString().padLeft(2, '0')}-${c.day.toString().padLeft(2, '0')}';
+    return (
+      recent: [
+        for (final d in days)
+          if (d.date.compareTo(cutoff) >= 0) d
+      ],
+      older: [
+        for (final d in days)
+          if (d.date.compareTo(cutoff) < 0) d
+      ],
+    );
+  }
+
   static int _newestFirst(Map<String, dynamic> a, Map<String, dynamic> b) {
     final ta = a['sortTs'] as DateTime?;
     final tb = b['sortTs'] as DateTime?;
