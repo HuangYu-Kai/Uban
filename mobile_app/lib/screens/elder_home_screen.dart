@@ -17,6 +17,7 @@ import 'emergency_permission_guide_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/api/elder_daily_question_api.dart';
+import '../services/today_tasks_loader.dart';
 import '../services/signaling.dart';
 import '../services/elder_location_service.dart';
 import 'dart:async';
@@ -353,6 +354,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) unawaited(_cheerService.fetchUnread());
     });
+    // ★ 2026-10-07 每日一問改留聊天：啟動讀一次；之後由 refreshSignal 驅動
+    //   （socket daily-question-new、聊天回答成功後遞增）。
+    ElderDailyQuestionApi.refreshSignal.addListener(_onDailyQuestionSignal);
+    unawaited(_refreshDailyQuestionBadge());
   }
 
   @override
@@ -361,6 +366,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     // 🎉 回前景：補撈尚未讀取的家屬打卡加油（網路失敗靜默，下次再試）。
     if (state == AppLifecycleState.resumed && mounted) {
       unawaited(_cheerService.fetchUnread());
+      unawaited(_refreshDailyQuestionBadge()); // ★ 每日一問小紅點
     }
     debugPrint('📱 [WakeWord Emergency Protection] 系統狀態改變: $state - 保持全時背景與休眠緊急喚醒監聽');
     // ★ 2026-08-10 第二十輪（需求 6）：關閉語音喚醒時，生命週期變化不再重啟麥克風。
@@ -849,16 +855,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       if (mounted) unawaited(_cheerService.drain());
     });
 
-    // ★ 2026-10-07 每日一問：家人剛設定今天的問題。同 G102：每次都重新指派並記住
-    //   最後一份。一律先刷新首頁卡片；小嘎只在「通話外、首頁在最上層」才主動說，
-    //   通話中／在 ElderScreen 時略過（卡片仍會更新，回前景也會重讀），比照打卡加油。
+    // ★ 2026-10-07 每日一問改留聊天：家人剛設定今天的問題。同 G102：每次都重新指派並
+    //   記住最後一份。只遞增 refreshSignal → 更新「聊天」分頁小紅點；不再由小嘎主動
+    //   播報，題目由聊天分頁的小嘎在下次開聊天時提問。
     _ownDailyQuestionNew = (data) {
       if (!mounted) return;
       ElderDailyQuestionApi.refreshSignal.value++;
-      if (Signaling().isInCall) return;
-      if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
-      unawaited(_handleProactiveMessage(
-          jsonEncode({'reply': '家人出了一個新問題給您', 'type': 'family'})));
     };
     Signaling().onDailyQuestionNew = _ownDailyQuestionNew;
 
@@ -1037,14 +1039,24 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     },
   );
 
-  /// ★ 2026-10-07 每日一問：「聽小嘎唸」。沿用首頁既有 TTS 引擎；通話中不唸。
-  Future<void> _speakDailyQuestion(String text) async {
-    if (Signaling().isInCall) return;
-    await _flutterTts.stop();
-    await _flutterTts.setLanguage("zh-TW");
-    await _flutterTts.setPitch(1.0);
-    await _flutterTts.setSpeechRate(0.5);
-    await _flutterTts.speak(text);
+  // ★ 2026-10-07 每日一問改留聊天：小紅點狀態（hasUnanswered）由此更新。
+  String? _dailyQuestionElderId;
+  void _onDailyQuestionSignal() {
+    if (mounted) unawaited(_refreshDailyQuestionBadge());
+  }
+
+  /// 讀今天的題目更新「聊天」小紅點；解析不到 elder_id 或讀取失敗皆保留原值。
+  Future<void> _refreshDailyQuestionBadge() async {
+    try {
+      final id = _dailyQuestionElderId ??
+          await TodayTasksLoader.resolveElderId(widget.userId,
+              roomId: widget.roomId);
+      if (id == null || id.isEmpty) return;
+      _dailyQuestionElderId = id;
+      await ElderDailyQuestionApi.refreshBadge(id);
+    } catch (e) {
+      debugPrint('⚠️ [ElderHomeScreen] 更新每日一問紅點失敗: $e');
+    }
   }
 
   /// 留存為關懷訊息並顯示 HeartbeatOverlay（不朗讀；語音由 service 決定）。
@@ -1161,6 +1173,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     if (identical(Signaling().onCheckinCheer, _ownCheckinCheer)) {
       Signaling().onCheckinCheer = null;
     }
+    ElderDailyQuestionApi.refreshSignal.removeListener(_onDailyQuestionSignal);
     if (identical(Signaling().onDailyQuestionNew, _ownDailyQuestionNew)) {
       Signaling().onDailyQuestionNew = null;
     }
@@ -1416,11 +1429,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 moreNewsKey: _homeMoreNewsKey,
                 // 連勝慶祝畫面的「去餵小豬」：切到小豬分頁（沿用既有 _onNavTap）。
                 onGoFeedPig: () => _onNavTap(2),
-                // ★ 2026-10-07 每日一問：「聽小嘎唸」沿用本畫面既有 TTS；
-                // 回答成功後走既有關懷訊息路徑（CareMessageStore＋HeartbeatOverlay）。
-                onSpeak: _speakDailyQuestion,
-                onSayCare: (text) => _handleProactiveMessage(
-                    jsonEncode({'reply': text, 'type': 'family'})),
               ),
               // 1 電話（好友列表）
               FriendsScreen(
@@ -1553,10 +1561,14 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   }
 
   Widget _buildFloatingNavBar() {
-    return UbanGlassNavBar(
-      items: buildElderNavItems(_navItemKeys),
-      currentIndex: _selectedIndex,
-      onTap: _onNavTap,
+    // ★ 2026-10-07 每日一問改留聊天：今天的題目未回答時「聊天」顯示小紅點。
+    return ValueListenableBuilder<bool>(
+      valueListenable: ElderDailyQuestionApi.hasUnanswered,
+      builder: (context, hasQuestion, _) => UbanGlassNavBar(
+        items: buildElderNavItems(_navItemKeys, hasQuestion),
+        currentIndex: _selectedIndex,
+        onTap: _onNavTap,
+      ),
     );
   }
 }

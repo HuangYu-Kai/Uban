@@ -1,4 +1,4 @@
-// ★ 2026-10-07 每日一問（長輩端）：卡片三種狀態、回答面板（送出啟用／送出中／失敗）、
+// ★ 2026-10-07 每日一問（長輩端）：聊天分頁小紅點、回答面板（送出啟用／送出中／失敗）、
 // 360x640 ＋ textScale 1.3 無 RenderFlex 溢位（CLAUDE.md §3.1 第 14 條）。
 //
 // 全程只用 pump() 固定次數；平台物件（語音辨識、錄音、播放）在面板內延後建立，
@@ -9,10 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_application_1/screens/elder_tabs/daily_question_answer_sheet.dart';
-import 'package:flutter_application_1/screens/elder_tabs/elder_home_tab.dart';
-import 'package:flutter_application_1/screens/elder_tabs/widgets/elder_daily_question_card.dart';
+import 'package:flutter_application_1/screens/elder_tabs/elder_layout.dart';
 import 'package:flutter_application_1/services/api/elder_daily_question_api.dart';
 import 'package:flutter_application_1/theme/app_theme.dart';
+import 'package:flutter_application_1/widgets/ui/ui.dart';
 
 const _bank = DailyQuestion(id: 1, question: '您小時候最喜歡吃什麼？');
 const _family = DailyQuestion(
@@ -49,83 +49,51 @@ void main() {
     GoogleFonts.config.allowRuntimeFetching = false;
   });
 
-  group('DailyQuestionCard 狀態', () {
-    testWidgets('題庫題：顯示題目與兩顆按鈕，不顯示出題者', (tester) async {
-      _phone(tester, const Size(360, 640));
-      await tester.pumpWidget(_app(SingleChildScrollView(
-        child: ElderDailyQuestionCard(
-            question: _bank, onAnswer: () {}, onListen: () {}),
-      )));
-      expect(find.text('您小時候最喜歡吃什麼？'), findsOneWidget);
-      expect(find.byKey(const ValueKey('daily_question_listen')), findsOneWidget);
-      expect(find.byKey(const ValueKey('daily_question_answer')), findsOneWidget);
-      expect(find.byKey(const ValueKey('daily_question_from')), findsNothing);
-    });
-
-    testWidgets('家人出題：顯示（家人 X 出的題目）', (tester) async {
-      _phone(tester, const Size(360, 640));
-      await tester.pumpWidget(_app(SingleChildScrollView(
-        child: ElderDailyQuestionCard(question: _family, onAnswer: () {}),
-      )));
-      expect(find.text('（家人 璿OwO 出的題目）'), findsOneWidget);
-      // 沒給 onListen 就不顯示朗讀鈕
-      expect(find.byKey(const ValueKey('daily_question_listen')), findsNothing);
-    });
-
-    testWidgets('已回答：感謝語＋摘要＋「改一下」，且無「我來回答」', (tester) async {
-      _phone(tester, const Size(360, 640));
-      var edited = 0;
-      await tester.pumpWidget(_app(SingleChildScrollView(
-        child: ElderDailyQuestionCard(
-            question: _answered, onAnswer: () => edited++),
-      )));
-      expect(find.text('今天已經回答了，家人會看到喔'), findsOneWidget);
-      expect(find.text('我最愛吃媽媽做的蛋炒飯'), findsOneWidget);
-      expect(find.byKey(const ValueKey('daily_question_answer')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('daily_question_edit')));
-      expect(edited, 1);
-    });
-
-    testWidgets('360x640 textScale 1.3 無溢位（最長情境：家人出題）', (tester) async {
-      _phone(tester, const Size(360, 640));
-      await tester.pumpWidget(_app(
-        SingleChildScrollView(
-          child: ElderDailyQuestionCard(
-            question: const DailyQuestion(
-              id: 9,
-              question: '請您慢慢回想一下，年輕的時候您和您最好的朋友第一次見面是在哪裡、發生了什麼事情呢？',
-              source: 'family',
-              askedByName: '一個名字很長很長的家人',
-            ),
-            onAnswer: () {},
-            onListen: () {},
+  // ★ 2026-10-07 每日一問改留聊天：首頁不再有卡片，改在底部導覽「聊天」分頁顯示小紅點
+  //（ElderHomeScreen 無法在 widget test pump，故以 buildElderNavItems＋UbanGlassNavBar 驗證，
+  // 外殼的 _buildFloatingNavBar 就是這樣組出來的）。
+  group('聊天分頁小紅點', () {
+    Widget navApp(bool hasUnanswered) => MaterialApp(
+          theme: ThemeData(extensions: [UbanColors.light]),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(1.3)),
+            child: child!,
           ),
-        ),
-        textScale: 1.3,
-      ));
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: UbanGlassNavBar(
+                items: buildElderNavItems(const [], hasUnanswered),
+                currentIndex: 0,
+                onTap: (_) {},
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('hasUnanswered=true：聊天顯示紅點與無障礙標籤，360x640 x1.3 無溢位',
+        (tester) async {
+      _phone(tester, const Size(360, 640));
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(navApp(true));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('nav_badge_dot')), findsOneWidget);
+      expect(find.bySemanticsLabel('聊天，有一個新問題'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+
+    testWidgets('hasUnanswered=false：沒有紅點', (tester) async {
+      _phone(tester, const Size(360, 640));
+      await tester.pumpWidget(navApp(false));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('nav_badge_dot')), findsNothing);
       expect(tester.takeException(), isNull);
     });
-  });
 
-  group('ElderHomeTab 整合', () {
-    testWidgets('有題目時首頁出現卡片、無溢位（360x640 x1.3）', (tester) async {
-      _phone(tester, const Size(360, 640));
-      await tester.pumpWidget(_app(
-        ElderHomeTab(
-          userId: 1,
-          userName: '測試長輩',
-          roomId: 'room',
-          debugInitialRemindersForTest: const [],
-          debugInitialNewsItemsForTest: const [],
-          debugInitialDailyQuestionForTest: _family,
-          onSpeak: (_) async {},
-        ),
-        textScale: 1.3,
-      ));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-      expect(find.text('今天的小問題'), findsOneWidget);
-      expect(tester.takeException(), isNull);
+    test('hasUnanswered 預設為 false', () {
+      expect(ElderDailyQuestionApi.hasUnanswered.value, isFalse);
     });
   });
 
