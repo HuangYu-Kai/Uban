@@ -8,7 +8,7 @@ import 'redesigned_ai_chat_screen.dart';
 import 'family_call_history_screen.dart'; // 新增
 import 'family/family_subscription_screen.dart'; // ★ Task 6
 import 'elder_selection_screen.dart';
-import 'elder_profile_edit_screen.dart';
+import 'family/elder_basic_profile_screen.dart';
 import '../services/signaling.dart'; // 新增
 import '../services/api_service.dart'; // ★ Task 6
 import 'video_call_screen.dart'; // 新增
@@ -595,7 +595,7 @@ Widget build(BuildContext context) {
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (c) => ElderProfileEditScreen(
+                    builder: (c) => ElderBasicProfileScreen(  // ★ 2026-10-07 交接 B1：舊編輯頁已拆成兩頁，此處（無人引用的舊畫面）僅維持可編譯
                       // 此處暫時帶入靜態版模擬數據，後續可從 API 載入真實長輩資料
                       elderData: {
                         'name': _elderName,

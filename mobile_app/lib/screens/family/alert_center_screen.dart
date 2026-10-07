@@ -303,9 +303,11 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
     List<dynamic> emergencyAlerts = [];
     bool failed = false;
     try {
-      logs = await ApiService.getElderActivityLogs(elderIdForApi, limit: fetchLimit);
       final prefs = await SharedPreferences.getInstance();
       final familyUserId = prefs.getInt('caregiver_id');
+      // ★ 2026-10-07 交接 E：帶 family_id 讓後端驗證家屬與長輩的關係（caregiver_id 優先，退回傳入的 userId）。
+      final logsFamilyId = familyUserId ?? widget.userId;
+      logs = await ApiService.getElderActivityLogs(elderIdForApi, limit: fetchLimit, familyId: logsFamilyId);
       if (familyUserId != null) {
         emergencyAlerts = await CctvAlertApi.getEmergencyAlerts(
           elderIdForApi,

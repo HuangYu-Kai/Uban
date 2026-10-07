@@ -259,7 +259,7 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
 
   void _push(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
 
-  void _openHealth() => _push(HealthTrendsScreen(elderName: _name, elderId: widget.currentElder?.id));
+  void _openHealth() => _push(HealthTrendsScreen(elderName: _name, elderId: widget.currentElder?.id, userId: widget.userId));
 
   Future<void> _openOuting() async {
     final uid = widget.userId;

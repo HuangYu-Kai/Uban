@@ -159,9 +159,10 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
 
     try {
       final insight = await ApiService.getElderMoodInsight(elderIdStr);
-      final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 30);
       final prefs = await SharedPreferences.getInstance();
       final familyUserId = prefs.getInt('caregiver_id');
+      // ★ 2026-10-07 交接 E：帶 family_id 讓後端驗證家屬與長輩的關係。
+      final logs = await ApiService.getElderActivityLogs(elderIdStr, limit: 30, familyId: familyUserId ?? widget.userId);
       final emergencyAlerts = familyUserId != null
           ? await ApiService.getEmergencyAlerts(elderIdStr, userId: familyUserId, limit: 30, days: 30)
           : <dynamic>[];

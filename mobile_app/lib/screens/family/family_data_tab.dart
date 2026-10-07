@@ -8,7 +8,9 @@ import '../../services/api_service.dart';
 import '../../services/checkin_notification.dart';
 import '../../services/session_manager.dart';
 import '../../theme/family_theme.dart';
-import '../elder_profile_edit_screen.dart';
+import 'elder_basic_profile_screen.dart';
+import 'elder_profile_shared.dart' show normalizeGender;
+import 'elder_talk_preference_screen.dart';
 import '../caregiver_pairing_screen.dart';
 import '../identification_screen.dart';
 import 'family_subscription_screen.dart';
@@ -363,36 +365,51 @@ class _FamilyDataTabState extends State<FamilyDataTab>
     );
   }
 
+  // ★ 2026-10-07 交接 B1：原本「長輩檔案」與「對話偏好」都開同一頁；現在拆成兩頁。
+  Map<String, dynamic> _elderEditData() {
+    final e = widget.currentElder!;
+    return {
+      'id': e.id,
+      'user_id': e.id,
+      'user_name': e.name,
+      'gender': e.gender, // 沒填就是 null，不再預設成 'M'
+      'age': e.age,
+      'location': e.location,
+    };
+  }
+
+  void _afterElderEdit() {
+    if (!mounted) return;
+    _loadAiProfile();
+    widget.onElderUpdated?.call();
+  }
+
+  /// 「受關照長輩檔案」→ 長輩檔案頁（姓名／年齡／性別／地區／慢性病／用藥）。
   void _navigateToElderEdit() {
     if (widget.currentElder == null) return;
-
-    final elderData = {
-      'id': widget.currentElder!.id,
-      'user_id': widget.currentElder!.id,
-      'user_name': widget.currentElder!.name,
-      'gender': widget.currentElder!.gender ?? 'M',
-      'age': widget.currentElder!.age,
-      'location': widget.currentElder!.location,
-    };
-
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ElderProfileEditScreen(
-          elderData: elderData,
-          familyId: widget.userId,
+        builder: (context) => ElderBasicProfileScreen(
+          elderData: _elderEditData(),
           onUnbind: () {
             Navigator.pop(context);
             _showUnbindConfirmDialog();
           },
         ),
       ),
-    ).then((_) {
-      _loadAiProfile();
-      if (widget.onElderUpdated != null) {
-        widget.onElderUpdated!();
-      }
-    });
+    ).then((_) => _afterElderEdit());
+  }
+
+  /// 「長輩互動與對話偏好」→ 對話偏好頁（稱呼／語氣／篇幅／興趣／話題／主動關懷）。
+  void _navigateToTalkPreference() {
+    if (widget.currentElder == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ElderTalkPreferenceScreen(elderData: _elderEditData()),
+      ),
+    ).then((_) => _afterElderEdit());
   }
 
   void _showUnbindConfirmDialog() {
@@ -852,6 +869,11 @@ class _FamilyDataTabState extends State<FamilyDataTab>
 
   // ─── 2. 長輩基本資料與健康摘要卡 ───
 
+  String _genderLabel(String? raw) {
+    final g = normalizeGender(raw);
+    return g == 'F' ? '女性' : (g == 'M' ? '男性' : '性別未填');
+  }
+
   Widget _buildElderSummaryCard() {
     if (widget.currentElder == null) return const SizedBox.shrink();
     final elder = widget.currentElder!;
@@ -903,7 +925,8 @@ class _FamilyDataTabState extends State<FamilyDataTab>
             ),
             const SizedBox(height: 8),
             Text(
-              '${elder.age != null ? "${elder.age} 歲" : "年齡未填"}・${elder.gender == "F" ? "女性" : "男性"}・居於 ${(elder.location != null && elder.location!.isNotEmpty) ? elder.location : "台北市"}',
+              // ★ 2026-10-07 交接 B1：沒填就顯示「未填」，不再寫死「男性」「台北市」假預設。
+              '${elder.age != null ? "${elder.age} 歲" : "年齡未填"}・${_genderLabel(elder.gender)}・居於 ${(elder.location != null && elder.location!.trim().isNotEmpty) ? elder.location : "未填"}',
               style: famText(c.text2, 14, height: 1.5),
             ),
             const SizedBox(height: 12),
@@ -996,7 +1019,7 @@ class _FamilyDataTabState extends State<FamilyDataTab>
               label: '調整互動對話設定',
               kind: FamButtonKind.tonal,
               height: 46,
-              onPressed: _navigateToElderEdit,
+              onPressed: _navigateToTalkPreference,
             ),
           ],
         ),

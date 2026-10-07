@@ -515,6 +515,16 @@ void initPedometer() {
 - **D7**：`HomeAnalysisCard` 不再以 user_id 當 elderId，缺 4 碼 id 時用 `FriendService.resolveMyElderId` 解析，解析不到才顯示載入失敗。
 - 測試：`test/screens/family/handover_bcd_family_test.dart`。
 
+### 2026-10-07 交接 B1／E（家屬端）：長輩資料拆兩頁、讀寫修正、死碼清理（`feat/handover-b` 分支）
+
+- **B1 拆成兩頁**：資料分頁「受關照長輩檔案」→ `family/elder_basic_profile_screen.dart`（姓名、年齡、性別、地區 `CityDistrictPicker`＋`LocateCityButton`、慢性病、用藥備註、解除綁定）；「長輩互動與對話偏好」→ `family/elder_talk_preference_screen.dart`（稱呼、語氣、篇幅、興趣與回憶素材、**話題偏好**想多聊 `priority`／避免 `avoid`／禁忌 `forbidden`、**主動關懷頻率** 關閉／30 分／1 小時／2 小時 → `heartbeat_frequency` 0/30/60/120）。共用資料存取與小元件在 `family/elder_profile_shared.dart`（`ElderProfileGateway` 可在測試注入）。舊的 `elder_profile_edit_screen.dart` 刪除。
+- **讀取修正**：從 `{status, data}` 的 `data` 讀；`interests` 是清單（畫面用全形逗號串起來編輯、送出時以半形逗號字串）；語氣／篇幅讀真值，沒資料顯示「尚未設定」，沒動滑桿不送；讀取失敗顯示原因＋重新載入，不顯示空表單。
+- **存檔修正**：`PUT /api/user/profile/{id}` 只送跟載入值不同的欄位（`ElderDataApi.putProfileFields`）；HTTP 非 2xx／`status != success` 一律視為失敗並顯示後端 `detail`／`message`，成功訊息只在真成功後顯示。後端把空白字串視為「沒送」，所以清空欄位無法儲存——畫面會明講而不是假成功。姓名改 `user_name`（後端同步 `elder_name`），地區送 `residence_city`／`residence_district`／`location`（台→臺由後端處理）。話題偏好新增／刪除走 `/api/ai/topics`，立即生效；`GET /api/ai/topics` 後端不分長輩全回，前端依 `elder_id` 過濾。
+- **資料分頁長輩卡**：沒填性別／地區改顯示「性別未填」「未填」，不再寫死「男性」「台北市」。
+- **E 前端**：`health_trends_screen.dart` 錯誤訊息改讀 FastAPI `detail`（`ApiService.failureMessageOf`），`familyId` 由 `caregiver_id` 退回呼叫端傳入的 `userId`；`getElderActivityLogs` 新增 `familyId`，`alert_center_screen.dart`、`family_home_tab.dart` 都帶 `family_id` 讓後端驗證關係。
+- **刪除死碼**：`family/ai_hub_screen.dart`、`family/widgets/emotion_preview_card.dart`（及其測試）、`elder_tabs/elder_chat_tab.dart`（`test/generate_chapter12_main_screenshots.dart` 移除對應截圖案例）、`family_agent_view.dart`、`redesigned_family_agent_view.dart`；`family/family_settings_view.dart` 因唯一入口 `ai_hub_screen.dart` 刪除而無人引用，一併刪除（其通知開關已在 B3 移到資料分頁）。
+- 測試：`test/screens/family/elder_profile_pages_test.dart`（讀取、部分送出、失敗訊息、話題新增／刪除、360×640＋1.3 倍字不溢位）。
+
 ### 2026-10-07 💬 家人分享經由小嘎轉達；家屬首頁「近況分析」
 
 - **家屬互動分頁三合一**：「留言給 XX」與「家庭生活時光牆」兩張卡移除，「AI 照護秘書」成為唯一入口（快捷鈕：分享近況、問近況、設提醒）。秘書可附照片；說「跟媽說我升職了」或附照片會出現「分享草稿卡」，可修改，按「送出給○○」才存檔（存成時光牆貼文）。右上「分享紀錄」開原本的時光牆畫面。

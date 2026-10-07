@@ -31,10 +31,14 @@ class HealthTrendsScreen extends StatefulWidget {
   final String elderName;
   final int? elderId;
 
+  /// ★ 2026-10-07 交接 B1／E：呼叫端已知的家屬 user id；`caregiver_id` 讀不到時的退路。
+  final int? userId;
+
   const HealthTrendsScreen({
     super.key,
     required this.elderName,
     this.elderId,
+    this.userId,
   });
 
   @override
@@ -116,9 +120,15 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      // ★ 2026-10-07 交接 B1／E：caregiver_id 優先，讀不到就退回呼叫端傳入的 userId
+      //   （其他家屬畫面的做法一致），避免 familyId 為 null 時整頁拿不到資料。
       _familyId = prefs.getInt('caregiver_id');
     } catch (_) {
       _familyId = null;
+    }
+    if (_familyId == null || _familyId! <= 0) {
+      final fallback = widget.userId;
+      _familyId = (fallback != null && fallback > 0) ? fallback : null;
     }
 
     final elderIdStr = widget.elderId.toString();
@@ -139,7 +149,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     if (resp['status'] != 'success') {
       setState(() {
         _stepsStatus = _SectionStatus.error;
-        _stepsErrorMsg = (resp['message'] ?? resp['error'] ?? '步數資料載入失敗').toString();
+        _stepsErrorMsg = ApiService.failureMessageOf(resp, fallback: '步數資料載入失敗');
       });
       return;
     }
@@ -173,7 +183,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     if (resp['status'] != 'success') {
       setState(() {
         _bodyStatus = _SectionStatus.error;
-        _bodyErrorMsg = (resp['message'] ?? resp['error'] ?? '體重／身高資料載入失敗').toString();
+        _bodyErrorMsg = ApiService.failureMessageOf(resp, fallback: '體重／身高資料載入失敗');
       });
       return;
     }
@@ -808,7 +818,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                       } else {
                         setSheetState(() {
                           submitting = false;
-                          errorText = (resp['message'] ?? resp['error'] ?? '儲存失敗，請重試').toString();
+                          errorText = ApiService.failureMessageOf(resp, fallback: '儲存失敗，請重試');
                         });
                       }
                     },
