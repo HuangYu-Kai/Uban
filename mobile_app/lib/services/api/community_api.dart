@@ -80,6 +80,47 @@ class CommunityApi {
     }
   }
 
+  /// ★ 2026-10-07 交接 C1：同 [createCommunityPost]，但失敗時回傳真實原因（FastAPI `detail`／
+  /// `message`／網路錯誤）而不是只回 null，讓呼叫端照實顯示、不假成功。
+  /// 回傳 `(data, error)`：成功時 error 為 null。
+  static Future<(Map<String, dynamic>?, String?)> createCommunityPostChecked({
+    required int familyId,
+    required int authorId,
+    required String authorName,
+    String authorRole = 'elder',
+    required String content,
+    String mood = '😊',
+    String? imageUrl,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/community/posts'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'family_id': familyId,
+              'author_id': authorId,
+              'author_name': authorName,
+              'author_role': authorRole,
+              'content': content,
+              'mood': mood,
+              if (imageUrl != null) 'image_url': imageUrl,
+            }),
+          )
+          .timeout(ApiClient.timeout);
+      final data = ApiClient.safeDecode(response);
+      if (data['status'] == 'success') {
+        final d = data['data'];
+        return (d is Map ? Map<String, dynamic>.from(d) : <String, dynamic>{}, null);
+      }
+      final reason = (data['detail'] ?? data['message'] ?? '').toString().trim();
+      return (null, reason.isEmpty ? '伺服器沒有接受這則分享（${response.statusCode}）' : reason);
+    } catch (e) {
+      debugPrint('⚠️ createCommunityPostChecked error: $e');
+      return (null, '目前連不上伺服器，請確認網路後再試一次');
+    }
+  }
+
   /// 切換貼文「關心 ❤️」狀態
   static Future<Map<String, dynamic>?> toggleCommunityPostLike({
     required int postId,

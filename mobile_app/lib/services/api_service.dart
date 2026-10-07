@@ -365,11 +365,13 @@ class ApiService {
     required int userId,
     String? status,
     int limit = 20,
+    int? days, // ★ 2026-10-07 交接 D4：首頁帶 30（滑掉紀錄只保留 30 天，警報不限天數會重現）
   }) => CctvAlertApi.getEmergencyAlerts(
         elderId,
         userId: userId,
         status: status,
         limit: limit,
+        days: days,
       );
 
   static Future<List<dynamic>> getZoneConfig(
@@ -447,6 +449,25 @@ class ApiService {
         content: content,
         mood: mood,
         stampType: stampType,
+        imageUrl: imageUrl,
+      );
+
+  /// ★ 2026-10-07 交接 C1：失敗時帶回真實原因的版本（見 CommunityApi）。
+  static Future<(Map<String, dynamic>?, String?)> createCommunityPostChecked({
+    required int familyId,
+    required int authorId,
+    required String authorName,
+    String authorRole = 'elder',
+    required String content,
+    String mood = '😊',
+    String? imageUrl,
+  }) => CommunityApi.createCommunityPostChecked(
+        familyId: familyId,
+        authorId: authorId,
+        authorName: authorName,
+        authorRole: authorRole,
+        content: content,
+        mood: mood,
         imageUrl: imageUrl,
       );
 

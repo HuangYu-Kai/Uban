@@ -16,10 +16,14 @@ class HomeGpsTrailCard extends StatefulWidget {
   final Elder? currentElder;
   final int? userId;
 
+  /// ★ 2026-10-07 交接 D6：父層下拉刷新／切回分頁時遞增，卡片即重讀（同 HomeCheckinCard）。
+  final int refreshToken;
+
   const HomeGpsTrailCard({
     super.key,
     this.currentElder,
     this.userId,
+    this.refreshToken = 0,
   });
 
   @override
@@ -46,7 +50,8 @@ class _HomeGpsTrailCardState extends State<HomeGpsTrailCard> {
   void didUpdateWidget(covariant HomeGpsTrailCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentElder?.elderId != widget.currentElder?.elderId ||
-        oldWidget.userId != widget.userId) {
+        oldWidget.userId != widget.userId ||
+        oldWidget.refreshToken != widget.refreshToken) {
       _load();
     }
   }

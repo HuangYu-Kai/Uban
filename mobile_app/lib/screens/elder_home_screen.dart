@@ -1103,7 +1103,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 通話中（Signaling().isInCall）或首頁不在最上層（ElderScreen／來電彈窗在上）
   /// 時只排隊不播放，回到首頁時由 _restoreSignalingCallbacks／回前景再 drain。
   late final CheckinCheerService _cheerService = CheckinCheerService(
-    elderId: widget.userId,
+    // ★ 2026-10-07 交接 C/D（長輩端）C3：傳 4 碼 elder_id（同每日一問／小豬禮物解析）。
+    resolveElderId: () => TodayTasksLoader.resolveElderId(widget.userId,
+        roomId: widget.roomId),
     canPresent: () =>
         mounted && (ModalRoute.of(context)?.isCurrent ?? true),
     isInCall: () => Signaling().isInCall,

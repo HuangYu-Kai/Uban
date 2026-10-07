@@ -163,7 +163,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
       final prefs = await SharedPreferences.getInstance();
       final familyUserId = prefs.getInt('caregiver_id');
       final emergencyAlerts = familyUserId != null
-          ? await ApiService.getEmergencyAlerts(elderIdStr, userId: familyUserId, limit: 30)
+          ? await ApiService.getEmergencyAlerts(elderIdStr, userId: familyUserId, limit: 30, days: 30)
           : <dynamic>[];
       if (mounted) {
         setState(() {
@@ -184,7 +184,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
         'log_id': DateTime.now().millisecondsSinceEpoch,
         'event_type': 'interaction',
         'content': contentMsg,
-        'timestamp': DateTime.now().toIso8601String(),
+        // ★ 2026-10-07 交接 C1：後端時間為 UTC，樂觀插入必須帶 Z，否則被當台灣時間而晚 8 小時
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
       });
     });
   }
@@ -227,6 +228,7 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                           currentElder: widget.currentElder,
                           isElderOnline: widget.isElderOnline,
                           realLogs: _realLogs,
+                          refreshToken: _checkinRefresh,
                         ),
                         const SizedBox(height: 16),
                         HomeCheckinCard(
@@ -250,6 +252,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                         HomeGpsTrailCard(
                           currentElder: widget.currentElder,
                           userId: widget.userId,
+                          // ★ 2026-10-07 交接 D6：接上下拉刷新／切回分頁訊號
+                          refreshToken: _checkinRefresh,
                         ),
                         const SizedBox(height: 16),
                         HomeMonitorDeviceCard(
@@ -321,12 +325,20 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                 padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPad),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
+                    // ★ 2026-10-07 交接 C2：長輩提問收件匣原本只在平板橫向版面，手機版補上
+                    //   （沒有待回覆問題時自動隱藏不佔位）。
+                    if (widget.userId != null)
+                      ElderQuestionInbox(
+                        familyId: widget.userId!,
+                        refreshToken: widget.questionRefreshToken,
+                      ),
                     // 1. 長輩頂部極光卡片與在線狀態
                     HomeElderHeaderCard(
                       headerKey: widget.elderHeaderKey,
                       currentElder: widget.currentElder,
                       isElderOnline: widget.isElderOnline,
                       realLogs: _realLogs,
+                      refreshToken: _checkinRefresh,
                     ),
                     const SizedBox(height: 16),
 
@@ -356,6 +368,8 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                     HomeGpsTrailCard(
                       currentElder: widget.currentElder,
                       userId: widget.userId,
+                      // ★ 2026-10-07 交接 D6：接上下拉刷新／切回分頁訊號
+                      refreshToken: _checkinRefresh,
                     ),
                     const SizedBox(height: 16),
 

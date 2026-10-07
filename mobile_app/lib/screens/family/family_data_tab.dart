@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/elder.dart';
 import '../../services/api_service.dart';
+import '../../services/checkin_notification.dart';
 import '../../services/session_manager.dart';
 import '../../theme/family_theme.dart';
 import '../elder_profile_edit_screen.dart';
@@ -80,10 +81,12 @@ class _FamilyDataTabState extends State<FamilyDataTab>
   String _subscriptionDisplay = '一般會員';
 
   // 智慧防護與通知開關
-  bool _isEmergencyOn = true;
-  bool _isDailySummaryOn = true;
-  bool _isAiInsightOn = true;
-  bool _isMedicationPushOn = true;
+  // ★ 2026-10-07 交接 B3：原四個假開關（只存記憶體、沒人讀）改為真的本機通知偏好
+  //   （G58/G59：裝置偏好，存 SharedPreferences、不隨登出清除），預設值同 CheckinNotification。
+  bool _notifyCheckin = true;
+  bool _notifyDailyAnswer = true;
+  bool _notifyPetGift = true;
+  bool _notifyStepChallenge = true;
   bool _isGeneratingRecovery = false;
 
   // AI 與長輩資料狀態
@@ -98,6 +101,37 @@ class _FamilyDataTabState extends State<FamilyDataTab>
     _loadCaregiverName();
     _loadSubscriptionInfo();
     _loadAiProfile();
+    _loadNotifyPrefs();
+  }
+
+  // ★ 2026-10-07 交接 B3：讀四個真開關目前值
+  Future<void> _loadNotifyPrefs() async {
+    try {
+      final r = await Future.wait([
+        CheckinNotification.isEnabled(),
+        CheckinNotification.isDailyEnabled(),
+        CheckinNotification.isPetGiftEnabled(),
+        CheckinNotification.isStepChallengeEnabled(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _notifyCheckin = r[0];
+        _notifyDailyAnswer = r[1];
+        _notifyPetGift = r[2];
+        _notifyStepChallenge = r[3];
+      });
+    } catch (_) {}
+  }
+
+  /// 樂觀更新，寫入失敗則還原。
+  Future<void> _setNotify(bool val, void Function(bool) assign,
+      Future<void> Function(bool) save) async {
+    setState(() => assign(val));
+    try {
+      await save(val);
+    } catch (_) {
+      if (mounted) setState(() => assign(!val));
+    }
   }
 
   // ── 重新整理三種觸發（下拉／切回此分頁／App 回前景）共用 ──
@@ -180,8 +214,10 @@ class _FamilyDataTabState extends State<FamilyDataTab>
   Future<void> _loadSubscriptionInfo() async {
     try {
       final res = await ApiService.getSubscriptionTier(widget.userId);
-      if (mounted && (res['status'] == 'success' || res['tier_level'] != null)) {
-        final tier = (res['tier_level'] ?? 'free').toString();
+      // ★ 2026-10-07 交接 B2：tier_level 在 data 裡（原讀最外層 → 永遠一般會員）
+      final d = res['data'] is Map ? res['data'] as Map : const {};
+      if (mounted && res['status'] == 'success') {
+        final tier = (d['tier_level'] ?? 'free').toString();
         setState(() {
           if (tier == 'diamond') {
             _subscriptionDisplay = '鑽石守護版';
@@ -619,28 +655,32 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 builder: () => _fadeIn(
                   FamGroup(title: '通知', children: [
                     _switchRow(
-                      '跌倒與緊急求救',
-                      '長輩端觸發緊急警報時，第一時間彈窗並強制響鈴提醒',
-                      _isEmergencyOn,
-                      (val) => setState(() => _isEmergencyOn = val),
+                      '長輩打卡通知',
+                      '長輩完成或漏掉打卡事項時，推播通知您',
+                      _notifyCheckin,
+                      (val) => _setNotify(val, (v) => _notifyCheckin = v,
+                          CheckinNotification.setEnabled),
                     ),
                     _switchRow(
-                      '吃藥打卡',
-                      '長輩完成吃藥打卡或未按時服藥時，即時推播回報',
-                      _isMedicationPushOn,
-                      (val) => setState(() => _isMedicationPushOn = val),
+                      '每日一問回答通知',
+                      '長輩回答了您出的每日一問時，推播通知您',
+                      _notifyDailyAnswer,
+                      (val) => _setNotify(val, (v) => _notifyDailyAnswer = v,
+                          CheckinNotification.setDailyEnabled),
                     ),
                     _switchRow(
-                      '每天 18:00 健康日誌',
-                      '每日 18:00 推播長輩今日活動紀錄與心情簡報',
-                      _isDailySummaryOn,
-                      (val) => setState(() => _isDailySummaryOn = val),
+                      '小豬共養通知',
+                      '長輩用您送的點心餵了小豬時，推播通知您',
+                      _notifyPetGift,
+                      (val) => _setNotify(val, (v) => _notifyPetGift = v,
+                          CheckinNotification.setPetGiftEnabled),
                     ),
                     _switchRow(
-                      '作息與情緒預警',
-                      '長輩生活作息不規律或情緒低落時的主動關懷建議',
-                      _isAiInsightOn,
-                      (val) => setState(() => _isAiInsightOn = val),
+                      '全家一起走通知',
+                      '全家本週步數挑戰過半或達標時，推播通知您',
+                      _notifyStepChallenge,
+                      (val) => _setNotify(val, (v) => _notifyStepChallenge = v,
+                          CheckinNotification.setStepChallengeEnabled),
                     ),
                   ]),
                   200,

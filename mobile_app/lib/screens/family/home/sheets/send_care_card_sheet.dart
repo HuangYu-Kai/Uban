@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../models/elder.dart';
 import '../../../../services/api_service.dart';
+import '../../../../services/api/checkin_api.dart';
 import '../../../../theme/app_theme.dart';
 import '../../../../widgets/ui/uban_segmented.dart';
 import '../../../../widgets/ui/uban_sheet.dart';
@@ -57,6 +59,50 @@ class _SendCareCardSheetState extends State<SendCareCardSheet> {
   String? _recordedFilePath;
   int _recordingDuration = 0;
   Timer? _recordingTimer;
+
+  // ★ 2026-10-07 交接 C1：送出狀態。以前只寫一筆 activity_log 就說「已傳送」、語音檔根本沒上傳；
+  //   現在要伺服器確認才算成功，失敗保留面板並顯示真實原因。
+  bool _sending = false;
+  String? _sendError;
+
+  /// 家屬 id（與 AI 照護秘書分享同一來源 caregiver_id）。
+  Future<int?> _familyId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('caregiver_id') ?? prefs.getInt('saved_id');
+  }
+
+  /// 文字：走「家人分享」`POST /api/community/posts`（author_role family），
+  /// 與 AI 照護秘書分享草稿同一條路，長輩的小嘎開場會轉達。回傳錯誤原因，成功回 null。
+  Future<String?> _sendTextShare(String text) async {
+    final familyId = await _familyId();
+    if (familyId == null) return '無法確認家屬身分，請重新登入後再試';
+    final prefs = await SharedPreferences.getInstance();
+    final userName =
+        prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
+    final (data, err) = await ApiService.createCommunityPostChecked(
+      familyId: familyId,
+      authorId: familyId,
+      authorName: userName,
+      authorRole: 'family',
+      content: text,
+    );
+    return data == null ? (err ?? '送出失敗，請稍後再試') : null;
+  }
+
+  /// 語音：貼文不支援音檔，改走 `POST /api/checkin_cheer`（純語音、不綁提醒），
+  /// 長輩端既有的加油播放流程會播放。回傳錯誤原因，成功回 null。
+  Future<String?> _sendVoiceCheer(String path) async {
+    final familyId = await _familyId();
+    final elderId = widget.currentElder?.elderId;
+    if (familyId == null) return '無法確認家屬身分，請重新登入後再試';
+    if (elderId == null || elderId.isEmpty) return '尚未取得長輩代碼，請稍後再試';
+    final r = await CheckinApi.sendCheer(
+      familyId: familyId,
+      elderId: elderId,
+      audioPath: path,
+    );
+    return r.ok ? null : r.message;
+  }
 
   @override
   void initState() {
@@ -131,7 +177,10 @@ class _SendCareCardSheetState extends State<SendCareCardSheet> {
           small: true,
           labels: const ['AI 近況短句', '原聲錄音對講'],
           index: _selectedTabIndex,
-          onChanged: (i) => setState(() => _selectedTabIndex = i),
+          onChanged: (i) => setState(() {
+            _selectedTabIndex = i;
+            _sendError = null;
+          }),
         ),
         const SizedBox(height: 18),
 
@@ -213,30 +262,44 @@ class _SendCareCardSheetState extends State<SendCareCardSheet> {
               );
             }),
           const SizedBox(height: 8),
+          if (_sendError != null && _selectedTabIndex == 0) ...[
+            Text(_sendError!, style: famText(c.danger, 13.5, height: 1.4)),
+            const SizedBox(height: 8),
+          ],
           FamButton(
             label: '推送 AI 貼心問候至長輩端',
             height: 52,
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              Navigator.pop(context);
-              if (_dynamicCareMessages.isEmpty) return;
-              final selectedObj = _dynamicCareMessages[_selectedCardIndex];
-              final contentMsg = '【AI 關懷傳送】${selectedObj['title']}：${selectedObj['desc']}';
-
-              if (widget.currentElder?.id != null) {
-                try {
-                  await ApiService.logActivity(widget.currentElder!.id, 'interaction', contentMsg);
-                } catch (_) {}
-              }
-
-              widget.onCareMessageSent?.call(contentMsg);
-
-              messenger.showSnackBar(
-                SnackBar(
-                  content: Text('已傳送 AI 貼心關懷「${selectedObj['title']}」至 ${widget.elderName} 的裝置！❤️', style: famText(c.surface, 14, weight: FontWeight.w700)),
-                ),
-              );
-            },
+            loading: _sending,
+            onPressed: (_sending || _dynamicCareMessages.isEmpty)
+                ? null
+                : () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final nav = Navigator.of(context);
+                    final selectedObj = _dynamicCareMessages[_selectedCardIndex];
+                    final desc = selectedObj['desc'] ?? '';
+                    setState(() {
+                      _sending = true;
+                      _sendError = null;
+                    });
+                    final err = await _sendTextShare(desc);
+                    if (!mounted) return;
+                    if (err != null) {
+                      setState(() {
+                        _sending = false;
+                        _sendError = err;
+                      });
+                      return;
+                    }
+                    widget.onCareMessageSent
+                        ?.call('【AI 關懷傳送】${selectedObj['title']}：$desc');
+                    nav.pop();
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('已送出，小嘎會在${widget.elderName}下次聊天時轉達 ❤️',
+                            style: famText(c.surface, 14, weight: FontWeight.w700)),
+                      ),
+                    );
+                  },
           ),
         ],
 
@@ -338,27 +401,39 @@ class _SendCareCardSheetState extends State<SendCareCardSheet> {
             ),
           ),
           const SizedBox(height: 6),
+          if (_sendError != null && _selectedTabIndex == 1) ...[
+            Text(_sendError!, style: famText(c.danger, 13.5, height: 1.4)),
+            const SizedBox(height: 8),
+          ],
           FamButton(
             label: '傳送 10 秒原聲語音至長輩端',
             height: 52,
-            onPressed: _recordedFilePath == null
+            loading: _sending,
+            onPressed: (_recordedFilePath == null || _sending || _isRecording)
                 ? null
                 : () async {
                     final messenger = ScaffoldMessenger.of(context);
-                    Navigator.pop(context);
-                    final contentMsg = '【家屬原聲對講】子女傳送了一段 10 秒原聲關懷語音 🎙️';
-
-                    if (widget.currentElder?.id != null) {
-                      try {
-                        await ApiService.logActivity(widget.currentElder!.id, 'voice', contentMsg);
-                      } catch (_) {}
+                    final nav = Navigator.of(context);
+                    setState(() {
+                      _sending = true;
+                      _sendError = null;
+                    });
+                    final err = await _sendVoiceCheer(_recordedFilePath!);
+                    if (!mounted) return;
+                    if (err != null) {
+                      setState(() {
+                        _sending = false;
+                        _sendError = err;
+                      });
+                      return;
                     }
-
-                    widget.onCareMessageSent?.call(contentMsg);
-
+                    widget.onCareMessageSent
+                        ?.call('【家屬原聲對講】子女傳送了一段 10 秒原聲關懷語音 🎙️');
+                    nav.pop();
                     messenger.showSnackBar(
                       SnackBar(
-                        content: Text('已發送 10 秒家屬原聲關懷至 ${widget.elderName} 的裝置！🔊', style: famText(c.surface, 14, weight: FontWeight.w700)),
+                        content: Text('已送出原聲語音，${widget.elderName}會在開啟 App 時聽到 🔊',
+                            style: famText(c.surface, 14, weight: FontWeight.w700)),
                       ),
                     );
                   },

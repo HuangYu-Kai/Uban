@@ -496,6 +496,25 @@ void initPedometer() {
 - **A3 家庭近況卡**：互動分頁秘書卡下方新增「家庭近況」卡，開啟 `ElderCommunityScreen`；秘書右上「分享紀錄」移除。
 - **A4 家屬社群**：家屬入口不再有朋友分頁、不顯示「只有家人和認識的朋友」提示條（`ElderCommunityScreen.isFamilyMode`）；「爪印」改「讚」（❤️）；修 `author_role`：發文／留言改依真實登入角色送出（家屬模式一律 `family`，否則讀 `user_role`／`saved_role`，讀不到才 `elder`）。
 
+### 2026-10-07 交接 C/D（長輩端）：加油補撈、每日一問退路移除、步數不重複上傳（`feat/handover-b` 分支）
+
+- **C3 加油補撈（前端）**：`CheckinCheerService` 改收 `resolveElderId` 回呼（`elder_home_screen.dart` 傳 `TodayTasksLoader.resolveElderId`），以 4 碼 elder_id 查未讀與回報已讀；解析不到就略過，下次回前景再試。
+- **C4 長輩端**：`elder_chat_screen.dart` 移除 `elder_${userId}` 退路（解析不到 elder_id 就不問／不開回答面板）；刪除死碼 `elder_share_story_dialog.dart`（lib/、test/ 皆無引用）。
+- **D1 步數重複計算**：`_lastUploadedSteps` 連同日期存 SharedPreferences（`lib/utils/step_upload_delta.dart`），重開 App 還原、跨日歸零；新增 `test/utils/step_upload_delta_test.dart`。
+
+### 2026-10-07 交接 B/C/D（家屬端）：訂閱讀 data、通知真開關、關懷卡真的送達、首頁數字更準（`feat/handover-b` 分支）
+
+- **B2 訂閱方案**：`family_subscription_screen.dart`、`family_data_tab.dart` 改讀後端 `{status, data:{tier_level, devices_max}}`／`data.records`（原讀最外層，永遠顯示一般會員）。
+- **B3 通知開關**：資料分頁四個假開關換成真的本機偏好（`CheckinNotification` 的 `checkin_notify_enabled`、`daily_answer_notify_enabled`、`pet_gift_notify_enabled`、`step_challenge_notify_enabled`，裝置偏好、登出不清）；移除後端沒有支援的「跌倒與緊急求救／吃藥打卡／18:00 日誌／情緒預警」假項目。`family_settings_view.dart` 保持原狀。
+- **C1 傳送關懷卡**：`send_care_card_sheet.dart` 文字改走 `POST /api/community/posts`（author_role `family`，與 AI 秘書分享同路，小嘎開場轉達）；10 秒語音改走 `POST /api/checkin_cheer`（貼文不支援音檔，長輩端既有加油播放）。伺服器確認才顯示成功，失敗保留面板並顯示真實原因（新增 `CommunityApi.createCommunityPostChecked`）。`family_home_tab.dart` 樂觀插入時間改 UTC＋Z（原晚 8 小時）。
+- **C2**：長輩提問收件匣 `ElderQuestionInbox` 補到手機（直向）版面。
+- **C4（`home_analysis_card.dart` 部分）**：回憶錄篇數／最近兩篇改讀 `GET /api/daily_question/history`（已回答），不再讀本機 `MemoirService`。
+- **D2**：首頁長輩卡「今天步數」改讀 `GET /api/family_insight/steps/{id}`（後端 `days` 下限 7，取序列最後一筆＝台灣今天），沒有資料整格不顯示，不再用正規式抓聊天文字。
+- **D4**：最新警示不再顯示已結案（`status=resolved`）與誤報（`is_false_alarm`），即時警報若持久化列已結案也略過；移除聊天關鍵字（警示／提醒／未確認）當警示的判斷，只認 `event_type=='alert'`；警報查詢加 `days=30`。
+- **D6**：`HomeGpsTrailCard` 新增 `refreshToken`，由首頁下拉刷新帶動。
+- **D7**：`HomeAnalysisCard` 不再以 user_id 當 elderId，缺 4 碼 id 時用 `FriendService.resolveMyElderId` 解析，解析不到才顯示載入失敗。
+- 測試：`test/screens/family/handover_bcd_family_test.dart`。
+
 ### 2026-10-07 💬 家人分享經由小嘎轉達；家屬首頁「近況分析」
 
 - **家屬互動分頁三合一**：「留言給 XX」與「家庭生活時光牆」兩張卡移除，「AI 照護秘書」成為唯一入口（快捷鈕：分享近況、問近況、設提醒）。秘書可附照片；說「跟媽說我升職了」或附照片會出現「分享草稿卡」，可修改，按「送出給○○」才存檔（存成時光牆貼文）。右上「分享紀錄」開原本的時光牆畫面。

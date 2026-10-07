@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../models/elder.dart';
+import '../../../../services/api_service.dart';
 import '../../../../theme/app_theme.dart';
 import '../../widgets/fam_ui.dart';
 
 /// 長輩總覽卡（設計稿 `.elderhero`）：頭像、名字、年齡地區、狀態與今日步數。
 ///
 /// 原卡片沒有「打電話／視訊」按鈕、也沒有吃藥打卡資料，所以這裡不放（不新增 API）。
-class HomeElderHeaderCard extends StatelessWidget {
+class HomeElderHeaderCard extends StatefulWidget {
   final Elder? currentElder;
   final bool isElderOnline;
   final List<dynamic> realLogs;
   final GlobalKey? headerKey;
+
+  /// ★ 2026-10-07 交接 D2：父層刷新訊號（遞增即重讀今日步數）。
+  final int refreshToken;
+
+  /// 測試注入點：回傳今日步數（null＝沒資料）；null 時走真實 API。
+  final Future<int?> Function(String elderId)? stepsLoader;
 
   const HomeElderHeaderCard({
     super.key,
@@ -19,25 +26,75 @@ class HomeElderHeaderCard extends StatelessWidget {
     this.isElderOnline = false,
     this.realLogs = const [],
     this.headerKey,
+    this.refreshToken = 0,
+    this.stepsLoader,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final c = UbanColors.of(context);
-    final online = isElderOnline;
-    final name = currentElder?.displayName ?? '長輩';
+  State<HomeElderHeaderCard> createState() => _HomeElderHeaderCardState();
+}
 
-    // 步數：沿用既有解析（從活動紀錄文字找「N 步」取最大值）。
-    // 舊版沒有紀錄時會顯示寫死的 3850 步——那是假資料，改成沒有就不顯示這格。
-    int totalSteps = 0;
-    for (final item in realLogs) {
-      final text = item['content']?.toString() ?? '';
-      final m = RegExp(r'(\d{1,3}(?:,\d{3})*|\d+)\s*步').firstMatch(text);
-      if (m != null) {
-        final parsed = int.tryParse(m.group(1)!.replaceAll(',', '')) ?? 0;
-        if (parsed > totalSteps) totalSteps = parsed;
-      }
+class _HomeElderHeaderCardState extends State<HomeElderHeaderCard> {
+  /// 今日步數；null＝沒有資料（整格不顯示，不當成 0 步）。
+  int? _todaySteps;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSteps();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeElderHeaderCard old) {
+    super.didUpdateWidget(old);
+    if (old.currentElder?.elderId != widget.currentElder?.elderId ||
+        old.currentElder?.id != widget.currentElder?.id ||
+        old.refreshToken != widget.refreshToken) {
+      _loadSteps();
     }
+  }
+
+  /// ★ 2026-10-07 交接 D2：今日步數改讀 `GET /api/family_insight/steps/{id}`，
+  /// 不再用正規式從聊天文字抓「N 步」（長輩隨口說的數字會被當成步數）。
+  /// 後端 days 下限 7，所以取回 7 天序列的最後一筆（＝台灣今天）；沒有值就不顯示。
+  Future<void> _loadSteps() async {
+    final elderId = widget.currentElder?.elderId;
+    if (elderId == null || elderId.isEmpty) {
+      if (mounted) setState(() => _todaySteps = null);
+      return;
+    }
+    int? steps;
+    try {
+      if (widget.stepsLoader != null) {
+        steps = await widget.stepsLoader!(elderId);
+      } else {
+        final res = await ApiService.getStepsTrend(elderId, days: 7);
+        final data = res['data'];
+        if (res['status'] == 'success' && data is Map && data['available'] != false) {
+          final series = data['series'];
+          if (series is List && series.isNotEmpty && series.last is Map) {
+            final v = (series.last as Map)['steps'];
+            steps = v is num ? v.toInt() : null;
+          }
+        }
+      }
+    } catch (_) {
+      steps = null;
+    }
+    if (!mounted) return;
+    // 切換長輩期間舊請求回來：以目前長輩為準
+    if (widget.currentElder?.elderId != elderId) return;
+    setState(() => _todaySteps = (steps != null && steps > 0) ? steps : null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentElder = widget.currentElder;
+    final headerKey = widget.headerKey;
+    final c = UbanColors.of(context);
+    final online = widget.isElderOnline;
+    final name = currentElder?.displayName ?? '長輩';
+    final totalSteps = _todaySteps ?? 0;
 
     final age = currentElder?.age;
     final loc = currentElder?.location;
