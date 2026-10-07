@@ -489,6 +489,10 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-07 🧭 身分選擇頁新手導覽（`feat/identification-tutorial` 分支）
+
+- 身分選擇頁首次進入會用 `SpotlightTutorial` 帶使用者認識「我是長者／我是家屬／監控設備」三個入口（`tutorialId: identification_v1`）；右上角新增「怎麼選？」按鈕可隨時重看。`SpotlightTutorial.showIfNeeded` 新增選用參數 `ignoreAllDismissed`（預設 false，既有呼叫端行為不變），讓本頁不被長者端「全域跳過」旗標吃掉。
+
 ### 2026-10-07 交接 A：回憶錄改名、每日一問併入 AI 照護秘書、家庭近況卡、家屬社群修正（`feat/handover-a` 分支）
 
 - **A1 改名**：家屬看得到的「人生故事」全改「回憶錄」；首頁近況分析第三分頁改「情緒與回憶錄」。類別與檔名不動。

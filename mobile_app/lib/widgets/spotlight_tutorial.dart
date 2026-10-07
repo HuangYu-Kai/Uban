@@ -72,6 +72,9 @@ class SpotlightTutorial {
     double titleFontSize = 24,
     double bodyFontSize = 18,
     double buttonHeight = 56,
+    // ★ 2026-10-07 身分選擇導覽：身分選擇頁的使用者可能從沒看過長者端教學，
+    //   不該被長者端的「全域跳過」旗標吃掉；預設 false = 維持原行為。
+    bool ignoreAllDismissed = false,
   }) async {
     if (steps.isEmpty) return;
     final String prefsKey = '$_prefsKeyPrefix$tutorialId';
@@ -87,7 +90,7 @@ class SpotlightTutorial {
       // 讀取失敗 → 視為已完成，直接跳過，絕不擋住使用者。
       return;
     }
-    if (allDismissed || alreadyDone) return;
+    if ((allDismissed && !ignoreAllDismissed) || alreadyDone) return;
 
     // 確保至少經過一次完整 layout，量測目標元件位置才會準確
     // （呼叫端可能在 setState 之後緊接著呼叫本函式，此時新畫面尚未 layout 完）。
@@ -170,7 +173,8 @@ class SpotlightTutorial {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(prefsKeyAllDismissed, false);
-      final keys = prefs.getKeys().where((k) => k.startsWith(_prefsKeyPrefix)).toList();
+      final keys =
+          prefs.getKeys().where((k) => k.startsWith(_prefsKeyPrefix)).toList();
       for (final k in keys) {
         await prefs.remove(k);
       }
@@ -181,7 +185,8 @@ class SpotlightTutorial {
 /// 以 [UbanMotion.tutorialSpring]（設計稿 `Spring(.75, 300)`）驅動的單一數值。
 class _SpringValue {
   _SpringValue(TickerProvider vsync, double initial)
-      : controller = AnimationController.unbounded(vsync: vsync, value: initial);
+      : controller =
+            AnimationController.unbounded(vsync: vsync, value: initial);
 
   final AnimationController controller;
 
@@ -218,8 +223,7 @@ class _SpotlightTutorialView extends StatefulWidget {
   });
 
   @override
-  State<_SpotlightTutorialView> createState() =>
-      _SpotlightTutorialViewState();
+  State<_SpotlightTutorialView> createState() => _SpotlightTutorialViewState();
 }
 
 class _SpotlightTutorialViewState extends State<_SpotlightTutorialView>
