@@ -37,6 +37,7 @@ import '../services/local_reminder_notification.dart';
 import '../widgets/heartbeat_overlay.dart';
 import 'package:intl/intl.dart';
 import '../services/care_message_store.dart';
+import '../services/checkin_cheer_service.dart';
 
 /// ★ 第四十輪（item 4）：取消來電時清除待處理通話 prefs 的共用邏輯。
 /// 與 `main.dart::_clearPendingCallPrefsOnCancel` 同一邏輯（該函式對本檔
@@ -346,11 +347,20 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowMainTutorial();
     });
+
+    // 🎉 啟動時撈未讀的家屬打卡加油（延後一點，等首頁與關懷訊息載入）。
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) unawaited(_cheerService.fetchUnread());
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    // 🎉 回前景：補撈尚未讀取的家屬打卡加油（網路失敗靜默，下次再試）。
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(_cheerService.fetchUnread());
+    }
     debugPrint('📱 [WakeWord Emergency Protection] 系統狀態改變: $state - 保持全時背景與休眠緊急喚醒監聽');
     // ★ 2026-08-10 第二十輪（需求 6）：關閉語音喚醒時，生命週期變化不再重啟麥克風。
     if (!wakeWordEnabledNotifier.value) return;
@@ -767,6 +777,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   CallRequestCallback? _ownCancelCall;
   Function(String message)? _ownHeartbeatMessage;
   Function(dynamic data)? _ownElderQuestionAnswered;
+  Function(dynamic data)? _ownCheckinCheer;
   void Function(Map<String, dynamic>)? _ownRemoteReminder;
   void Function(Map<String, dynamic>)? _ownReminderSync;
 
@@ -824,6 +835,17 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       _handleProactiveMessage(jsonEncode({'reply': text, 'type': 'family'}));
     };
     Signaling().onElderQuestionAnswered = _ownElderQuestionAnswered;
+
+    // 🎉 家屬的打卡加油（文字／語音）。同 G102：每次呼叫都重新指派並記住最後一份。
+    //    若是從 ElderScreen 返回時重新綁定，順便排程一次 drain，補播通話期間排隊的加油。
+    _ownCheckinCheer = (data) {
+      if (!mounted) return;
+      _cheerService.onPush(data);
+    };
+    Signaling().onCheckinCheer = _ownCheckinCheer;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_cheerService.drain());
+    });
 
     // ★ ⏰ 監聽排程提醒與同步信令
     _ownRemoteReminder = (data) {
@@ -983,6 +1005,40 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   final FlutterTts _flutterTts = FlutterTts();
 
+  /// 🎉 家屬打卡加油：佇列、語音播放與已讀回報（見 checkin_cheer_service.dart）。
+  /// 通話中（Signaling().isInCall）或首頁不在最上層（ElderScreen／來電彈窗在上）
+  /// 時只排隊不播放，回到首頁時由 _restoreSignalingCallbacks／回前景再 drain。
+  late final CheckinCheerService _cheerService = CheckinCheerService(
+    elderId: widget.userId,
+    canPresent: () =>
+        mounted && (ModalRoute.of(context)?.isCurrent ?? true),
+    isInCall: () => Signaling().isInCall,
+    present: _presentCheer,
+    speak: (text) async {
+      await _flutterTts.setLanguage("zh-TW");
+      await _flutterTts.setPitch(1.0);
+      await _flutterTts.setSpeechRate(0.5);
+      await _flutterTts.speak(text);
+    },
+  );
+
+  /// 留存為關懷訊息並顯示 HeartbeatOverlay（不朗讀；語音由 service 決定）。
+  Future<void> _presentCheer(CheckinCheer c) async {
+    await CareMessageStore.instance
+        .add(text: c.displayText, type: 'family', emotion: 'happy');
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (dialogCtx) => HeartbeatOverlay(
+        message: c.displayText,
+        type: 'family',
+        emotion: 'happy',
+        onDismiss: () => Navigator.of(dialogCtx).pop(),
+      ),
+    );
+  }
+
   Future<void> _handleProactiveMessage(String message) async {
     String displayText = message;
     // ★ 2026-09-15：type 與 emotion 原本在首頁被整個丟掉（只有通話畫面會用），
@@ -1077,6 +1133,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     if (identical(Signaling().onElderQuestionAnswered, _ownElderQuestionAnswered)) {
       Signaling().onElderQuestionAnswered = null;
     }
+    if (identical(Signaling().onCheckinCheer, _ownCheckinCheer)) {
+      Signaling().onCheckinCheer = null;
+    }
+    unawaited(_cheerService.dispose());
     if (identical(Signaling().onReminderSync, _ownReminderSync)) {
       Signaling().onReminderSync = null;
     }

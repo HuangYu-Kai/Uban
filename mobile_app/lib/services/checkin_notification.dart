@@ -1,0 +1,306 @@
+import 'dart:convert';
+import 'dart:ui' show DartPluginRegistrant;
+
+import 'package:flutter/foundation.dart' show kIsWeb, ValueNotifier;
+import 'package:flutter/widgets.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'local_call_notification.dart' show notificationBackgroundTapHandler;
+import 'location_alert_notification.dart' show LocationAlertNotification;
+
+/// 點擊「長輩打卡」通知後要做的事（由首頁打卡卡片消費）。
+class CheckinTap {
+  /// `elder-checkin`（完成）或 `elder-checkin-missed`（漏打卡）。
+  final String type;
+  final String elderId;
+  final String elderName;
+  final int? reminderId;
+  final String title;
+  final String localDate;
+  const CheckinTap({
+    required this.type,
+    required this.elderId,
+    required this.elderName,
+    required this.reminderId,
+    required this.title,
+    required this.localDate,
+  });
+
+  bool get isMissed => type == CheckinNotification.typeMissed;
+}
+
+/// ★ 2026-10-07 打卡雙向互動：家屬端「長輩打卡／漏打卡」本機通知。
+///
+/// 管線比照 [LocationAlertNotification]（同一套硬規則 13／14）：
+/// - FCM 為純 `data`、normal 優先級，系統不會自動彈通知，必須由本檔當消費端；
+///   家屬 App 開著時走 Socket（`Signaling.onElderCheckin`／`onElderCheckinMissed`）
+///   → 本檔 [show]。三條呼叫路徑（背景 FCM、前景 FCM、Socket）共用 [show]，
+///   角色守門與開關檢查因此只有這一處。
+/// - ⚠️ 強度刻意是「一般」：`Importance.defaultImportance`、不 `fullScreenIntent`、
+///   不繞過勿擾、不改音量、不 bringToFront。不要順手對齊 `CctvAlertNotification`。
+/// - 🔒 角色守門沿用 [LocationAlertNotification.isFamilyDevice]（fail-closed，
+///   不另寫一份判斷以免兩邊漂移）。
+/// - 🔔 `FlutterLocalNotificationsPlugin` 是全域單例：[_registerPlugin] 的初始化設定
+///   與 `LocalCallNotification._ensureInit` 逐項一致，並帶
+///   `notificationBackgroundTapHandler`，否則被殺死時備援來電的「拒接」會失效。
+/// - 🔕 裝置偏好 `checkin_notify_enabled`（預設開）：不屬於 SessionManager 的
+///   `_sessionKeys`（G58/G59：換帳號不該重置裝置偏好）。
+class CheckinNotification {
+  static final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+  static bool _initialized = false;
+  static bool _launchConsumed = false;
+
+  static const String channelId = 'elder_checkin';
+  static const String channelName = '長輩打卡';
+  static const String channelDesc = '長輩完成或漏掉打卡事項時的通知';
+
+  static const String typeDone = 'elder-checkin';
+  static const String typeMissed = 'elder-checkin-missed';
+
+  /// 裝置偏好鍵：是否顯示長輩打卡通知（預設 true）。
+  static const String prefKey = 'checkin_notify_enabled';
+
+  /// 去重視窗：同一 (type, reminderId, localDate) 10 分鐘內只顯示一次。
+  static const Duration dedupeWindow = Duration(minutes: 10);
+  static final Map<String, DateTime> _recent = <String, DateTime>{};
+
+  /// 暖啟動點擊／冷啟動消費後的待處理動作；`HomeCheckinCard` 監聽並消費（消費後設回 null）。
+  static final ValueNotifier<CheckinTap?> pendingTap =
+      ValueNotifier<CheckinTap?>(null);
+
+  static Future<bool> isEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      try {
+        await prefs.reload();
+      } catch (_) {}
+      return prefs.getBool(prefKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(prefKey, value);
+  }
+
+  /// 去重：回傳 true 表示「近期已顯示過，應略過」；否則記錄並回傳 false。
+  @visibleForTesting
+  static bool seenRecently(String key, {DateTime? now}) {
+    final t = now ?? DateTime.now();
+    _recent.removeWhere((_, v) => t.difference(v) > dedupeWindow);
+    if (_recent.containsKey(key)) return true;
+    _recent[key] = t;
+    return false;
+  }
+
+  @visibleForTesting
+  static void resetDedupe() => _recent.clear();
+
+  /// 穩定雜湊（FNV-1a 31 bit）：不依賴 `String.hashCode`，跨 isolate／跨次啟動都一致，
+  /// 讓同一則打卡事件永遠對到同一個通知 id（重送只會覆蓋，不會疊出兩條）。
+  static int _stableHash(String s) {
+    var h = 0x811C9DC5;
+    for (final u in s.codeUnits) {
+      h ^= u;
+      h = (h * 0x01000193) & 0x7FFFFFFF;
+    }
+    return h;
+  }
+
+  static Future<void> _ensureInit() async {
+    await _registerPlugin();
+    if (_initialized) return;
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      const channel = AndroidNotificationChannel(
+        channelId,
+        channelName,
+        description: channelDesc,
+        importance: Importance.defaultImportance,
+        playSound: true,
+        enableVibration: true,
+      );
+      await androidPlugin.createNotificationChannel(channel);
+    }
+    _initialized = true;
+  }
+
+  static Future<void> _registerPlugin() async {
+    // ⚠️ 初始化設定必須與 `LocalCallNotification._ensureInit` 逐項一致（只有 Android、
+    // icon 同為 `@mipmap/ic_launcher`、無 Darwin 設定），不可降級它的設定。
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidInit);
+    await _plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _onResponse,
+      // 🔴 來電備援「拒接」在 App 被殺死時靠這個背景 handler；initialize 會整組覆寫
+      // 回呼，漏帶會讓被殺死狀態下的拒接失效。
+      onDidReceiveBackgroundNotificationResponse:
+          notificationBackgroundTapHandler,
+    );
+  }
+
+  /// 重新宣告點擊回呼（冪等）。只在家屬端才真的註冊，其他角色什麼都不做。
+  static Future<void> ensureTapHandler() async {
+    if (kIsWeb) return;
+    try {
+      if (!await LocationAlertNotification.isFamilyDevice()) return;
+      await _registerPlugin();
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 註冊點擊回呼失敗: $e');
+    }
+  }
+
+  static void _onResponse(NotificationResponse response) {
+    if (handleResponse(response)) return;
+    // 不是打卡通知：轉交安心提醒通知的處理（它會再把非自己的點擊交還來電備援通知）。
+    LocationAlertNotification.handleResponse(response);
+  }
+
+  /// 若是打卡通知的點擊就認領（放進 [pendingTap]）並回傳 true；否則回傳 false。
+  /// 供 `LocationAlertNotification._onResponse` 轉交——兩個類別共用全域 plugin 的單一
+  /// 點擊回呼，最後 `initialize` 者獨佔，所以必須互相轉交，否則後註冊者會吞掉對方的點擊。
+  static bool handleResponse(NotificationResponse response) {
+    final tap = parseTap(response.payload);
+    if (tap == null) return false;
+    pendingTap.value = tap;
+    return true;
+  }
+
+  @visibleForTesting
+  static CheckinTap? parseTap(String? payload) {
+    if (payload == null || payload.isEmpty) return null;
+    try {
+      final d = jsonDecode(payload);
+      if (d is! Map) return null;
+      final type = d['type']?.toString();
+      if (type != typeDone && type != typeMissed) return null;
+      final elderId = (d['elderId'] ?? '').toString().trim();
+      if (elderId.isEmpty) return null;
+      final name = (d['elderName'] ?? '').toString().trim();
+      return CheckinTap(
+        type: type!,
+        elderId: elderId,
+        elderName: name.isEmpty ? '長輩' : name,
+        reminderId: int.tryParse((d['reminderId'] ?? '').toString()),
+        title: (d['title'] ?? '').toString(),
+        localDate: (d['localDate'] ?? '').toString(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 冷啟動：App 被殺死時點擊通知，payload 只在 launch details。消費後放進 [pendingTap]
+  /// （一次啟動只消費一次、含家屬端守門）。由首頁打卡卡片掛載時呼叫。
+  static Future<void> consumeLaunchTap() async {
+    if (kIsWeb || _launchConsumed) return;
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details == null || !details.didNotificationLaunchApp) return;
+      final tap = parseTap(details.notificationResponse?.payload);
+      if (tap == null) return;
+      _launchConsumed = true;
+      if (!await LocationAlertNotification.isFamilyDevice()) return;
+      pendingTap.value = tap;
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 讀取 launch details 失敗: $e');
+    }
+  }
+
+  /// 顯示一則打卡通知。[done]＝true 為完成、false 為漏打卡。
+  /// 欄位對應後端 data：elderId/elderName/reminderId/title/localDate，
+  /// 漏打卡另帶 timeStr。
+  static Future<void> show({
+    required bool done,
+    required String elderId,
+    required String elderName,
+    required String reminderId,
+    required String title,
+    required String localDate,
+    String timeStr = '',
+  }) async {
+    if (kIsWeb) return;
+    try {
+      DartPluginRegistrant.ensureInitialized();
+
+      // 🔒 角色守門必須在任何初始化／顯示之前，fail-closed。
+      if (!await LocationAlertNotification.isFamilyDevice()) {
+        debugPrint('🔒 [CheckinNotification] 本機非確定的家屬端，略過打卡通知');
+        return;
+      }
+      // 🔕 使用者在設定關閉了「長輩打卡通知」。
+      if (!await isEnabled()) {
+        debugPrint('🔕 [CheckinNotification] 使用者已關閉打卡通知');
+        return;
+      }
+
+      final type = done ? typeDone : typeMissed;
+      final dedupeKey = '$type|$reminderId|$localDate';
+      if (seenRecently(dedupeKey)) {
+        debugPrint('♻️ [CheckinNotification] 重複事件略過: $dedupeKey');
+        return;
+      }
+
+      await _ensureInit();
+
+      final name = elderName.trim().isEmpty ? '長輩' : elderName.trim();
+      final item = title.trim();
+      final heading = done ? '$name完成了「$item」✓' : '$name還沒完成「$item」';
+      final at = timeStr.trim().isEmpty ? '時間' : timeStr.trim();
+      final text = done ? '點一下送個鼓勵給$name吧' : '原定 $at，要不要打個電話提醒一下？';
+
+      // 專屬 id 區段（不與安心提醒 1.2e9～ 區段重疊）。
+      final int notificationId =
+          1100000000 + (_stableHash(dedupeKey) % 90000000);
+
+      final androidDetails = AndroidNotificationDetails(
+        channelId,
+        channelName,
+        channelDescription: channelDesc,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        styleInformation: BigTextStyleInformation(text, contentTitle: heading),
+        category: AndroidNotificationCategory.status,
+        // 🚫 不設 fullScreenIntent、不繞勿擾、不設鬧鐘音量——見類別註解。
+      );
+
+      await _plugin.show(
+        notificationId,
+        heading,
+        text,
+        NotificationDetails(android: androidDetails),
+        payload: jsonEncode(<String, String>{
+          'type': type,
+          'elderId': elderId,
+          'elderName': name,
+          'reminderId': reminderId,
+          'title': item,
+          'localDate': localDate,
+        }),
+      );
+      debugPrint('✅ [CheckinNotification] 已顯示 $type reminderId=$reminderId');
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 顯示失敗: $e');
+    }
+  }
+
+  /// 從 Socket／FCM 的 data map 顯示（欄位名兩邊相同，camelCase）。
+  static Future<void> showFromData(bool done, Map data) {
+    String s(String k) => (data[k] ?? '').toString();
+    return show(
+      done: done,
+      elderId: s('elderId'),
+      elderName: s('elderName'),
+      reminderId: s('reminderId'),
+      title: s('title'),
+      localDate: s('localDate'),
+      timeStr: s('timeStr'),
+    );
+  }
+}

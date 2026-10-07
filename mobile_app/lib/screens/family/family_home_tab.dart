@@ -29,6 +29,9 @@ class FamilyHomeTab extends StatefulWidget {
   /// 本分頁在 IndexedStack 底下會被保活、initState 只跑一次，因此必須靠這個
   /// 訊號才能即時反映新問題。
   final int questionRefreshToken;
+
+  /// ★ 2026-10-07 打卡雙向互動：長輩打卡／漏打卡事件到達時由父層遞增，打卡卡片即重讀。
+  final int checkinRefreshToken;
   final VoidCallback? onStartVideoCall;
 
   /// ★ 2026-08-18 IPS prototype：長輩目前所在區域卡片所需資料，由父層提供。
@@ -61,6 +64,7 @@ class FamilyHomeTab extends StatefulWidget {
   const FamilyHomeTab({
     super.key,
     this.questionRefreshToken = 0,
+    this.checkinRefreshToken = 0,
     this.currentElder,
     this.isElderOnline = false,
     this.activeAlerts = const [],
@@ -226,7 +230,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                         const SizedBox(height: 16),
                         HomeCheckinCard(
                           currentElder: widget.currentElder,
-                          refreshToken: _checkinRefresh,
+                          refreshToken: _checkinRefresh + widget.checkinRefreshToken,
+                          userId: widget.userId,
+                          onStartVideoCall: widget.onStartVideoCall,
                         ),
                         const SizedBox(height: 16),
                         HomeZoneCard(
@@ -320,7 +326,9 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                     // 1.2 ✅ 今日打卡進度（含長輩自建目標）
                     HomeCheckinCard(
                       currentElder: widget.currentElder,
-                      refreshToken: _checkinRefresh,
+                      refreshToken: _checkinRefresh + widget.checkinRefreshToken,
+                      userId: widget.userId,
+                      onStartVideoCall: widget.onStartVideoCall,
                     ),
                     const SizedBox(height: 16),
 

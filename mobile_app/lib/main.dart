@@ -45,6 +45,7 @@ import 'services/local_call_notification.dart';
 import 'services/cctv_alert_notification.dart';
 // 📍 GPS 定位「安心提醒」本機通知與點擊導航（只加獨立分支，不碰來電流程）
 import 'services/location_alert_notification.dart';
+import 'services/checkin_notification.dart';
 import 'screens/family/elder_location_map_screen.dart';
 // ★ 2026-08-12 第二十三輪：緊急通話提示音的全域單一擁有者（救護車雙音）
 import 'services/emergency_tone.dart';
@@ -1210,6 +1211,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
     };
     unawaited(LocationAlertNotification.ensureTapHandler());
+    // ★ 2026-10-07 打卡雙向互動：同樣只在家屬端註冊點擊回呼（兩者互相轉交，見 CheckinNotification）。
+    unawaited(CheckinNotification.ensureTapHandler());
   }
 
   @override
@@ -1481,6 +1484,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           );
         } catch (e) {
           debugPrint("⚠️ [FCM-Fg] 安心提醒通知失敗: $e");
+        }
+        return;
+      }
+
+      // ★ 2026-10-07 打卡雙向互動：長輩完成／漏掉打卡事項（前景 FCM，家屬端）。
+      //   獨立分支、排在所有來電處理之前並 return，不碰來電去重 token 與 pending 狀態。
+      //   角色守門與開關在 CheckinNotification.show 內（fail-closed）；同事件 10 分鐘內去重，
+      //   且通知 id 由 (type,reminderId,localDate) 決定，與 Socket 通路不會疊出兩條。
+      if (message.data['type'] == 'elder-checkin' ||
+          message.data['type'] == 'elder-checkin-missed') {
+        try {
+          await CheckinNotification.showFromData(
+            message.data['type'] == 'elder-checkin',
+            message.data,
+          );
+        } catch (e) {
+          debugPrint("⚠️ [FCM-Fg] 長輩打卡通知失敗: $e");
         }
         return;
       }
