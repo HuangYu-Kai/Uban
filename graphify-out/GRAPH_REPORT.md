@@ -1,7 +1,7 @@
 # Graph Report - Uban  (2026-10-07)
 
 ## Corpus Check
-- 34 files · ~4,913,883 words
+- 0 files · ~4,913,494 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -2286,7 +2286,7 @@ Cohesion: 1.00
 Nodes (3): Top-level CMakeLists, Flutter CMakeLists, Runner CMakeLists
 
 ## Knowledge Gaps
-- **7519 isolated node(s):** `Config`, `BanFilter`, `SortKey`, `Tab`, `TierFilter` (+7514 more)
+- **7519 isolated node(s):** `NavGroup`, `NavItem`, `Config`, `BanFilter`, `SortKey` (+7514 more)
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 9399 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **131 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -2294,12 +2294,12 @@ Nodes (3): Top-level CMakeLists, Flutter CMakeLists, Runner CMakeLists
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `db_cursor()` connect `routers · db_cursor()` to `services · alert.py`, `tests · test_admin_pet_season.py`, `routers · .cursor()`, `routers · test_settings_service.py`, `routers · success_response()`, `routers · get_today_progress()`, `tests · test_alert_state_lock.py`, `services · .get_response_stream()`, `tests · test_resolve_canonical_elder_id_normalizes_user_id_t`, `tests · get_alerts()`, `services · test_location_alert_rules.py`, `Uban-api/scratch · socket_app_04a7dfe.py`, `tests · fixtures()`, `tests · routers/auth.py`, `routers · routers/ai.py`, `routers · developer_users.py`, `routers · pet.py`, `tests · database.py`, `tests · test_login_flow_review.py`, `routers · subscription.py`, `tests · test_pet_skin.py`, `services · news_crawler_service.py`, `routers · reminder.py`, `Uban-api · Uban-api/main.py`, `tests · test_location_device_status.py`, `services · on_call_request()`, `tests · test_daily_question.py`, `tests · test_pet_food_grant.py`, `tests · test_reminder_completion.py`, `tests · _resolve_ip_monitor_device_limit()`, `tests · test_call_signaling.py`, `tests · test_pet_weight_sync.py`, `routers · routers/pairing.py`, `routers · common.py`, `tests · test_admin.py`, `tests · test_my_code_is_lazy_and_stable()`, `services · socket_app.py`, `routers · voice.py`, `tests · cursor()`, `tests · TestAuthEndpoints`, `services · location_daily.py`, `routers · family_friend.py`, `tests · test_friend.py`, `tests · test_pet_breed.py`, `services · indoor_position.py`, `tests · routers/relationship.py`, `services · AgentTools`, `tests · conftest.py`, `tests · test_pet_leaderboard.py`, `routers · location.py`, `routers · websocket_dialogue()`, `tests · test_dev_settings.py`, `tests · test_family_friend.py`, `tests · test_pet_thresholds_season.py`, `routers · get_location_summary()`?**
-  _High betweenness centrality (0.145) - this node is a cross-community bridge._
+  _High betweenness centrality (0.112) - this node is a cross-community bridge._
 - **Why does `date` connect `routers · developer_users.py` to `tests · test_admin_pet_season.py`, `services · location_daily.py`, `routers · .cursor()`, `routers · test_settings_service.py`, `services · news_crawler_service.py`, `lib/screens/family · outing_trends_screen.dart`, `tests · test_pet_thresholds_season.py`, `routers · pet.py`, `tests · test_location_daily.py`?**
-  _High betweenness centrality (0.074) - this node is a cross-community bridge._
-- **Why does `query_news()` connect `services · news_crawler_service.py` to `tests · AgentTools`, `services · AgentTools`, `routers · developer_users.py`, `routers · db_cursor()`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
-- **What connects `Config`, `BanFilter`, `SortKey` to the rest of the system?**
+  _High betweenness centrality (0.070) - this node is a cross-community bridge._
+- **Why does `success_response()` connect `routers · success_response()` to `services · alert.py`, `routers · .cursor()`, `routers · test_settings_service.py`, `tests · get_alerts()`, `routers · db_cursor()`, `routers · pet.py`, `tests · routers/auth.py`, `routers · routers/ai.py`, `routers · developer_users.py`, `tests · test_login_flow_review.py`, `routers · subscription.py`, `services · news_crawler_service.py`, `tests · test_location_device_status.py`, `routers · routers/pairing.py`, `routers · common.py`, `routers · family_friend.py`, `services · indoor_position.py`, `tests · routers/relationship.py`, `routers · location.py`, `routers · get_location_summary()`?**
+  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+- **What connects `NavGroup`, `NavItem`, `Config` to the rest of the system?**
   _7519 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `services · alert.py` be split into smaller, more focused modules?**
   _Cohesion score 0.025 - nodes in this community are weakly interconnected._
