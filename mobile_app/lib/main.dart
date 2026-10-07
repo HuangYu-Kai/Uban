@@ -1529,6 +1529,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
       }
 
+      // ★ 2026-10-07 家庭步數挑戰：本週過半／達標（前景 FCM，家屬端）。
+      //   與 pet-gift-fed 同形：獨立分支、不碰來電狀態；角色守門／開關／去重
+      //   在 CheckinNotification.showStepChallenge 內（fail-closed）。
+      if (message.data['type'] == 'step-challenge') {
+        try {
+          await CheckinNotification.showStepChallengeFromData(message.data);
+        } catch (e) {
+          debugPrint("⚠️ [FCM-Fg] 全家一起走通知失敗: $e");
+        }
+        return;
+      }
+
       // ★ ⏰ 排程提醒 FCM（前景訊息，交由 ElderReminderManager 彈窗處理）
       if (message.data['type'] == 'reminder') {
         debugPrint("⏰ [FCM-Fg] 收到排程提醒，交由 ElderReminderManager 處理");

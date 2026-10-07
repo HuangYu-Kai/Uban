@@ -18,6 +18,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 import '../services/api/elder_daily_question_api.dart';
 import '../services/api/elder_pet_gift_api.dart';
+import '../services/api/step_challenge_api.dart';
 import '../services/today_tasks_loader.dart';
 import '../services/signaling.dart';
 import '../services/elder_location_service.dart';
@@ -793,6 +794,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   Function(dynamic data)? _ownCheckinCheer;
   Function(dynamic data)? _ownDailyQuestionNew;
   Function(dynamic data)? _ownPetGift;
+  Function(dynamic data)? _ownStepChallenge;
   void Function(Map<String, dynamic>)? _ownRemoteReminder;
   void Function(Map<String, dynamic>)? _ownReminderSync;
 
@@ -882,8 +884,40 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       unawaited(_drainPetGifts());
     };
     Signaling().onPetGift = _ownPetGift;
+
+    // ★ 2026-10-07 家庭步數挑戰：過半鼓勵／達成通知。同 G102：每次重新指派並記住最後一份。
+    //   走既有關懷訊息路徑（通話中排隊、回首頁補顯示）；達成時獎勵點心是後端加進的
+    //   寵物禮物，故同步遞增禮物刷新訊號讓橫幅與小紅點出現，並通知小豬分頁重讀進度。
+    _ownStepChallenge = (data) {
+      if (!mounted || data is! Map) return;
+      final kind = (data['kind'] ?? '').toString();
+      final String? msg;
+      if (kind == 'half') {
+        msg = '全家這週已經走了一半囉，加油！';
+      } else if (kind == 'achieved') {
+        // 長輩聽「5 萬步」比「50000 步」好懂，用共用的萬步格式。
+        final goalRaw = data['goalSteps'] ?? data['goal_steps'];
+        final goalNum = goalRaw is num ? goalRaw.toInt() : int.tryParse('$goalRaw');
+        final goalText = goalNum == null ? '好多步' : formatStepsWan(goalNum);
+        final food = (data['rewardFoodName'] ?? '').toString().trim();
+        msg = '太棒了！全家這週一起走了$goalText，'
+            '小豬得到一份${food.isEmpty ? '點心' : food}，快去餵牠吃吧！';
+      } else {
+        msg = null;
+      }
+      StepChallengeApi.refreshSignal.value++;
+      if (kind == 'achieved') ElderPetGiftApi.refreshSignal.value++;
+      if (msg != null) {
+        _stepChallengePending.add(msg);
+        unawaited(_drainStepChallenge());
+      }
+    };
+    Signaling().onStepChallenge = _ownStepChallenge;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_drainPetGifts());
+      if (mounted) {
+        unawaited(_drainPetGifts());
+        unawaited(_drainStepChallenge());
+      }
     });
 
     // ★ ⏰ 監聽排程提醒與同步信令
@@ -1087,6 +1121,26 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   bool _petGiftDraining = false;
   String? _petGiftElderId;
 
+  final List<String> _stepChallengePending = [];
+  bool _stepChallengeDraining = false;
+
+  /// 依序顯示步數挑戰訊息；通話中或首頁不在最上層時保留佇列（同 _drainPetGifts）。
+  Future<void> _drainStepChallenge() async {
+    if (_stepChallengeDraining) return;
+    _stepChallengeDraining = true;
+    try {
+      while (_stepChallengePending.isNotEmpty) {
+        if (!mounted || Signaling().isInCall) break;
+        if (!(ModalRoute.of(context)?.isCurrent ?? true)) break;
+        final m = _stepChallengePending.removeAt(0);
+        await _handleProactiveMessage(
+            jsonEncode({'reply': m, 'type': 'family', 'emotion': 'happy'}));
+      }
+    } finally {
+      _stepChallengeDraining = false;
+    }
+  }
+
   void _onPetGiftSignal() {
     if (mounted) unawaited(_refreshPetGiftBadge());
   }
@@ -1243,6 +1297,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     ElderPetGiftApi.refreshSignal.removeListener(_onPetGiftSignal);
     if (identical(Signaling().onPetGift, _ownPetGift)) {
       Signaling().onPetGift = null;
+    }
+    if (identical(Signaling().onStepChallenge, _ownStepChallenge)) {
+      Signaling().onStepChallenge = null;
     }
     unawaited(_cheerService.dispose());
     if (identical(Signaling().onReminderSync, _ownReminderSync)) {

@@ -27,6 +27,8 @@ import 'elder_layout.dart';
 import 'pet/pet_breed_store.dart';
 import 'pet/pet_buddy_stage.dart';
 import 'pet/pet_gift_banner.dart';
+import 'pet/pet_step_challenge_bar.dart';
+import '../../services/api/step_challenge_api.dart';
 import '../../services/api/elder_pet_gift_api.dart';
 import 'pet/pet_ear_anchors.dart';
 import 'pet/pet_scene.dart';
@@ -185,9 +187,22 @@ class _ElderPetTabState extends State<ElderPetTab>
       _greetingPigSignal.value++;
       // ★ 2026-10-07 小豬共養：下拉／回前景一併重讀家人送的點心。
       ElderPetGiftApi.refreshSignal.value++;
+      // ★ 2026-10-07 家庭步數挑戰：一併重讀「全家一起走」進度。
+      await _refreshStepChallenge();
     } finally {
       _refreshing = false;
     }
+  }
+
+  /// ★ 2026-10-07 家庭步數挑戰：讀進度；解析不到 elder_id 時不動（長輩端失敗即隱藏）。
+  Future<void> _refreshStepChallenge() async {
+    final eid = _myFriendElderId;
+    if (eid == null || eid.isEmpty || !mounted) return;
+    await StepChallengeApi.refreshElder(eid);
+  }
+
+  void _onStepChallengeSignal() {
+    if (mounted) unawaited(_refreshStepChallenge());
   }
 
   /// 打卡後（提醒同步／連勝變動）立刻更新胡蘿蔔數，不必切分頁。
@@ -268,6 +283,7 @@ class _ElderPetTabState extends State<ElderPetTab>
     final id = await FriendService.resolveMyElderId(widget.userId);
     if (mounted) {
       setState(() => _myFriendElderId = id);
+      unawaited(_refreshStepChallenge());
       // ★ 第五十輪：elder_id 解析完成是「進場初次同步」另一個先決條件，見
       // _maybeSyncInitialWeight 的說明。同時順便刷新今日食物解鎖來源
       // （步數／服藥打卡次數），讓用藥打卡真的能換到食物解鎖（過去
@@ -432,6 +448,7 @@ class _ElderPetTabState extends State<ElderPetTab>
     WidgetsBinding.instance.addObserver(this);
     ElderReminderManager.instance.addListener(_onCheckinChanged);
     StreakService.changes.addListener(_onCheckinChanged);
+    StepChallengeApi.refreshSignal.addListener(_onStepChallengeSignal);
 
     _autoStartTracking();
     _startStepTracking();
@@ -470,6 +487,7 @@ class _ElderPetTabState extends State<ElderPetTab>
     WidgetsBinding.instance.removeObserver(this);
     ElderReminderManager.instance.removeListener(_onCheckinChanged);
     StreakService.changes.removeListener(_onCheckinChanged);
+    StepChallengeApi.refreshSignal.removeListener(_onStepChallengeSignal);
     _positionStream?.cancel();
     _stepCountStream?.cancel();
     _greetingPigSignal.dispose();
@@ -1013,6 +1031,8 @@ class _ElderPetTabState extends State<ElderPetTab>
                 cornerAction:
                     PetCornerActions(userId: widget.userId, musicOnly: true),
               ),
+              // ★ 2026-10-07 家庭步數挑戰：精簡「全家一起走」進度條（失敗時整塊隱藏）。
+              const PetStepChallengeBar(),
               const SizedBox(height: 14),
               PetStatCard(growth: growthState),
               const SizedBox(height: 14),

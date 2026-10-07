@@ -172,6 +172,11 @@ class Signaling {
   /// 純回呼欄位，註冊者 dispose 時以 `identical()` 歸還（G102）。
   Function(dynamic data)? onPetGiftFed;
 
+  /// ★ 2026-10-07 家庭步數挑戰：長輩端與家屬端共用的 `step-challenge` 回呼
+  /// （kind: half／achieved）。同一台裝置只會有一種角色註冊；註冊者 dispose 時
+  /// 以 `identical()` 歸還（G102）。
+  Function(dynamic data)? onStepChallenge;
+
   /// 📍 家屬端：收到長輩定位異常的「安心提醒」（`location-alert`：晚歸／久未更新／
   /// 離家太遠）。純回呼欄位、無任何顯示狀態；註冊點只有 `family_main_screen.dart`，
   /// dispose 時以 `identical()` 歸還（G102）。
@@ -918,6 +923,12 @@ class Signaling {
     socket!.on('pet-gift-fed', (data) {
       debugPrint("★ [Signaling] 長輩餵了小豬點心: $data");
       if (onPetGiftFed != null) onPetGiftFed!(data);
+    });
+
+    // ★ 2026-10-07 家庭步數挑戰：過半／達成 → 長輩端與家屬端
+    socket!.on('step-challenge', (data) {
+      debugPrint("★ [Signaling] 收到家庭步數挑戰: $data");
+      if (onStepChallenge != null) onStepChallenge!(data);
     });
 
     // 📍 長輩定位異常的安心提醒（只會由後端推給家屬）。

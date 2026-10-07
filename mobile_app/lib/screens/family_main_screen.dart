@@ -35,6 +35,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/cctv_alert_notification.dart';
 import '../services/location_alert_notification.dart';
 import '../services/checkin_notification.dart';
+import '../services/family_step_sync.dart';
+import 'family/daily_question_screen.dart' show resolveFamilyId;
 import '../utils/alert_display.dart';
 import '../services/api/family_alert_dismissal_api.dart';
 
@@ -131,6 +133,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Function(dynamic)? _ownPetGiftFed;
   /// 遞增 token 推給互動分頁的小豬卡片重讀。
   int _petGiftRefreshToken = 0;
+  // ★ 2026-10-07 家庭步數挑戰：`step-challenge` 事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
+  Function(dynamic)? _ownStepChallenge;
+  /// 遞增 token 推給互動分頁的步數卡片重讀。
+  int _stepChallengeRefreshToken = 0;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
@@ -447,6 +453,17 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeOpenLocationAlertFromLaunch();
     });
+
+    // ★ 2026-10-07 家庭步數挑戰：啟動時（使用者已同意才會動作）延後一點開始同步步數，
+    //   不阻塞啟動、不碰通話／FCM；familyId 取 caregiver_id，取不到就只在本機算。
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final fid = await resolveFamilyId(widget.userId);
+        unawaited(FamilyStepSync.instance.start(familyId: fid));
+      } catch (e) {
+        debugPrint('⚠️ [FamilyMainScreen] 啟動步數同步失敗: $e');
+      }
+    });
   }
 
   /// 📍 冷啟動消費「安心提醒」通知的點擊 → 開啟該長輩的 GPS 地圖。
@@ -709,6 +726,16 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       setState(() => _petGiftRefreshToken++);
     };
     _signaling.onPetGiftFed = _ownPetGiftFed;
+
+    // ★ 2026-10-07 家庭步數挑戰：本週過半／達標。補一則一般優先級本機通知
+    //    （角色守門／開關／elderId+kind+週別去重都在 CheckinNotification.showStepChallenge 內），
+    //    並讓步數卡片重讀。
+    _ownStepChallenge = (data) {
+      if (data is Map) CheckinNotification.showStepChallengeFromData(data);
+      if (!mounted) return;
+      setState(() => _stepChallengeRefreshToken++);
+    };
+    _signaling.onStepChallenge = _ownStepChallenge;
 
     _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
@@ -2141,6 +2168,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _lifecycleState = state;
     if (state == AppLifecycleState.resumed) {
       _checkPendingAcceptedCall();
+      // ★ 2026-10-07 家庭步數挑戰：回前景同步步數（沒同意／沒權限時內部直接略過，錯誤全吞）。
+      unawaited(FamilyStepSync.instance.start());
+    } else if (state == AppLifecycleState.paused) {
+      FamilyStepSync.instance.stop();
     }
   }
 
@@ -2439,6 +2470,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
     if (identical(_signaling.onPetGiftFed, _ownPetGiftFed)) {
       _signaling.onPetGiftFed = null;
+    }
+    if (identical(_signaling.onStepChallenge, _ownStepChallenge)) {
+      _signaling.onStepChallenge = null;
     }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
@@ -2896,6 +2930,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 FamilyInteractionTab(
                   dailyRefreshToken: _dailyRefreshToken,
                   petGiftRefreshToken: _petGiftRefreshToken,
+                  stepChallengeRefreshToken: _stepChallengeRefreshToken,
                   currentElder: _currentElder,
                   signaling: _signaling,
                   monitorDevices: _monitorDevices,
