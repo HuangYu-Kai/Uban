@@ -313,12 +313,14 @@ class ElderDataApi {
     };
   }
 
-  /// 話題偏好（`elder_talk_topics`）。後端 GET `/ai/topics` 不分長輩全部回傳，
-  /// 這裡依 `elder_id` 在前端過濾，回傳 `{status, data: List<Map>}`。
+  /// 話題偏好（`elder_talk_topics`）。★ 2026-10-07 交接 話題隱私：後端 GET `/ai/topics?elder_id=`
+  /// 只回該長輩的話題；這裡仍保留一道便宜的防禦性過濾（舊後端不分長輩全回時不會看到別人的）。
+  /// 回傳 `{status, data: List<Map>}`。
   static Future<Map<String, dynamic>> getTalkTopics(String elderId) async {
     try {
       final response = await http
-          .get(Uri.parse('${ApiClient.baseUrl}/ai/topics'))
+          .get(Uri.parse(
+              '${ApiClient.baseUrl}/ai/topics?elder_id=${Uri.encodeQueryComponent(elderId)}'))
           .timeout(ApiClient.timeout);
       final r = _normalizeResult(response);
       if (r['status'] != 'success') return r;

@@ -5,13 +5,18 @@
 // 2. 只送有改過的欄位（部分更新）。
 // 3. 失敗時顯示後端真實原因、不顯示成功訊息，也不離開頁面。
 // 4. 360×640、字級 1.3 倍不溢位。
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:flutter_application_1/screens/family/elder_basic_profile_screen.dart';
 import 'package:flutter_application_1/screens/family/elder_profile_shared.dart';
 import 'package:flutter_application_1/screens/family/elder_talk_preference_screen.dart';
+import 'package:flutter_application_1/services/api/elder_data_api.dart';
 
 /// 記錄所有呼叫的假資料來源。
 class FakeGateway {
@@ -371,5 +376,30 @@ void main() {
         expect(tester.takeException(), isNull);
       }
     });
+  });
+
+  // ★ 2026-10-07 交接 話題隱私：GET 要帶 elder_id，不再整包抓回來前端過濾。
+  test('getTalkTopics 的 GET 帶 elder_id 參數', () async {
+    Uri? seen;
+    await http.runWithClient(() async {
+      final r = await ElderDataApi.getTalkTopics('6160');
+      expect(r['status'], 'success');
+      expect((r['data'] as List).length, 1);
+    }, () => MockClient((req) async {
+          seen = req.url;
+          return http.Response(
+            jsonEncode({
+              'status': 'success',
+              'data': [
+                {'topic_id': 1, 'elder_id': '6160', 'keyword': '孫子', 'topic_type': 'priority'},
+                {'topic_id': 2, 'elder_id': '9999', 'keyword': '別人的', 'topic_type': 'forbidden'},
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }));
+    expect(seen!.path, endsWith('/ai/topics'));
+    expect(seen!.queryParameters['elder_id'], '6160');
   });
 }
