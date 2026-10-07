@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
+import '../../services/checkin_notification.dart';
 import '../../services/elder_manager.dart';
 import '../../services/session_manager.dart';
 import '../identification_screen.dart';
@@ -34,6 +35,8 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
   bool _isEmergencyOn = true;
   bool _isDailySummaryOn = true;
   bool _isAiInsightOn = false;
+  // ★ 2026-10-07 打卡雙向互動：裝置偏好 `checkin_notify_enabled`（預設開，不屬於 session 鍵）。
+  bool _isCheckinNotifyOn = true;
   List<dynamic> _pairedElders = [];
   bool _isLoadingElders = true;
 
@@ -84,6 +87,12 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
     _refreshNotificationPolicyStatus();
     _loadOemGuideAcknowledgedState();
     _loadDemographics();
+    _loadCheckinNotifyPref();
+  }
+
+  Future<void> _loadCheckinNotifyPref() async {
+    final on = await CheckinNotification.isEnabled();
+    if (mounted) setState(() => _isCheckinNotifyOn = on);
   }
 
   @override
@@ -1152,6 +1161,19 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
                 'AI 平安洞察',
                 _isAiInsightOn,
                 (val) => setState(() => _isAiInsightOn = val),
+              ),
+              _buildSwitchItem(
+                Icons.task_alt_rounded,
+                '長輩打卡通知',
+                _isCheckinNotifyOn,
+                (val) async {
+                  setState(() => _isCheckinNotifyOn = val);
+                  try {
+                    await CheckinNotification.setEnabled(val);
+                  } catch (_) {
+                    if (mounted) setState(() => _isCheckinNotifyOn = !val);
+                  }
+                },
               ),
             ]),
             const SizedBox(height: 12),

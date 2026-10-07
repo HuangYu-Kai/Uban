@@ -17,6 +17,7 @@ import 'cctv_alert_notification.dart';
 import 'local_reminder_notification.dart';
 import 'elder_question_notification.dart';
 import 'location_alert_notification.dart';
+import 'checkin_notification.dart';
 
 /// 檢查當前平台是否支援 CallKit
 bool supportsCallKit() {
@@ -385,6 +386,23 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         );
       } catch (e) {
         debugPrint('⚠️ [BG] 安心提醒通知失敗: $e');
+      }
+      return;
+    }
+
+    // ★ 2026-10-07 打卡雙向互動：長輩完成／漏掉打卡事項（家屬端）。
+    //    同 location-alert：純 data、一般優先級、不蓋屏不繞勿擾（硬規則 13／14），
+    //    角色守門（fail-closed）與「長輩打卡通知」開關都在 `CheckinNotification.show` 內；
+    //    排在 call-request 分支之前並 return，不碰任何來電狀態。
+    if (type == 'elder-checkin' || type == 'elder-checkin-missed') {
+      debugPrint('✅ [BG] 收到長輩打卡事件($type)，交由家屬端守門後顯示一般優先級通知');
+      try {
+        await CheckinNotification.showFromData(
+          type == 'elder-checkin',
+          Map<String, dynamic>.from(message.data),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 長輩打卡通知失敗: $e');
       }
       return;
     }

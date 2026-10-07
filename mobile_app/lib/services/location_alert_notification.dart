@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'checkin_notification.dart' show CheckinNotification;
 import 'local_call_notification.dart' show notificationBackgroundTapHandler;
 
 /// 📍 家屬端「安心提醒」（長輩定位異常：晚歸／久未更新／離家太遠）的本機通知
@@ -140,6 +141,9 @@ class LocationAlertNotification {
   static void _onResponse(NotificationResponse response) {
     final tap = _parseTap(response.payload);
     if (tap == null) {
+      // ★ 2026-10-07 打卡雙向互動：先讓「長輩打卡」通知認領自己的點擊（兩者共用全域
+      //   plugin 的單一回呼，最後 initialize 者獨佔，所以彼此要能轉交，見 CheckinNotification）。
+      if (CheckinNotification.handleResponse(response)) return;
       // 不是安心提醒：交還來電備援通知的既有處理（非來電 payload 它會自行略過）。
       notificationBackgroundTapHandler(response);
       return;
@@ -151,6 +155,9 @@ class LocationAlertNotification {
     }
     cb(tap.$1, tap.$2);
   }
+
+  /// ★ 2026-10-07：供 `CheckinNotification` 在自己是最後註冊者、收到非打卡 payload 時轉交。
+  static void handleResponse(NotificationResponse response) => _onResponse(response);
 
   /// 解析 payload；不是安心提醒或缺 `elderId` 一律回傳 null。
   static (String, String)? _parseTap(String? payload) {

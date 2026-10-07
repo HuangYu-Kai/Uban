@@ -488,6 +488,14 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-07 💌 打卡雙向互動：家屬看得到、也回應得到（`feat/checkin-interaction` 分支）
+
+- **家屬收到打卡通知**：長輩完成一件事項，家屬手機跳出「媽媽完成了「吃藥」✓」；提醒時間過 30 分鐘仍未打卡，跳出「還沒完成…要不要打個電話提醒一下？」（每件每天只通知一次）。一般優先級、不全螢幕、不繞勿擾，角色守門 fail-closed；設定 →「長輩打卡通知」可關閉（裝置偏好，不隨登出清除）。新增 `services/checkin_notification.dart`，與 `LocationAlertNotification` 互相轉交點擊，未知點擊仍交給來電備援的 `notificationBackgroundTapHandler`。
+- **家屬送鼓勵**：首頁「今日打卡」清單中已完成的事項有「鼓勵」按鈕（已送過顯示「已鼓勵」），開啟 `SendCheerSheet`：預設貼語（好棒！／辛苦了／我以你為榮…）、自訂文字（≤100 字）、按住錄音（≤30 秒，可試聽重錄）。點打卡通知可直接開啟；漏打卡通知可一鍵撥打視訊。
+- **長輩收到鼓勵**：有錄音就直接播放家屬的聲音，只有文字就由小嘎唸出來，同時顯示在關懷訊息裡；通話中或不在首頁時先排隊，回到首頁再播。離線期間的鼓勵在下次開啟 App 時補收（`services/checkin_cheer_service.dart`）。
+- **近 7 天打卡紀錄**：打卡清單上方顯示一週每天的完成數／總數。
+- Socket 新事件 `elder-checkin`、`elder-checkin-missed`（家屬）、`checkin-cheer`（長輩），對應 `Signaling.onElderCheckin`／`onElderCheckinMissed`／`onCheckinCheer`（G102 owner／identical 歸還）。後端端點見 `uban-api/readme.md`。
+
 ### 2026-10-06（最新）🖼️ 祝賀圖：AI 生圖移除、範本擴充、換句好話排列組合（`ui` 分支）
 
 - **「AI 智能生圖」模式整個移除**：不再有「經典圖文組合／AI 智能生圖」切換、「AI 重新繪製 3D 新圖」「切換主題」按鈕與 3 張 `ai_card_*.jpg`；經典祝賀圖成為唯一模式，小豬疊圖、拖動位置、還原位置、換字體款式、存圖／傳 LINE 全部照舊。

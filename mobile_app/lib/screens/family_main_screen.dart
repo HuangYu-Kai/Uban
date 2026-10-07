@@ -34,6 +34,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/cctv_alert_notification.dart';
 import '../services/location_alert_notification.dart';
+import '../services/checkin_notification.dart';
 import '../utils/alert_display.dart';
 
 class FamilyMainScreen extends StatefulWidget {
@@ -116,6 +117,11 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   Function(Map<String, dynamic>)? _ownElderZoneUpdate;
   // 📍 安心提醒（location-alert）回呼的「自己那一份」，dispose 時以 identical() 歸還（G102）。
   Function(Map<String, dynamic>)? _ownLocationAlert;
+  // ★ 2026-10-07 打卡雙向互動：長輩完成／漏打卡事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
+  Function(dynamic)? _ownElderCheckin;
+  Function(dynamic)? _ownElderCheckinMissed;
+  /// 遞增 token 推給首頁打卡卡片重讀（比照 `_questionRefreshToken`）。
+  int _checkinRefreshToken = 0;
 
   // ★ 移植自 family_dashboard_view.dart：監控裝置清單、CCTV 警報、訂閱層級
   //   （型別對齊該檔實際宣告：_monitorDevices 為 List<dynamic>、_tierLevel 為 String）
@@ -659,6 +665,23 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       );
     };
     _signaling.onLocationAlert = _ownLocationAlert;
+
+    // ★ 2026-10-07 打卡雙向互動：長輩打卡／漏打卡。家屬 App 開著時走 Socket：
+    //    補一則一般優先級本機通知（角色守門、開關、10 分鐘去重都在
+    //    CheckinNotification.show 內），並讓首頁打卡卡片即時重讀。
+    //    通知不需要 context，故不檢查 mounted；setState 才需要。
+    _ownElderCheckin = (data) {
+      if (data is Map) CheckinNotification.showFromData(true, data);
+      if (!mounted) return;
+      setState(() => _checkinRefreshToken++);
+    };
+    _signaling.onElderCheckin = _ownElderCheckin;
+    _ownElderCheckinMissed = (data) {
+      if (data is Map) CheckinNotification.showFromData(false, data);
+      if (!mounted) return;
+      setState(() => _checkinRefreshToken++);
+    };
+    _signaling.onElderCheckinMissed = _ownElderCheckinMissed;
 
     _ownElderDevicesUpdate = (devices) {
       if (!mounted) return;
@@ -2339,6 +2362,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     if (identical(_signaling.onLocationAlert, _ownLocationAlert)) {
       _signaling.onLocationAlert = null;
     }
+    if (identical(_signaling.onElderCheckin, _ownElderCheckin)) {
+      _signaling.onElderCheckin = null;
+    }
+    if (identical(_signaling.onElderCheckinMissed, _ownElderCheckinMissed)) {
+      _signaling.onElderCheckinMissed = null;
+    }
     if (identical(_signaling.onCallRequest, _ownCallRequest)) {
       _signaling.onCallRequest = null;
     }
@@ -2728,6 +2757,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               children: [
                 FamilyHomeTab(
                   questionRefreshToken: _questionRefreshToken,
+                  checkinRefreshToken: _checkinRefreshToken,
                   currentElder: _currentElder,
                   isElderOnline: _isElderOnline,
                   activeAlerts: _activeAlerts,

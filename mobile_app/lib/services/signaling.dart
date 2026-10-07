@@ -145,6 +145,17 @@ class Signaling {
   /// 💬 長輩端：子女已回覆某則提問，小嘎可據此主動轉達。
   Function(dynamic data)? onElderQuestionAnswered;
 
+  /// ✅ 家屬端：長輩完成某筆排程提醒的打卡（`elder-checkin`）。純回呼欄位，
+  /// 註冊者 dispose 時以 `identical()` 歸還（G102）。
+  Function(dynamic data)? onElderCheckin;
+
+  /// ⚠️ 家屬端：長輩漏打卡（`elder-checkin-missed`）。同上。
+  Function(dynamic data)? onElderCheckinMissed;
+
+  /// 🎉 長輩端：家屬傳來打卡加油（`checkin-cheer`：文字／語音）。註冊點為
+  /// `elder_home_screen.dart`，dispose 時以 `identical()` 歸還（G102）。
+  Function(dynamic data)? onCheckinCheer;
+
   /// 📍 家屬端：收到長輩定位異常的「安心提醒」（`location-alert`：晚歸／久未更新／
   /// 離家太遠）。純回呼欄位、無任何顯示狀態；註冊點只有 `family_main_screen.dart`，
   /// dispose 時以 `identical()` 歸還（G102）。
@@ -849,6 +860,24 @@ class Signaling {
     socket!.on('elder-question-answered', (data) {
       debugPrint("💬 [Signaling] 收到子女回覆: $data");
       if (onElderQuestionAnswered != null) onElderQuestionAnswered!(data);
+    });
+
+    // ✅ 長輩完成打卡 → 家屬端
+    socket!.on('elder-checkin', (data) {
+      debugPrint("✅ [Signaling] 收到長輩打卡: $data");
+      if (onElderCheckin != null) onElderCheckin!(data);
+    });
+
+    // ⚠️ 長輩漏打卡 → 家屬端
+    socket!.on('elder-checkin-missed', (data) {
+      debugPrint("⚠️ [Signaling] 收到長輩漏打卡: $data");
+      if (onElderCheckinMissed != null) onElderCheckinMissed!(data);
+    });
+
+    // 🎉 家屬的打卡加油 → 長輩端
+    socket!.on('checkin-cheer', (data) {
+      debugPrint("🎉 [Signaling] 收到打卡加油: $data");
+      if (onCheckinCheer != null) onCheckinCheer!(data);
     });
 
     // 📍 長輩定位異常的安心提醒（只會由後端推給家屬）。
