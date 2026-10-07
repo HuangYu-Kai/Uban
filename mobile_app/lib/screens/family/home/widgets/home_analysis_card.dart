@@ -15,7 +15,7 @@ import '../../widgets/fam_data_ui.dart';
 import '../../widgets/fam_ui.dart';
 import '../models/analysis_buckets.dart';
 
-/// 首頁「近況分析」卡片：用一張卡、三段切換（健康／外出／情緒與故事）呈現最近 7 天的
+/// 首頁「近況分析」卡片：用一張卡、三段切換（健康／外出／情緒與回憶錄）呈現最近 7 天的
 /// 迷你長條圖與一兩句事實摘要，細節一律用「看詳細」連到既有的完整頁面。
 ///
 /// - 各分頁**第一次被選到才載入**並快取；切換長輩、父層刷新訊號（[refreshToken]）變動時
@@ -185,7 +185,7 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
           setState(() {
             _emotion = AnalysisBuckets.bucketEvents(events, today);
             _stories = results[1] as List<MemoirStory>;
-            _status[seg] = _St.ready; // 即使 0 次情緒也要顯示圖與人生故事
+            _status[seg] = _St.ready; // 即使 0 次情緒也要顯示圖與回憶錄
           });
       }
     } catch (_) {
@@ -258,7 +258,7 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
           const SizedBox(height: 10),
           UbanSegmented(
             small: true,
-            labels: const ['健康', '外出', '情緒與故事'],
+            labels: const ['健康', '外出', '情緒與回憶錄'],
             index: _Seg.values.indexOf(_seg),
             onChanged: _select,
           ),
@@ -368,7 +368,7 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
             ),
           ),
         const SizedBox(height: 10),
-        Text('最近的人生故事', style: famText(c.text2, 13, weight: FontWeight.w700)),
+        Text('最近的回憶錄', style: famText(c.text2, 13, weight: FontWeight.w700)),
         if (recent.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -386,7 +386,7 @@ class _HomeAnalysisCardState extends State<HomeAnalysisCard> {
         const SizedBox(height: 4),
         _links([
           FamMore(label: '看情緒紀錄', onTap: _openEmotion),
-          FamMore(label: '翻閱人生故事', onTap: _openGallery),
+          FamMore(label: '翻閱回憶錄', onTap: _openGallery),
         ]),
         FamButton(
           label: '委託小豬提問',

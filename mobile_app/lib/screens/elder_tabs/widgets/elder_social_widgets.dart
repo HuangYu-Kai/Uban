@@ -97,7 +97,7 @@ class ElderPostActions extends StatelessWidget {
   final Key? likeKey;
   final Key? commentKey;
 
-  /// 按讚時讓讚鈕彈一下的縮放動畫（時光牆的爪印動畫）；null 不縮放。
+  /// 按讚時讓讚鈕彈一下的縮放動畫（時光牆的讚動畫）；null 不縮放。
   final Animation<double>? likeScale;
 
   const ElderPostActions({

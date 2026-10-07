@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// 🎙️ AI 人生故事膠囊提問引導橫幅（獨立卡片，點擊直接口述分享）
+/// 🎙️ AI 回憶錄膠囊提問引導橫幅（獨立卡片，點擊直接口述分享）
 class ElderStoryPromptBanner extends StatelessWidget {
   final bool isLandscape;
   final String prompt;

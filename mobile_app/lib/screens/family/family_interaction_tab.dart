@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/elder.dart';
+import '../../globals.dart' show splashActive, pendingAcceptedCall;
+import '../../services/checkin_notification.dart';
 import '../../services/signaling.dart';
+import '../../theme/family_theme.dart';
+import '../elder_community_screen.dart';
 import '../../services/api_service.dart';
 import '../../widgets/ui/ui.dart';
 import '../video_call_screen.dart';
 import 'family_ai_copilot_screen.dart';
 import 'family_subscription_screen.dart';
-import 'widgets/daily_question_card.dart';
 import 'widgets/family_pet_card.dart';
 import 'widgets/family_step_challenge_card.dart';
 import 'widgets/fam_interaction_ui.dart';
@@ -40,9 +43,6 @@ class FamilyInteractionTab extends StatefulWidget {
   final String tierDisplayName;
   final String tierLevel;
   final int? userId;
-
-  /// ★ 2026-10-07 每日一問：父層收到 `daily-answer` 時遞增，推給每日一問卡片重讀。
-  final int dailyRefreshToken;
 
   /// ★ 2026-10-07 小豬共養：父層收到 `pet-gift-fed` 時遞增，推給小豬卡片重讀。
   final int petGiftRefreshToken;
@@ -80,7 +80,6 @@ class FamilyInteractionTab extends StatefulWidget {
     this.tierDisplayName = '一般會員',
     this.tierLevel = 'free',
     this.userId,
-    this.dailyRefreshToken = 0,
     this.petGiftRefreshToken = 0,
     this.stepChallengeRefreshToken = 0,
     this.elderSocketId,
@@ -111,6 +110,51 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
     WidgetsBinding.instance.addObserver(this);
     _fetchReminders();
     _syncAudioBridgeForAlerts();
+    // ★ 2026-10-07 交接 A2：`daily-answer` 通知點擊改開 AI 照護秘書（原由已移除的每日一問卡消費）。
+    CheckinNotification.pendingDailyTap.addListener(_onPendingDailyTap);
+    unawaited(CheckinNotification.consumeDailyLaunchTap());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onPendingDailyTap());
+  }
+
+  // ───────── ★ 2026-10-07 交接 A2：每日一問通知點擊 → 開啟 AI 照護秘書 ─────────
+
+  bool _dailyTapRunning = false;
+
+  void _onPendingDailyTap() {
+    if (CheckinNotification.pendingDailyTap.value == null || _dailyTapRunning) return;
+    _dailyTapRunning = true;
+    unawaited(_runPendingDailyTap().whenComplete(() => _dailyTapRunning = false));
+  }
+
+  bool _isThisElder(String tapElderId) {
+    final e = widget.currentElder;
+    if (e == null) return false;
+    return tapElderId == e.elderId || tapElderId == e.id.toString();
+  }
+
+  /// 等到「Splash 結束、長輩就緒」再導覽（上限約 20 秒）；來電／通話中一律放棄，
+  /// 不疊在來電畫面前（沿用原每日一問卡的作法，護欄 G13）。
+  Future<void> _runPendingDailyTap() async {
+    for (var i = 0; i < 40; i++) {
+      final tap = CheckinNotification.pendingDailyTap.value;
+      if (tap == null || !mounted) return;
+      if (pendingAcceptedCall.value != null || Signaling().isInCall) {
+        CheckinNotification.pendingDailyTap.value = null;
+        return;
+      }
+      if (!splashActive && widget.currentElder != null) {
+        CheckinNotification.pendingDailyTap.value = null;
+        if (!_isThisElder(tap.elderId)) return;
+        final route = ModalRoute.of(context);
+        if (route != null && !route.isCurrent) {
+          Navigator.of(context).popUntil((r) => r == route);
+        }
+        _openAiCopilot();
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    CheckinNotification.pendingDailyTap.value = null;
   }
 
   // ── 重新整理三種觸發（下拉／切回此分頁／App 回前景）共用 ──
@@ -569,6 +613,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    CheckinNotification.pendingDailyTap.removeListener(_onPendingDailyTap);
     // ★ 2026-08-11 第二十二輪（需求 1）：離開分頁時務必停掉配對輪詢，
     //   否則計時器會在 State 已銷毀後繼續打 HTTP 並碰 context。
     _monitorBindPollTimer?.cancel();
@@ -902,7 +947,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
 
     // 2026-10 新設計（design_prototype/family.html #tabInteract）：
     // 通話大卡 → AI 照護秘書（分享近況／問近況／設提醒，已併入原留言與時光牆入口）
-    // → 每日一問 → 小豬共養 → 遠端監控 → 遠端提醒，區塊間距 14。
+    // → 家庭近況 → 小豬共養 → 遠端監控 → 遠端提醒，區塊間距 14。
     final refreshColors = UbanColors.of(context);
     return RefreshIndicator(
       color: refreshColors.brandFill,
@@ -926,12 +971,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
               _buildAiCopilotSection(),
               const SizedBox(height: 14),
 
-              // 2b. ★ 2026-10-07 每日一問：今日題目、長輩回答與出題入口
-              DailyQuestionCard(
-                currentElder: widget.currentElder,
-                userId: widget.userId,
-                refreshToken: widget.dailyRefreshToken,
-              ),
+              // 2a. ★ 2026-10-07 交接 A3：家庭近況（開啟家庭動態／時光牆）
+              _buildFamilyFeedCard(),
               const SizedBox(height: 14),
 
               // 2c. ★ 2026-10-07 小豬共養：長輩的小豬、今日點心與送點心入口
@@ -987,7 +1028,7 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
                       Text('AI 照護秘書',
                           style: famText(c.text, 16.5, weight: FontWeight.w700)),
                       const SizedBox(height: 2),
-                      Text('分享近況、問$elderName今天好嗎、設提醒',
+                      Text('分享近況、問$elderName今天好嗎、出題、設提醒',
                           style: famText(c.text2, 13.5, height: 1.45)),
                     ],
                   ),
@@ -1012,14 +1053,74 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
                 selected: false,
                 onTap: () => _openAiCopilot('$elderName今天好嗎？'),
               ),
+              // ★ 2026-10-07 交接 A2：取代「設提醒」鈕，每日一問併入秘書；預填、不自動送出。
               FamFilterChip(
-                label: '設提醒',
+                label: '想問$elderName一個問題',
                 selected: false,
-                onTap: () => _openAiCopilot('每天 08:00 提醒吃藥'),
+                onTap: () => _openAiCopilot('想問$elderName：'),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// ★ 2026-10-07 交接 A3：「家庭近況」卡，點了開啟 [ElderCommunityScreen]。
+  /// 參數照抄原秘書畫面「分享紀錄」按鈕的開法（A4：家屬端不再有朋友分頁，
+  /// 且 [ElderCommunityScreen.isFamilyMode] 隱藏提示條並以 family 身分發文）。
+  Widget _buildFamilyFeedCard() {
+    final c = UbanColors.of(context);
+    return FamCard(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _openFamilyFeed,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('家庭近況',
+                      style: famText(c.text, 16.5, weight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text('看看家人分享的照片與生活點滴',
+                      style: famText(c.text2, 13.5, height: 1.45)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            FamAction.chevron(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFamilyFeed() async {
+    HapticFeedback.lightImpact();
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    // 讀不到 caregiver_id 就明確提示、不開畫面，不得用猜測值兜底。
+    final familyId = prefs.getInt('caregiver_id');
+    if (familyId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          famSnackBar(context, '無法取得您的帳號 ID，請重新登入後再試', error: true));
+      return;
+    }
+    final userName = prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        // ElderCommunityScreen 長輩／家屬共用、內部不動；家屬端 push 時在外層掛 FamilyThemeScope。
+        builder: (context) => FamilyThemeScope(
+          child: ElderCommunityScreen(
+            userId: familyId,
+            userName: userName,
+            familyId: familyId,
+            isFamilyMode: true,
+          ),
+        ),
       ),
     );
   }

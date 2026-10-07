@@ -127,8 +127,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   int _checkinRefreshToken = 0;
   // ★ 2026-10-07 每日一問：長輩回答事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
   Function(dynamic)? _ownDailyAnswer;
-  /// 遞增 token 推給互動分頁的每日一問卡片重讀。
-  int _dailyRefreshToken = 0;
   // ★ 2026-10-07 小豬共養：長輩餵了我送的點心事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
   Function(dynamic)? _ownPetGiftFed;
   /// 遞增 token 推給互動分頁的小豬卡片重讀。
@@ -709,11 +707,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     _signaling.onElderCheckinMissed = _ownElderCheckinMissed;
 
     // ★ 2026-10-07 每日一問：長輩回答了今天的小問題。補一則一般優先級本機通知
-    //    （角色守門／開關／去重都在 CheckinNotification.showDailyAnswer 內），並讓卡片重讀。
+    //    （角色守門／開關／去重都在 CheckinNotification.showDailyAnswer 內）。
+    //    ★ 2026-10-07 交接 A2：每日一問卡已移除，不再有 refresh token；回答改由 AI 照護秘書開啟時轉告。
     _ownDailyAnswer = (data) {
       if (data is Map) CheckinNotification.showDailyAnswerFromData(data);
-      if (!mounted) return;
-      setState(() => _dailyRefreshToken++);
     };
     _signaling.onDailyAnswer = _ownDailyAnswer;
 
@@ -2922,7 +2919,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   alertPreviewKey: _homeAlertPreviewKey,
                 ),
                 FamilyInteractionTab(
-                  dailyRefreshToken: _dailyRefreshToken,
                   petGiftRefreshToken: _petGiftRefreshToken,
                   stepChallengeRefreshToken: _stepChallengeRefreshToken,
                   currentElder: _currentElder,

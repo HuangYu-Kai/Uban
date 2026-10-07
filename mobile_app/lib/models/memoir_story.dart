@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-/// 長輩人生故事膠囊資料模型
+/// 長輩回憶錄膠囊資料模型
 class MemoirStory {
   final String id;
   final String elderId;

@@ -333,8 +333,8 @@ void main() {
         await _settle(tester, 3);
 
         expect(find.byType(PolaroidPostCard), findsWidgets);
-        expect(find.text('1 爪印'), findsNothing);
-        expect(find.text('3 爪印'), findsWidgets);
+        expect(find.text('讚 1'), findsNothing);
+        expect(find.text('讚 3'), findsWidgets);
         expect(tester.takeException(), isNull);
 
         // 留言面板

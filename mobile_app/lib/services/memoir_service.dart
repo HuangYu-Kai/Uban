@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/memoir_story.dart';
 
-/// 長輩人生故事膠囊服務層 (MemoirService)
+/// 長輩回憶錄膠囊服務層 (MemoirService)
 ///
 /// 支援本機 SharedPreferences 快取、精選示範資料注入、子女留言互動、
 /// 以及「子女委託小豬提問」的佇列調度。

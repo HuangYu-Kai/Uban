@@ -1,4 +1,4 @@
-// ★ 2026-10-07 每日一問：人生故事畫廊合併後端每日一問、委託提問改走後端 /ask。
+// ★ 2026-10-07 每日一問：回憶錄畫廊合併後端每日一問、委託提問改走後端 /ask。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';

@@ -114,9 +114,9 @@ class AnalysisBuckets {
     return '這 ${days.length} 天外出 $outDays 天，共 $total 次';
   }
 
-  /// 情緒與故事摘要。
+  /// 情緒與回憶錄摘要。
   static String emotionSummary(List<DayValue> days, int storyCount) {
     final total = days.fold<int>(0, (a, d) => a + (d.value ?? 0));
-    return '這 ${days.length} 天有 $total 次需要關心的情緒；已珍藏 $storyCount 篇人生故事';
+    return '這 ${days.length} 天有 $total 次需要關心的情緒；已珍藏 $storyCount 篇回憶錄';
   }
 }

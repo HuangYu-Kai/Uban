@@ -12,8 +12,10 @@ import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/family_theme.dart';
 import '../../utils/error_handler.dart';
-import '../elder_community_screen.dart';
-import 'family_friend_feed_body.dart';
+import '../../services/api/daily_question_api.dart';
+import 'daily_question_screen.dart'
+    show DailyAsker, DailyAudioButton, DailyHistoryLoader, resolveFamilyId;
+import 'family_question_draft.dart';
 import 'family_share_draft.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
@@ -32,7 +34,17 @@ class FamilyAiCopilotScreen extends StatefulWidget {
   /// 預先填入輸入框的草稿（互動分頁的快捷鈕用）。只填入、不自動送出。
   final String? initialMessage;
 
-  const FamilyAiCopilotScreen({super.key, this.currentElder, this.initialMessage});
+  /// ★ 2026-10-07 交接 A2 測試注入點；null 時使用真實 API。
+  final DailyHistoryLoader? historyLoader;
+  final DailyAsker? asker;
+
+  const FamilyAiCopilotScreen({
+    super.key,
+    this.currentElder,
+    this.initialMessage,
+    this.historyLoader,
+    this.asker,
+  });
 
   @override
   State<FamilyAiCopilotScreen> createState() => _FamilyAiCopilotScreenState();
@@ -72,10 +84,49 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     }
     _chatMessages.add({
       'isUser': false,
-      'text': '您好！我是您的 AI 照護秘書 🤖\n我可以幫您：\n・分享近況或照片給 $elderName（例如：「跟$elderName說：今天孫子考了 100 分」，也可以附照片）\n・查詢「$elderName 今天過得怎麼樣？」\n・建立提醒（例如：「每天早上 8 點與晚上 8 點提醒 $elderName 吃降血壓藥」）',
+      'text': '您好！我是您的 AI 照護秘書 🤖\n我可以幫您：\n・分享近況或照片給 $elderName（例如：「跟$elderName說：今天孫子考了 100 分」，也可以附照片）\n・查詢「$elderName 今天過得怎麼樣？」\n・出題給 $elderName（例如：「想問$elderName：小時候住哪裡？」）\n・建立提醒（例如：「每天早上 8 點與晚上 8 點提醒 $elderName 吃降血壓藥」）',
       'statusSummary': null,
       'scheduleDrafts': null,
     });
+    // ★ 2026-10-07 交接 A2：長輩回答由秘書轉告。
+    _loadAnswerRelays();
+  }
+
+  /// ★ 2026-10-07 交接 A2：打開秘書時讀每日一問歷史，把近 7 天、本機沒看過的回答
+  /// 以秘書訊息轉告（有語音附播放鈕）。顯示後才記入本機已看過清單（device 層級）。
+  /// 讀取失敗就靜默略過（轉告是加分功能，不打擾家屬）。
+  Future<void> _loadAnswerRelays() async {
+    final elderId =
+        widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
+    if (elderId == null) return;
+    try {
+      final fid = await resolveFamilyId(null);
+      if (fid == null) return;
+      final items = widget.historyLoader != null
+          ? await widget.historyLoader!(elderId, fid)
+          : await DailyQuestionApi.getHistory(elderId: elderId, familyId: fid);
+      if (items == null || !mounted) return;
+      final seen = await loadSeenAnswerIds(elderId);
+      final fresh = selectUnseenAnswers(items, seen);
+      if (fresh.isEmpty || !mounted) return;
+      final elderName = widget.currentElder?.displayName ?? '長輩';
+      setState(() {
+        for (final it in fresh) {
+          _chatMessages.add({
+            'isUser': false,
+            'text': answerRelayText(elderName, it),
+            'relayAudioUrl': it.hasAudio ? it.answerAudioUrl : null,
+            'statusSummary': null,
+            'scheduleDrafts': null,
+          });
+        }
+      });
+      _scrollToBottom();
+      await saveSeenAnswerIds(
+          elderId, {...seen, ...fresh.map((e) => e.id.toString())});
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 轉告長輩回答失敗：$e');
+    }
   }
 
   @override
@@ -84,6 +135,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     _messageController.dispose();
     for (final m in _chatMessages) {
       (m['shareController'] as TextEditingController?)?.dispose();
+      (m['questionController'] as TextEditingController?)?.dispose();
     }
     _scrollController.dispose();
     super.dispose();
@@ -385,39 +437,56 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     _scrollToBottom();
   }
 
-  /// 「分享紀錄」：開啟時光牆（與原互動分頁「家庭生活時光牆」卡片的開法相同）。
-  Future<void> _openCommunity() async {
-    HapticFeedback.lightImpact();
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    // 讀不到 caregiver_id 就明確提示、不開畫面，不得用猜測值兜底。
-    final familyId = prefs.getInt('caregiver_id');
-    if (familyId == null) {
-      ErrorHandler.showWarning(context, '無法取得您的帳號 ID，請重新登入後再試');
+  /// ★ 2026-10-07 交接 A2：確認出題草稿，呼叫既有的 `POST /api/daily_question/ask`。
+  /// 失敗時卡片保留、顯示 API 回的真實原因，可修改後重試；不假裝成功。
+  Future<void> _confirmQuestion(int messageIndex) async {
+    final msg = _chatMessages[messageIndex];
+    if (msg['questionPhase'] == QuestionCardPhase.sending ||
+        msg['questionPhase'] == QuestionCardPhase.sent) {
       return;
     }
-    final userName = prefs.getString('caregiver_name') ?? prefs.getString('user_name') ?? '家人';
+    final controller = msg['questionController'] as TextEditingController;
+    final question = controller.text.trim();
+    if (!canSendQuestion(text: question, sending: false)) return;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        // ElderCommunityScreen 長輩／家屬共用、內部不動；家屬端 push 時在外層掛
-        // FamilyThemeScope，讓「朋友」標籤內的 FamilyFriendFeedBody 吃得到家屬主題。
-        builder: (context) => FamilyThemeScope(
-          child: ElderCommunityScreen(
-            userId: familyId,
-            userName: userName,
-            familyId: familyId,
-            showFriendTab: true,
-            familyTabLabel: '家庭',
-            friendTabContent: FamilyFriendFeedBody(
-              familyId: familyId,
-              familyName: userName,
-            ),
-          ),
-        ),
-      ),
-    );
+    setState(() {
+      msg['questionPhase'] = QuestionCardPhase.sending;
+      msg['questionError'] = null;
+    });
+
+    String? error;
+    try {
+      final DailyAskResult r;
+      if (widget.asker != null) {
+        r = await widget.asker!(question: question);
+      } else {
+        final fid = await resolveFamilyId(null);
+        final elderId =
+            widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
+        if (fid == null || elderId == null) {
+          r = const DailyAskResult(false, '無法確認家屬身分，請重新登入後再試');
+        } else {
+          r = await DailyQuestionApi.ask(
+              familyId: fid, elderId: elderId, question: question);
+        }
+      }
+      if (!r.ok) error = r.message;
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 出題送出失敗：$e');
+      error = '送出失敗，請稍後再試';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      if (error == null) {
+        msg['questionPhase'] = QuestionCardPhase.sent;
+        msg['questionError'] = null;
+      } else {
+        msg['questionPhase'] = QuestionCardPhase.draft;
+        msg['questionError'] = error;
+      }
+    });
+    _scrollToBottom();
   }
 
   Future<void> _confirmBatchSchedule(List<dynamic> drafts, int messageIndex) async {
@@ -591,6 +660,13 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     return _buildServerErrorResponse(elderName, serverMsg);
   }
 
+  /// 測試用：直接塞入一則後端回覆（例如帶 `question_draft` 的 ASK_DAILY_QUESTION），
+  /// 避免測試必須模擬 `/api/ai/family_copilot/chat`。
+  @visibleForTesting
+  void testInjectBotReply(Map<String, dynamic> data) {
+    setState(() => _addBotMessage(data));
+  }
+
   /// 把回覆資料加成一則機器人訊息。
   void _addBotMessage(Map<String, dynamic> data, {String? uploadedImageUrl}) {
     // share_draft 可能缺席（舊版後端）或為 null。
@@ -601,7 +677,16 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     if (uploadedImageUrl != null && data['intent'] == 'SHARE_WITH_ELDER') {
       share = ShareDraft(text: share?.text ?? '', imageUrl: share?.imageUrl ?? uploadedImageUrl);
     }
+    // ★ 2026-10-07 交接 A2：question_draft 可能缺席（舊版後端）或為 null。
+    final question = data['intent'] == 'ASK_DAILY_QUESTION' || data['question_draft'] != null
+        ? QuestionDraft.tryParse(data['question_draft'])
+        : null;
     _chatMessages.add({
+      if (question != null) ...{
+        'questionController': TextEditingController(text: question.text),
+        'questionPhase': QuestionCardPhase.draft,
+        'questionError': null,
+      },
       if (share != null) ...{
         'shareImageUrl': share.imageUrl,
         'shareController': TextEditingController(text: share.text),
@@ -632,9 +717,6 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       appBar: famSubBar(
         context,
         title: 'AI 照護秘書',
-        trailing: [
-          FamSmallBtn(label: '分享紀錄', onTap: _openCommunity),
-        ],
       ),
       body: SafeArea(
         top: false,
@@ -649,6 +731,12 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                     label: '分享近況',
                     selected: false,
                     onTap: () => _prefill('跟$elderName說：'),
+                  ),
+                  // ★ 2026-10-07 交接 A2：預填「想問{稱呼}：」，家屬補完再送。
+                  FamFilterChip(
+                    label: '想問$elderName一個問題',
+                    selected: false,
+                    onTap: () => _prefill('想問$elderName：'),
                   ),
                   FamFilterChip(
                     label: '近況速報',
@@ -684,6 +772,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                   final isApplied = msg['isApplied'] == true;
                   final localImage = msg['localImage'];
                   final sharePhase = msg['sharePhase'] as ShareCardPhase?;
+                  final questionPhase = msg['questionPhase'] as QuestionCardPhase?;
+                  final relayAudioUrl = msg['relayAudioUrl'] as String?;
 
                   return FamChatBubble(
                     mine: isUser,
@@ -714,6 +804,22 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                             onCancel: () => setState(
                                 () => msg['sharePhase'] = ShareCardPhase.cancelled),
                           ),
+                        // ★ 2026-10-07 交接 A2：出題卡
+                        if (!isUser && questionPhase != null)
+                          QuestionDraftCard(
+                            controller: msg['questionController'] as TextEditingController,
+                            elderName: elderName,
+                            phase: questionPhase,
+                            errorText: msg['questionError'] as String?,
+                            onSend: () => _confirmQuestion(index),
+                            onCancel: () => setState(
+                                () => msg['questionPhase'] = QuestionCardPhase.cancelled),
+                          ),
+                        // ★ 2026-10-07 交接 A2：長輩語音回答的播放鈕
+                        if (!isUser && relayAudioUrl != null) ...[
+                          const SizedBox(height: 8),
+                          DailyAudioButton(url: relayAudioUrl),
+                        ],
                         // 近況摘要
                         if (!isUser && statusSummary != null)
                           _buildStatusSummary(statusSummary),

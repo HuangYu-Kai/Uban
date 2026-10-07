@@ -1,4 +1,4 @@
-// ★ 2026-10-07 每日一問（家屬端）：卡片、DailyQuestionScreen、出題對話框、API 模型與通知 payload。
+// ★ 2026-10-07 每日一問（家屬端）：DailyQuestionScreen、出題對話框、API 模型與通知 payload。
 //
 // 純 UI／純函式測試：不打網路、不碰平台通道（播放器延後到按下播放才建立，測試不按）。
 // 溢位以 360×640、textScaler 1.3 驗證（CLAUDE.md 規則 14）。
@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/models/elder.dart';
 import 'package:flutter_application_1/screens/family/daily_question_screen.dart';
-import 'package:flutter_application_1/screens/family/widgets/daily_question_card.dart';
 import 'package:flutter_application_1/services/api/daily_question_api.dart';
 import 'package:flutter_application_1/services/checkin_notification.dart';
 import 'package:flutter_application_1/theme/family_theme.dart';
@@ -55,83 +54,6 @@ void main() {
         ),
         home: child,
       );
-
-  Widget cardHarness(DailyQuestionCard card) => harness(Scaffold(
-        body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: card),
-      ));
-
-  group('DailyQuestionCard', () {
-    testWidgets('未回答：顯示題目與「未回答」，兩顆按鈕，無溢位', (tester) async {
-      await phone(tester);
-      await tester.pumpWidget(cardHarness(DailyQuestionCard(
-        currentElder: _elder(),
-        loader: (_) async => _q(1),
-      )));
-      await tester.pumpAndSettle();
-      expect(find.text('每日一問'), findsOneWidget);
-      expect(find.text('未回答'), findsOneWidget);
-      expect(find.byKey(const ValueKey('dq_card_question')), findsOneWidget);
-      expect(find.byKey(const ValueKey('dq_card_answer')), findsNothing);
-      expect(find.text('出一題給長輩'), findsOneWidget);
-      expect(find.text('看全部'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('已回答含語音：顯示摘要與 🔊，深色也無溢位', (tester) async {
-      await phone(tester);
-      await tester.pumpWidget(harness(
-        Scaffold(
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: DailyQuestionCard(
-              currentElder: _elder(),
-              loader: (_) async => _q(2,
-                  answered: true,
-                  text: '小時候最愛吃外婆做的蘿蔔糕，每年過年都吃不膩。' * 3,
-                  audio: 'http://x/a.m4a'),
-            ),
-          ),
-        ),
-        dark: true,
-      ));
-      await tester.pumpAndSettle();
-      expect(find.text('已回答'), findsOneWidget);
-      expect(find.byKey(const ValueKey('dq_card_answer')), findsOneWidget);
-      expect(find.byKey(const ValueKey('dq_card_audio')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('讀取失敗：顯示友善訊息（不含例外字串）', (tester) async {
-      await phone(tester);
-      await tester.pumpWidget(cardHarness(DailyQuestionCard(
-        currentElder: _elder(),
-        loader: (_) async => null,
-      )));
-      await tester.pumpAndSettle();
-      expect(find.text('暫時讀不到今天的小問題，稍後再試一次'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('refreshToken 變動會重讀', (tester) async {
-      await phone(tester);
-      var calls = 0;
-      Widget build(int token) => cardHarness(DailyQuestionCard(
-            currentElder: _elder(),
-            refreshToken: token,
-            loader: (_) async {
-              calls++;
-              return _q(1, answered: calls > 1, text: '回答');
-            },
-          ));
-      await tester.pumpWidget(build(0));
-      await tester.pumpAndSettle();
-      expect(find.text('未回答'), findsOneWidget);
-      await tester.pumpWidget(build(1));
-      await tester.pumpAndSettle();
-      expect(calls, 2);
-      expect(find.text('已回答'), findsOneWidget);
-    });
-  });
 
   group('DailyQuestionScreen', () {
     testWidgets('列表：已回答可回覆／已回覆／等待長輩回答／語音鈕，無溢位', (tester) async {

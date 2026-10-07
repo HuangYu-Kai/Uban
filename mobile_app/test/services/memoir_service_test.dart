@@ -56,7 +56,7 @@ void main() {
       expect(memoirs.first.title, '真實長輩回憶');
     });
 
-    test('可以新增自訂人生故事膠囊並持久化', () async {
+    test('可以新增自訂回憶錄膠囊並持久化', () async {
       final newStory = MemoirStory(
         id: 'story_new_1',
         elderId: testElderId,

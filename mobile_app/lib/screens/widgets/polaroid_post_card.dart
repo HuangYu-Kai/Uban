@@ -55,7 +55,7 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
     ]).animate(CurvedAnimation(
       parent: _stampController,
       // 不可用 easeInOutBack 這類會超出 0～1 的曲線：TweenSequence 會在每一幀丟斷言，
-      // 元素樹因此錯亂（爪印按鈕變兩顆、離開社群後紅畫面 _dependents.isEmpty）。
+      // 元素樹因此錯亂（讚按鈕變兩顆、離開社群後紅畫面 _dependents.isEmpty）。
       // 彈跳感已由上面 1.0→1.4→1.0 的序列提供。
       curve: Curves.easeInOut,
     ));
@@ -85,14 +85,15 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
     super.dispose();
   }
 
-  /// 「誰送了爪印」一行字：≤3 人列全名，超過則「A、B、C 等 N 人」。
+  /// 「誰按了讚」一行字：≤3 人列全名，超過則「A、B、C 等 N 人」。
+  /// ★ 2026-10-07 交接 A4：「爪印」改「讚」，比照長輩端用詞與 ❤️。
   String _likedByLine() {
     final names = widget.post.likedBy;
-    if (names.length <= 3) return '🐾 ${names.join('、')} 送了爪印';
+    if (names.length <= 3) return '❤️ ${names.join('、')} 按讚';
     final total = names.length > widget.post.likeCount
         ? names.length
         : widget.post.likeCount;
-    return '🐾 ${names.take(3).join('、')} 等 $total 人送了爪印';
+    return '❤️ ${names.take(3).join('、')} 等 $total 人按讚';
   }
 
   Future<void> _toggleSpeech() async {
@@ -315,7 +316,7 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
             ),
           ),
 
-          // 誰送了爪印（鐵律 #14：最多 2 行並截斷）
+          // 誰按了讚（鐵律 #14：最多 2 行並截斷）
           if (post.likedBy.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
@@ -335,11 +336,11 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
             ),
           ],
 
-          // 讚（爪印）／留言
+          // 讚／留言
           const SizedBox(height: 14),
           ElderPostActions(
             liked: post.isLiked,
-            likeLabel: post.likeCount == 0 ? '送爪印' : '${post.likeCount} 爪印',
+            likeLabel: post.likeCount == 0 ? '讚' : '讚 ${post.likeCount}',
             commentLabel:
                 post.comments.isEmpty ? '留言' : '留言 ${post.comments.length}',
             onLike: _handleLikeTap,

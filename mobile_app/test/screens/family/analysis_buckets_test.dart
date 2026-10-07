@@ -55,6 +55,6 @@ void main() {
     expect(r.last.value, 2);
     expect(r[4].value, 1);
     expect(r[5].value, 0);
-    expect(AnalysisBuckets.emotionSummary(r, 4), '這 7 天有 3 次需要關心的情緒；已珍藏 4 篇人生故事');
+    expect(AnalysisBuckets.emotionSummary(r, 4), '這 7 天有 3 次需要關心的情緒；已珍藏 4 篇回憶錄');
   });
 }

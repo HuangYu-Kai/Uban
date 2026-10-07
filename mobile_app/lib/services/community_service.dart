@@ -201,7 +201,7 @@ class CommunityService {
     if (postIndex == -1) return posts;
 
     final post = posts[postIndex];
-    // 同步更新「誰按過爪印」名單
+    // 同步更新「誰按過讚」名單
     final likedBy = List<String>.from(post.likedBy);
     if (post.isLiked) {
       likedBy.remove(userName);
