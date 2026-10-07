@@ -2203,7 +2203,10 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   const SizedBox(width: 12),
                   Flexible(
                     child: Text(
-                      isEmergency ? '🚨 緊急來電' : '📞 長輩來電',
+                      // ★ 2026-10-07 來電顯示名稱：標題改用實際來電者名稱（原本寫死「長輩來電」）。
+                      isEmergency
+                          ? '🚨 緊急來電'
+                          : '📞 ${callerName ?? _currentElder?.displayName ?? "長輩"} 來電',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: famText(isEmergency ? c.danger : c.text, 20,

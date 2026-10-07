@@ -806,7 +806,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     // 監聽來自家屬的來電請求
     _ownCallRequest = (roomId, senderId, callId, [senderName]) {
       if (!mounted) return;
-      _showIncomingCallDialog(roomId, senderId, callId);
+      // ★ 2026-10-07 來電顯示名稱：把後端解析出的來電者名稱（家屬姓名／好友的稱呼）
+      //   帶進彈窗，原本寫死「家屬」，好友打來也顯示成家屬。
+      _showIncomingCallDialog(roomId, senderId, callId, senderName);
     };
     Signaling().onCallRequest = _ownCallRequest;
     // ★ issue 4 fix: 監聽家屬取消來電，關閉彈窗
@@ -1020,9 +1022,13 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     );
   }
 
-  void _showIncomingCallDialog(String roomId, String senderId, String? callId) {
+  void _showIncomingCallDialog(String roomId, String senderId, String? callId,
+      [String? callerName]) {
     if (_isIncomingCallDialogOpen) return;
     _isIncomingCallDialogOpen = true;
+    // ★ 2026-10-07 來電顯示名稱：取不到名稱才退回「家人」（不再一律顯示「家屬」）。
+    final String trimmedName = (callerName ?? '').trim();
+    final String displayName = trimmedName.isNotEmpty ? trimmedName : '家人';
 
     showDialog(
       context: context,
@@ -1035,8 +1041,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           //   兩顆按鈕的 onDecline／onAccept 就是原本 onPressed 內的閉包，逐字未動；
           //   showDialog 參數、AssistantHiddenZone、.then 收尾皆未動。
           child: IncomingCallView(
-            callerName: '家屬',
-            subtitle: '您的家人正在呼叫您！',
+            callerName: displayName,
+            subtitle: '$displayName 正在呼叫您！',
               onDecline: () {
                 Signaling()
                     .sendCallBusy(senderId, callId: callId, room: roomId);
