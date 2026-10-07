@@ -104,20 +104,20 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
                   // ★ 2026-10-07 身分選擇導覽：右上角「怎麼選？」說明入口
                   Row(
                     children: [
-                      const Flexible(child: UbanLabel('UBAN')),
-                      const Spacer(),
-                      Flexible(
-                        child: Semantics(
-                          button: true,
-                          label: '身分選擇說明',
-                          excludeSemantics: true,
-                          child: UbanButton(
-                            label: '怎麼選？',
-                            icon: Icons.help_outline_rounded,
-                            variant: UbanButtonVariant.ghost,
-                            expand: false,
-                            onPressed: _showTutorialForce,
-                          ),
+                      // 左側吃掉剩餘寬度；右側按鈕維持原本寬度。之前兩邊都用
+                      // Flexible 加 Spacer，三者平分一列，按鈕只分到三分之一寬，
+                      // 「怎麼選？」被擠成兩行。
+                      const Expanded(child: UbanLabel('UBAN')),
+                      Semantics(
+                        button: true,
+                        label: '身分選擇說明',
+                        excludeSemantics: true,
+                        child: UbanButton(
+                          label: '怎麼選？',
+                          icon: Icons.help_outline_rounded,
+                          variant: UbanButtonVariant.ghost,
+                          expand: false,
+                          onPressed: _showTutorialForce,
                         ),
                       ),
                     ],
