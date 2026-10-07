@@ -437,6 +437,21 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    // ★ 2026-10-07 家庭步數挑戰：本週過半／達標（家屬端）。同 pet-gift-fed：純 data、
+    //    一般優先級、不碰來電狀態；角色守門（fail-closed）、開關與去重在
+    //    `CheckinNotification.showStepChallenge` 內。
+    if (type == 'step-challenge') {
+      debugPrint('🚶 [BG] 收到全家一起走通知，交由家屬端守門後顯示一般優先級通知');
+      try {
+        await CheckinNotification.showStepChallengeFromData(
+          Map<String, dynamic>.from(message.data),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 全家一起走通知失敗: $e');
+      }
+      return;
+    }
+
     if (type == 'reminder') {
       debugPrint('⏰ [BG] 收到排程提醒 FCM，顯示本機高優先級通知與彈窗');
       try {

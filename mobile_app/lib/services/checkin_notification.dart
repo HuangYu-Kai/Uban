@@ -384,6 +384,175 @@ class CheckinNotification {
     );
   }
 
+  // ───────── ★ 2026-10-07 家庭步數挑戰：本週過半／達標（沿用本類別的 plugin／守門） ─────────
+  // 一般優先級、僅限家屬端；點擊只打開 App。
+
+  static const String typeStepChallenge = 'step-challenge';
+  static const String stepChallengeChannelId = 'step_challenge';
+  static const String stepChallengeChannelName = '全家一起走';
+  static const String stepChallengeChannelDesc = '全家本週步數挑戰過半或達標時的通知';
+
+  /// 裝置偏好鍵：是否顯示全家一起走通知（預設 true；非 session key，G58/G59）。
+  static const String stepChallengePrefKey = 'step_challenge_notify_enabled';
+
+  static bool _stepChallengeChannelCreated = false;
+
+  static Future<bool> isStepChallengeEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      try {
+        await prefs.reload();
+      } catch (_) {}
+      return prefs.getBool(stepChallengePrefKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setStepChallengeEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(stepChallengePrefKey, value);
+  }
+
+  /// 台灣週（週一起算）的週一日期字串，供去重用（payload 沒帶週別，以收到當下的台灣日期推算）。
+  @visibleForTesting
+  static String twWeekKey([DateTime? now]) {
+    final tw = (now ?? DateTime.now()).toUtc().add(const Duration(hours: 8));
+    final monday = DateTime.utc(tw.year, tw.month, tw.day)
+        .subtract(Duration(days: tw.weekday - 1));
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${monday.year}-${two(monday.month)}-${two(monday.day)}';
+  }
+
+  /// 純函式：組出通知標題／內文；kind 不是 half／achieved 回傳 null。
+  @visibleForTesting
+  static ({String title, String body})? stepChallengeText({
+    required String kind,
+    required String elderName,
+    required String totalSteps,
+    required String goalSteps,
+    String rewardFoodName = '',
+  }) {
+    final name = elderName.trim().isEmpty ? '長輩' : elderName.trim();
+    if (kind == 'half') {
+      return (
+        title: '全家這週已經走了一半囉！',
+        body: '$totalSteps/$goalSteps 步，繼續加油',
+      );
+    }
+    if (kind == 'achieved') {
+      final food = rewardFoodName.trim();
+      final reward = food.isEmpty ? '獎勵' : '一份$food';
+      return (
+        title: '全家達標了！🎉',
+        body: '這週一起走了 $goalSteps 步，$name的小豬得到$reward',
+      );
+    }
+    return null;
+  }
+
+  /// 顯示家庭步數挑戰通知。角色守門（fail-closed）、開關、依 elderId+kind+週別去重。
+  static Future<void> showStepChallenge({
+    required String elderId,
+    required String elderName,
+    required String kind,
+    required String totalSteps,
+    required String goalSteps,
+    String rewardFoodName = '',
+  }) async {
+    if (kIsWeb) return;
+    try {
+      DartPluginRegistrant.ensureInitialized();
+
+      final text = stepChallengeText(
+        kind: kind,
+        elderName: elderName,
+        totalSteps: totalSteps,
+        goalSteps: goalSteps,
+        rewardFoodName: rewardFoodName,
+      );
+      if (text == null) return;
+
+      // 🔒 角色守門必須在任何初始化／顯示之前，fail-closed。
+      if (!await LocationAlertNotification.isFamilyDevice()) {
+        debugPrint('🔒 [CheckinNotification] 本機非確定的家屬端，略過全家一起走通知');
+        return;
+      }
+      if (!await isStepChallengeEnabled()) {
+        debugPrint('🔕 [CheckinNotification] 使用者已關閉全家一起走通知');
+        return;
+      }
+
+      final dedupeKey = '$typeStepChallenge|$elderId|$kind|${twWeekKey()}';
+      if (seenRecently(dedupeKey)) {
+        debugPrint('♻️ [CheckinNotification] 重複事件略過: $dedupeKey');
+        return;
+      }
+
+      await _ensureInit();
+      await _ensureStepChallengeChannel();
+
+      // 專屬 id 區段（1.1990e9 起 0.4e6 內，避開小豬共養 1.1995e9～1.1999e9）。
+      final int notificationId =
+          1199000000 + (_stableHash(dedupeKey) % 400000);
+
+      final androidDetails = AndroidNotificationDetails(
+        stepChallengeChannelId,
+        stepChallengeChannelName,
+        channelDescription: stepChallengeChannelDesc,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        category: AndroidNotificationCategory.status,
+        // 🚫 不設 fullScreenIntent、不繞勿擾、不設鬧鐘音量（硬規則 13）。
+      );
+
+      await _plugin.show(
+        notificationId,
+        text.title,
+        text.body,
+        NotificationDetails(android: androidDetails),
+        payload: jsonEncode(<String, String>{
+          'type': typeStepChallenge,
+          'elderId': elderId,
+          'kind': kind,
+        }),
+      );
+      debugPrint('✅ [CheckinNotification] 已顯示 step-challenge kind=$kind');
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 全家一起走通知顯示失敗: $e');
+    }
+  }
+
+  static Future<void> _ensureStepChallengeChannel() async {
+    if (_stepChallengeChannelCreated) return;
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        stepChallengeChannelId,
+        stepChallengeChannelName,
+        description: stepChallengeChannelDesc,
+        importance: Importance.defaultImportance,
+        playSound: true,
+        enableVibration: true,
+      ));
+    }
+    _stepChallengeChannelCreated = true;
+  }
+
+  /// 從 Socket／FCM 的 data map 顯示全家一起走通知（camelCase 欄位兩邊相同）。
+  static Future<void> showStepChallengeFromData(Map data) {
+    String s(String k) => (data[k] ?? '').toString();
+    return showStepChallenge(
+      elderId: s('elderId'),
+      elderName: s('elderName'),
+      kind: s('kind'),
+      totalSteps: s('totalSteps'),
+      goalSteps: s('goalSteps'),
+      rewardFoodName: s('rewardFoodName'),
+    );
+  }
+
   static Future<bool> isEnabled() async {
     try {
       final prefs = await SharedPreferences.getInstance();

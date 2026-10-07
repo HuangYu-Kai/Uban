@@ -40,6 +40,8 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
   // ★ 2026-10-07 每日一問：裝置偏好 `daily_answer_notify_enabled`（預設開，不屬於 session 鍵）。
   bool _isDailyAnswerNotifyOn = true;
   bool _isPetGiftNotifyOn = true;
+  // ★ 2026-10-07 家庭步數挑戰：全家一起走通知開關。
+  bool _isStepChallengeNotifyOn = true;
   List<dynamic> _pairedElders = [];
   bool _isLoadingElders = true;
 
@@ -93,6 +95,12 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
     _loadCheckinNotifyPref();
     _loadDailyNotifyPref();
     _loadPetGiftNotifyPref();
+    _loadStepChallengeNotifyPref();
+  }
+
+  Future<void> _loadStepChallengeNotifyPref() async {
+    final on = await CheckinNotification.isStepChallengeEnabled();
+    if (mounted) setState(() => _isStepChallengeNotifyOn = on);
   }
 
   Future<void> _loadPetGiftNotifyPref() async {
@@ -1213,6 +1221,21 @@ class _FamilySettingsViewState extends State<FamilySettingsView>
                     await CheckinNotification.setPetGiftEnabled(val);
                   } catch (_) {
                     if (mounted) setState(() => _isPetGiftNotifyOn = !val);
+                  }
+                },
+              ),
+              _buildSwitchItem(
+                Icons.directions_walk_rounded,
+                '全家一起走通知',
+                _isStepChallengeNotifyOn,
+                (val) async {
+                  setState(() => _isStepChallengeNotifyOn = val);
+                  try {
+                    await CheckinNotification.setStepChallengeEnabled(val);
+                  } catch (_) {
+                    if (mounted) {
+                      setState(() => _isStepChallengeNotifyOn = !val);
+                    }
                   }
                 },
               ),

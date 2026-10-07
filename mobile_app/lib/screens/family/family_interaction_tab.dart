@@ -12,6 +12,7 @@ import 'family_ai_copilot_screen.dart';
 import 'family_subscription_screen.dart';
 import 'widgets/daily_question_card.dart';
 import 'widgets/family_pet_card.dart';
+import 'widgets/family_step_challenge_card.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
 import '../../utils/display_text.dart';
@@ -46,6 +47,9 @@ class FamilyInteractionTab extends StatefulWidget {
   /// ★ 2026-10-07 小豬共養：父層收到 `pet-gift-fed` 時遞增，推給小豬卡片重讀。
   final int petGiftRefreshToken;
 
+  /// ★ 2026-10-07 家庭步數挑戰：父層收到 `step-challenge` 時遞增，推給步數卡片重讀。
+  final int stepChallengeRefreshToken;
+
   /// ★ 2026-08-10 第十九輪（需求 4）：長輩通訊機的 socket id，由
   /// `FamilyMainScreen._elderSocketId` 維護。撥打一般／緊急通話時必須帶上，
   /// 否則後端只能靠房間廣播猜目標，與舊版 `family_dashboard_view` 行為不一致。
@@ -78,6 +82,7 @@ class FamilyInteractionTab extends StatefulWidget {
     this.userId,
     this.dailyRefreshToken = 0,
     this.petGiftRefreshToken = 0,
+    this.stepChallengeRefreshToken = 0,
     this.elderSocketId,
     this.onDevicesChanged,
     this.onAlertDismissed,
@@ -934,6 +939,14 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
                 currentElder: widget.currentElder,
                 userId: widget.userId,
                 refreshToken: widget.petGiftRefreshToken,
+              ),
+              const SizedBox(height: 14),
+
+              // 2d. ★ 2026-10-07 家庭步數挑戰：全家本週步數進度
+              FamilyStepChallengeCard(
+                currentElder: widget.currentElder,
+                userId: widget.userId,
+                refreshToken: widget.stepChallengeRefreshToken,
               ),
               const SizedBox(height: 14),
 
