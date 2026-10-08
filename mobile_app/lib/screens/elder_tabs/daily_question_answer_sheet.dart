@@ -190,10 +190,17 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
           setState(() => _recognized = result.recognizedWords);
         },
         listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 4),
+        // ★ 2026-10-08：按住說話只取最終結果，不要部分結果、也不設 pauseFor。
+        //   實機（小米 HyperOS＋Google 語音服務）的部分結果文字是空字串
+        //   （字放在套件不讀的 UNSTABLE_TEXT），套件還會據此提早送出一個
+        //   空白的「最終結果」，之後 Google 真正的辨識結果就被丟掉，
+        //   畫面一律顯示「沒聽清楚」。pauseFor 依賴部分結果判斷停頓，
+        //   沒有部分結果時會在 4 秒後誤切，所以一併拿掉；放開按鈕才結束。
+        // ignore: deprecated_member_use
+        partialResults: false,
         localeId: _sttLocale,
         listenOptions: SpeechListenOptions(
-          partialResults: true,
+          partialResults: false,
           cancelOnError: true,
           listenMode: ListenMode.dictation,
         ),
