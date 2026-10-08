@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../widgets/age_stepper_field.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
-import '../theme/app_theme.dart';
+import '../widgets/ui/ui.dart';
+import '../widgets/login_flow_parts.dart';
 import 'qr_scanner_screen.dart';
 import 'elder_selection_screen.dart';
 import 'login_screen.dart';
 import '../services/auth_service.dart';
 import '../services/session_manager.dart';
+
+/// 從 QR Code 或輸入文字取出 4 位數配對碼；不是剛好 4 位數字則回傳 null。
+String? extractPairingCode(String raw) {
+  final t = raw.trim();
+  return RegExp(r'^\d{4}$').hasMatch(t) ? t : null;
+}
 
 class CaregiverPairingScreen extends StatefulWidget {
   final int familyId;
@@ -128,7 +134,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            backgroundColor: Colors.green[600],
+            backgroundColor: UbanColors.of(context).brandFill,
           ),
         );
 
@@ -186,6 +192,27 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
     );
   }
 
+  Future<void> _scanQr() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const QrScannerScreen()),
+    );
+    if (result != null && mounted) {
+      // ★ 2026-10-06：QR 內容直接 .text= 會繞過 maxLength；
+      //   只接受剛好 4 位數字，其餘視為不是 Uban 的 QR Code。
+      final scanned = extractPairingCode(result);
+      if (scanned != null) {
+        setState(() {
+          _codeController.text = scanned;
+          _errorMessage = null;
+        });
+      } else {
+        setState(() => _errorMessage =
+            '這不是 Uban 的配對 QR Code，請掃描長輩手機上的 QR Code');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = UbanColors.of(context);
@@ -194,16 +221,17 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
       appBar: AppBar(
         title: Text(
           '新增長輩連結',
-          style: GoogleFonts.notoSansTc(fontWeight: FontWeight.bold),
+          style: ubanText(18, FontWeight.w800, c.text),
         ),
         centerTitle: true,
         elevation: 0,
+        scrolledUnderElevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: c.text,
         actions: [
           IconButton(
             onPressed: _handleLogout,
-            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            icon: Icon(Icons.logout_rounded, color: c.danger),
             tooltip: '登出',
           ),
         ],
@@ -216,98 +244,61 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
             Center(
               child: Column(
                 children: [
-                  const Icon(
-                    Icons.favorite,
-                    size: 64,
-                    color: Color(0xFF59B294),
-                  ),
+                  Icon(Icons.favorite, size: 64, color: c.brand),
                   const SizedBox(height: 16),
-                  Text(
-                    '建立守護關係',
-                    style: GoogleFonts.notoSansTc(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: c.text,
-                    ),
-                  ),
+                  Text('建立守護關係', style: ubanH1(context, size: 24)),
                   const SizedBox(height: 8),
                   Text(
                     '請看長輩手機上的 4 位數配對碼\n並填寫長輩的資訊開始守護',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSansTc(
-                      color: c.text2,
-                      fontSize: 14,
-                    ),
+                    style: ubanText(14, FontWeight.w400, c.text2, height: 1.5),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 40),
-            _buildSectionLabel('1. 輸入配對碼'),
+            const SizedBox(height: 32),
+            _buildSectionLabel('1. 連結長輩的手機'),
+            UbanButton(
+              label: '掃描長輩手機上的 QR Code',
+              icon: Icons.qr_code_scanner_rounded,
+              onPressed: _isLoading ? null : _scanQr,
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _codeController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 4,
-                    style: GoogleFonts.inter(
-                      fontSize: 26,
-                      letterSpacing: 8,
-                      fontWeight: FontWeight.w800,
-                      color: c.text,
-                    ),
-                    cursorColor: c.brandStrong,
-                    onChanged: (_) => setState(() => _errorMessage = null),
-                    decoration: _inputDecoration(
-                      Icons.vpn_key_rounded,
-                      '4 位數字',
+                Expanded(child: Divider(color: c.line)),
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      '或手動輸入 4 位數配對碼',
+                      textAlign: TextAlign.center,
+                      style: ubanText(13, FontWeight.w600, c.text3),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  height: 56,
-                  width: 56,
-                  child: IconButton.filled(
-                    onPressed: () async {
-                      final result = await Navigator.push<String>(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const QrScannerScreen(),
-                        ),
-                      );
-                      if (result != null && mounted) {
-                        // ★ 2026-10-06：QR 內容直接 .text= 會繞過 maxLength；
-                        //   只接受剛好 4 位數字，其餘視為不是 Uban 的 QR Code。
-                        final scanned = result.trim();
-                        if (RegExp(r'^\d\{4\}$').hasMatch(scanned)) {
-                          setState(() {
-                            _codeController.text = scanned;
-                            _errorMessage = null;
-                          });
-                        } else {
-                          setState(() => _errorMessage =
-                              '這不是 Uban 的配對 QR Code，請掃描長輩手機上的 QR Code');
-                        }
-                      }
-                    },
-                    icon: const Icon(Icons.qr_code_scanner_rounded),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFF59E0B),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: Divider(color: c.line)),
               ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _codeController,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              style: ubanText(26, FontWeight.w800, c.text,
+                  letterSpacingEm: 0.3),
+              cursorColor: c.brandStrong,
+              onChanged: (_) => setState(() => _errorMessage = null),
+              decoration: _inputDecoration(
+                Icons.vpn_key_rounded,
+                '4 位數字',
+              ),
             ),
             const SizedBox(height: 24),
             _buildSectionLabel('2. 長輩基本資訊'),
             TextField(
               controller: _nameController,
-              style: GoogleFonts.notoSansTc(fontSize: 18, color: c.text),
+              style: ubanText(18, FontWeight.w400, c.text),
               cursorColor: c.brandStrong,
               onChanged: (_) => setState(() => _errorMessage = null),
               decoration: _inputDecoration(
@@ -323,7 +314,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(3),
               ],
-              style: GoogleFonts.notoSansTc(fontSize: 18, color: c.text),
+              style: ubanText(18, FontWeight.w400, c.text),
               cursorColor: c.brandStrong,
               onChanged: (_) => setState(() => _errorMessage = null),
               decoration: _inputDecoration(Icons.cake_rounded, '年齡（選填）'),
@@ -361,9 +352,9 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
             // 說明文字獨立一行（不放進窄欄位的 hint，避免被截斷／溢位）
             Text(
               '年齡、性別不確定都可以不填，長輩登入時會自己填',
-              style: GoogleFonts.notoSansTc(fontSize: 13, color: c.text3),
+              style: ubanText(13, FontWeight.w400, c.text3),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 32),
 
             // ★ 持久化錯誤橫幅：取代原本容易被忽略的 SnackBar，並補讀後端 detail 欄位，
             //   讓 409（代碼已被使用）/410（已過期）/404（代碼不存在）顯示各自的真實原因。
@@ -371,26 +362,19 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEE2E2),
+                  color: c.dangerContainer,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFDC2626)),
+                  border: Border.all(color: c.danger),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.error_outline_rounded,
-                      color: Color(0xFFDC2626),
-                    ),
+                    Icon(Icons.error_outline_rounded, color: c.danger),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         _errorMessage!,
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF991B1B),
-                        ),
+                        style: ubanText(15, FontWeight.w700, c.text),
                       ),
                     ),
                   ],
@@ -399,29 +383,10 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
               const SizedBox(height: 16),
             ],
 
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _handleConfirmPairing,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF59B294),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(
-                        '開始配對',
-                        style: GoogleFonts.notoSansTc(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
+            UbanButton(
+              label: '開始配對',
+              loading: _isLoading,
+              onPressed: _isLoading ? null : _handleConfirmPairing,
             ),
           ],
         ),
@@ -434,11 +399,7 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
       padding: const EdgeInsets.only(left: 4, bottom: 12),
       child: Text(
         label,
-        style: GoogleFonts.notoSansTc(
-          fontSize: 15,
-          fontWeight: FontWeight.bold,
-          color: UbanColors.of(context).text,
-        ),
+        style: ubanText(15, FontWeight.w700, UbanColors.of(context).text),
       ),
     );
   }
@@ -447,9 +408,8 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
     final c = UbanColors.of(context);
     return InputDecoration(
       labelText: label,
-      labelStyle: GoogleFonts.notoSansTc(color: c.text3, fontSize: 16),
-      floatingLabelStyle:
-          GoogleFonts.notoSansTc(color: c.brandStrong, fontSize: 16),
+      labelStyle: ubanText(16, FontWeight.w400, c.text3),
+      floatingLabelStyle: ubanText(16, FontWeight.w400, c.brandStrong),
       prefixIcon: Icon(icon, size: 22, color: c.text2),
       filled: true,
       fillColor: c.surface2,
@@ -496,10 +456,10 @@ class _CaregiverPairingScreenState extends State<CaregiverPairingScreen> {
           ),
           child: Text(
             label,
-            style: GoogleFonts.notoSansTc(
-              fontSize: 16,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected
+            style: ubanText(
+              16,
+              isSelected ? FontWeight.w700 : FontWeight.w400,
+              isSelected
                   ? UbanColors.of(context).brandStrong
                   : UbanColors.of(context).text2,
             ),

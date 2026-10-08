@@ -489,6 +489,12 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-08 🔗 配對 QR 掃描修正、家屬註冊後引導改版（`fix/pairing-qr-onboarding` 分支）
+
+- **修正 QR 掃描無法帶入配對碼**：家屬端掃描長輩手機的 QR Code 後，原本的檢查規則寫錯（把 `{4}` 當成字面文字），導致正確的 4 位數配對碼也被判定為「這不是 Uban 的配對 QR Code」。現抽成 `extractPairingCode()`（去除空白後必須剛好 4 位數字），並有單元測試。
+- **家屬註冊後引導（`FamilyOnboardingScreen`）改版**：改用設計系統（深色模式正常），移除 emoji 與誇大文案，改成 3 頁實用步驟：Uban 能做什麼、先準備長輩手機、掃描或輸入配對碼；小螢幕可捲動、插圖自動縮小。
+- **配對頁（`CaregiverPairingScreen`）介面調整**：「掃描長輩手機上的 QR Code」改為最上方的主要按鈕，下方才是「或手動輸入 4 位數配對碼」；顏色與字型改用設計系統，深淺色模式皆可讀。配對邏輯不變。
+
 ### 2026-10-07 🧭 身分選擇頁新手導覽（`feat/identification-tutorial` 分支）
 
 - 身分選擇頁首次進入會用 `SpotlightTutorial` 帶使用者認識「我是長者／我是家屬／監控設備」三個入口（`tutorialId: identification_v1`）；右上角新增「怎麼選？」按鈕可隨時重看。`SpotlightTutorial.showIfNeeded` 新增選用參數 `ignoreAllDismissed`（預設 false，既有呼叫端行為不變），讓本頁不被長者端「全域跳過」旗標吃掉。
