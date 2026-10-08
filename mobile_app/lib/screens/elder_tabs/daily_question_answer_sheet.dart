@@ -81,6 +81,8 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
   String? _sttLocale;
   bool _listening = false;
   String _recognized = '';
+  // 本次錄音期間辨識器回報的最後一個錯誤，用來給出具體提示。
+  String? _lastSttError;
 
   AudioRecorder? _recorder;
   AudioPlayer? _player;
@@ -176,7 +178,11 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
       final stt = _stt!;
       // 單例辨識器的回呼可能還是首頁喚醒詞的：先換成只印 log 的回呼，
       // 避免喚醒詞的重啟邏輯在本畫面錄音期間被觸發（G59）。
-      stt.errorListener = (err) => debugPrint('🎙️ [DailyQ STT error] $err');
+      _lastSttError = null;
+      stt.errorListener = (err) {
+        debugPrint('🎙️ [DailyQ STT error] $err');
+        _lastSttError = err.errorMsg;
+      };
       stt.statusListener = (s) => debugPrint('🎙️ [DailyQ STT status] $s');
       await stt.listen(
         onResult: (result) {
@@ -212,6 +218,10 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
         await Future.delayed(const Duration(milliseconds: 400));
       }
       await _stt?.stop();
+      // 部分裝置放開後才給最終結果，最多再等 1.5 秒（同 elder_chat_screen）。
+      for (var i = 0; i < 15 && _recognized.trim().isEmpty; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
       heard = _recognized.trim();
     } catch (e) {
       debugPrint('🎙️ [DailyQ STT Stop Failed] $e');
@@ -226,7 +236,7 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
     }
     if (!mounted) return;
     if (heard.isEmpty) {
-      _setError('我好像沒聽清楚，再說一次好嗎？');
+      _setError(sttFailureMessage(_lastSttError));
       return;
     }
     // 辨識結果放進可編輯文字框，讓長輩確認或修改後再送出。

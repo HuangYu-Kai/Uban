@@ -94,6 +94,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   bool _speechReady = false;
   bool _isListening = false;
   String _recognized = '';
+  // 本次按住說話期間辨識器回報的最後一個錯誤（例如 error_audio），用來給出具體提示。
+  String? _lastSttError;
   bool _voiceMode = true; // true=語音「按住說話」列，false=鍵盤輸入
 
   // 語音播放 (TTS) 與國台語切換
@@ -546,8 +548,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       // ★ 2026-10-06 喚醒詞修正：SpeechToText 是單例，回呼可能還是首頁喚醒詞
       //   的；本畫面不依賴 status，改掛只印 log 的回呼，避免喚醒詞的重啟邏輯
       //   在本畫面錄音期間被觸發（錄音期間喚醒詞已由 isMediaPlayingNotifier 暫停）。
-      _speechToText.errorListener =
-          (err) => debugPrint('🎙️ [STT error] $err');
+      _lastSttError = null;
+      _speechToText.errorListener = (err) {
+        debugPrint('🎙️ [STT error] $err');
+        _lastSttError = err.errorMsg;
+      };
       _speechToText.statusListener =
           (status) => debugPrint('🎙️ [STT status] $status');
       await _speechToText.listen(
@@ -587,6 +592,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         await Future.delayed(const Duration(milliseconds: 400));
       }
       await _speechToText.stop();
+      // ★ 2026-10-08：部分裝置的辨識引擎不回傳即時的部分結果，放開後才給最終結果；
+      //   原本 stop() 後立刻讀取，拿到空字串就一律顯示「沒聽清楚」。最多再等 1.5 秒。
+      for (var i = 0; i < 15 && _recognized.trim().isEmpty; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
       text = _recognized.trim();
     } catch (e) {
       debugPrint('🎙️ [STT Stop Failed] $e');
@@ -607,7 +617,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('我好像沒聽清楚，再說一次好嗎？')),
+        SnackBar(content: Text(sttFailureMessage(_lastSttError))),
       );
     }
   }

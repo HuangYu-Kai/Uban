@@ -29,3 +29,25 @@ String? pickChineseSttLocale(List<LocaleName> locales) {
 
   return null;
 }
+
+/// 按住說話卻沒有辨識到文字時，依辨識器回報的錯誤碼給長輩看得懂的提示。
+///
+/// ★ 2026-10-08：原本一律顯示「沒聽清楚」，但 `error_audio`／`error_busy`
+/// 其實是麥克風被別的程式佔用（最常見的是開著螢幕錄影並錄麥克風），
+/// 再講幾次都不會好；分開提示才知道該怎麼處理。
+String sttFailureMessage(String? errorMsg) {
+  final e = errorMsg ?? '';
+  if (e.contains('error_audio') ||
+      e.contains('error_busy') ||
+      e.contains('error_recognizer_busy')) {
+    return '麥克風正在被其他程式使用（例如螢幕錄影），請關掉後再試一次';
+  }
+  if (e.contains('error_network') || e.contains('error_server')) {
+    return '語音辨識需要網路，請確認網路後再試一次';
+  }
+  if (e.contains('error_permission') ||
+      e.contains('error_insufficient_permissions')) {
+    return '沒有麥克風權限，請到設定開啟，或改用打字';
+  }
+  return '我好像沒聽清楚，再說一次好嗎？';
+}
