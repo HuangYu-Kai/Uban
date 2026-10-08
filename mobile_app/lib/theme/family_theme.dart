@@ -225,8 +225,13 @@ class FamilyTheme {
 /// 讀寫的是**既有**的 SharedPreferences 鍵 [prefsKey]（`family_theme_is_dark`），
 /// 與舊版 `FamilyMainScreen` 相同，升級後使用者的偏好不會消失。
 /// 主殼與每個 [FamilyThemeScope] 都監聽同一個實例，資料分頁的開關即時套用到所有家屬頁。
+///
+/// ★ 2026-10-08：家屬端預設改為深色。只影響「從沒切換過」的使用者（鍵不存在）；
+///   曾經手動選過淺色的人，偏好仍會被保留。
 class FamilyThemeController extends ValueNotifier<bool> {
-  FamilyThemeController([super.value = false]);
+  FamilyThemeController([super.value = defaultIsDark]);
+
+  static const bool defaultIsDark = true;
 
   static const String prefsKey = 'family_theme_is_dark';
 
@@ -243,7 +248,7 @@ class FamilyThemeController extends ValueNotifier<bool> {
   Future<void> _doLoad() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      value = prefs.getBool(prefsKey) ?? false;
+      value = prefs.getBool(prefsKey) ?? defaultIsDark;
     } catch (e) {
       debugPrint('⚠️ [FamilyThemeController] 讀取深色偏好失敗: $e');
     }
