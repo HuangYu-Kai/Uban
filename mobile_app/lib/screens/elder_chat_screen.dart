@@ -1200,6 +1200,21 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ★ 2026-10-08 每日一問的提問氣泡加上「今日一問」標籤，
+                  //   和一般聊天回覆區分開來。
+                  if (msg.dailyQuestion != null) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.wb_sunny_rounded,
+                            size: 20, color: c.brandStrong),
+                        const SizedBox(width: 6),
+                        Text('今日一問',
+                            style: ubanText(16, FontWeight.w800, c.brandStrong)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   MarkdownBody(
                     data: displayLine.isEmpty ? ' ' : displayLine,
                     onTapLink: (text, href, title) {
@@ -1265,13 +1280,16 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                       padding: const EdgeInsets.only(top: 4),
                       child: _StreamingCursor(),
                     ),
-                  // ★ 每日一問：小嘎的提問氣泡附「我來回答」大按鈕（開同一個回答面板）
+                  // ★ 每日一問：小嘎的提問氣泡附「我來回答」按鈕（開同一個回答面板）。
+                  //   2026-10-08 改成外框樣式：實心綠色按鈕會和底部「按住說話」搶主角，
+                  //   畫面上出現兩顆一樣的麥克風大按鈕。
                   if (msg.dailyQuestion != null && !msg.isStreaming) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     UbanButton(
                       key: const ValueKey('chat_daily_answer'),
                       label: '我來回答',
-                      icon: Icons.mic_rounded,
+                      icon: Icons.edit_note_rounded,
+                      variant: UbanButtonVariant.outline,
                       onPressed: () => _openDailyAnswer(msg),
                     ),
                   ],
