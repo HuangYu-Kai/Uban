@@ -489,6 +489,10 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-08 ⏰ 建立當天時間已過的提醒，從下一次開始算（`fix/reminder-created-after-time` 分支）
+
+- `lib/utils/reminder_schedule.dart::appliesToday` 新增 `_existedInTimeToday`：提醒建立當天、提醒時間已經過了，今天不算（首頁「今天要做的事」不再出現已過時的「每天 9 點叫我起來」），從下一次開始；`created_at`（後端 UTC 不帶 Z，經 `ServerTime.parse`）缺漏或時間格式不對時維持舊行為。與後端 `routers/reminder.py::_created_on_or_before` 同一規則，兩邊要一起改。測試：`test/utils/reminder_created_after_time_test.dart`。
+
 ### 2026-10-08 💬 每日一問氣泡樣式（`fix/daily-question-bubble` 分支）
 
 - 聊天分頁的每日一問提問氣泡加上「今日一問」標籤；「我來回答」由實心綠色按鈕改為外框按鈕、圖示改為筆記，避免和底部「按住說話」形成兩顆一樣的麥克風大按鈕。功能與回答面板不變。
