@@ -31,11 +31,16 @@ class CareMessage {
 
   final DateTime receivedAt;
 
+  /// 家人打卡鼓勵的原始錄音（相對路徑，如 /uploads/cheers/x.m4a）。
+  /// 有值代表長輩可事後重聽家人的真實聲音；舊資料沒有此欄位，為 null。
+  final String? audioUrl;
+
   const CareMessage({
     required this.text,
     required this.type,
     required this.emotion,
     required this.receivedAt,
+    this.audioUrl,
   });
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +48,7 @@ class CareMessage {
         'type': type,
         'emotion': emotion,
         'receivedAt': receivedAt.toIso8601String(),
+        if (audioUrl != null) 'audioUrl': audioUrl,
       };
 
   static CareMessage? fromJson(Map<String, dynamic> json) {
@@ -55,7 +61,13 @@ class CareMessage {
       receivedAt:
           DateTime.tryParse((json['receivedAt'] ?? '').toString()) ??
               DateTime.now(),
+      audioUrl: _nonEmpty(json['audioUrl']),
     );
+  }
+
+  static String? _nonEmpty(dynamic v) {
+    final s = (v ?? '').toString().trim();
+    return s.isEmpty || s == 'null' ? null : s;
   }
 }
 
@@ -108,6 +120,7 @@ class CareMessageStore {
     required String text,
     String type = 'chat',
     String emotion = 'caring',
+    String? audioUrl,
   }) async {
     if (text.trim().isEmpty) return;
     final msg = CareMessage(
@@ -115,6 +128,9 @@ class CareMessageStore {
       type: type,
       emotion: emotion,
       receivedAt: DateTime.now(),
+      audioUrl: (audioUrl == null || audioUrl.trim().isEmpty)
+          ? null
+          : audioUrl.trim(),
     );
 
     _messages.insert(0, msg);

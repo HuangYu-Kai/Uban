@@ -70,6 +70,23 @@ class CheckinCheer {
   String get speakText => displayText;
 }
 
+/// 把後端回傳的錄音路徑組成可播放的完整網址（已是 http(s) 則原樣回傳）。
+/// 首次播放（[CheckinCheerService]）與聊天室重聽共用，避免兩處各寫一份。
+String resolveCheerAudioUrl(String relativeUrl, {String? root}) {
+  if (relativeUrl.startsWith('http')) return relativeUrl;
+  return '${root ?? ApiClient.serverRootUrl}$relativeUrl';
+}
+
+/// 聊天室氣泡「再聽一次」的來源：有家人錄音就重播錄音，否則維持小嘎 TTS。
+bool chatReplaysRecording(String? audioUrl) =>
+    audioUrl != null && audioUrl.isNotEmpty;
+
+/// 重播鈕的標籤：錄音 →「家人的聲音」；TTS → 國語／台語。
+String chatReplayLabel({String? audioUrl, String? ttsLanguage}) {
+  if (chatReplaysRecording(audioUrl)) return '家人的聲音';
+  return ttsLanguage == 'taigi' ? '台語' : '國語';
+}
+
 /// 純邏輯佇列：依序處理、同一個 cheerId 只處理一次（Socket 推播與 unread 撈取可能重複）。
 class CheerQueue {
   final List<CheckinCheer> _pending = [];
@@ -168,9 +185,7 @@ class CheckinCheerService {
   }
 
   Future<void> _playAudio(String relativeUrl) async {
-    final url = relativeUrl.startsWith('http')
-        ? relativeUrl
-        : '${ApiClient.serverRootUrl}$relativeUrl';
+    final url = resolveCheerAudioUrl(relativeUrl);
     // 只在「是我設的」才還原，避免蓋掉其他媒體（同 elder_chat_screen）。
     final paused = !isMediaPlayingNotifier.value;
     if (paused) isMediaPlayingNotifier.value = true;

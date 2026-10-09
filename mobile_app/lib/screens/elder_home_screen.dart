@@ -1225,7 +1225,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 留存為關懷訊息並顯示 HeartbeatOverlay（不朗讀；語音由 service 決定）。
   Future<void> _presentCheer(CheckinCheer c) async {
     await CareMessageStore.instance
-        .add(text: c.displayText, type: 'family', emotion: 'happy');
+        .add(
+            text: c.displayText,
+            type: 'family',
+            emotion: 'happy',
+            audioUrl: c.audioUrl);
     if (!mounted) return;
     showDialog(
       context: context,

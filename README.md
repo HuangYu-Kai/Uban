@@ -498,6 +498,13 @@ void initPedometer() {
 - **清理**：`elder_pet_tab.dart` 移除已無入口的非胡蘿蔔本機庫存（`_feedingInventory`、`_loadFeedingInventory`、庫存扣減與持久化），並更新仍描述舊多食物模型的註解。保留所有 `PetFoodItem` 定義、家人禮物餵食路徑、`StreakService.carrotsEarned`，以及 `pet_studio_screen`／`garden_feeding_sheet`／`food_milestone_tray`（開發預覽入口 `main_pet_preview.dart` 仍使用）
 - 後端同步：小嘎（Ollama／Gemini）system prompt 加入胡蘿蔔規則，見 `Uban-api/readme.md` 2026-10-09 條目
 
+### 2026-10-09 🎙️ 打卡鼓勵可重聽家人真實聲音（`fix/cheer-voice-replay` 分支）
+
+- **問題**：家人傳來的打卡鼓勵錄音只在抵達時播一次，之後聊天室的「再聽一次」唸的是小嘎的合成語音（文字轉語音），長輩再也聽不到子女的真實聲音。
+- **修正**：`CareMessage` 新增選用欄位 `audioUrl`（相對路徑，舊資料無此欄位仍可讀）；首頁 `_presentCheer` 把錄音路徑一併留存；聊天室 `_ChatMessage` 帶著 `audioUrl` 並寫入本機聊天紀錄。有錄音的氣泡，「再聽一次」改播原始錄音、標籤顯示「家人的聲音」；純文字鼓勵維持小嘎國語／台語朗讀。
+- 播放前先停掉正在播的 TTS，播放期間暫停首頁喚醒詞（只在本頁設定時才還原）；按鈕沿用既有播放中／停止狀態。完整網址由 `resolveCheerAudioUrl()` 組成，與首次播放共用同一份邏輯。到達當下的 `HeartbeatOverlay` 只有關閉鈕，未新增重播。
+- 測試：`test/services/cheer_voice_replay_test.dart`（JSON 來回、舊資料相容、錄音／TTS 選擇、網址組合）。
+
 ### 2026-10-08 💬 每日一問氣泡樣式（`fix/daily-question-bubble` 分支）
 
 - 聊天分頁的每日一問提問氣泡加上「今日一問」標籤；「我來回答」由實心綠色按鈕改為外框按鈕、圖示改為筆記，避免和底部「按住說話」形成兩顆一樣的麥克風大按鈕。功能與回答面板不變。
