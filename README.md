@@ -505,6 +505,10 @@ void initPedometer() {
 - 播放前先停掉正在播的 TTS，播放期間暫停首頁喚醒詞（只在本頁設定時才還原）；按鈕沿用既有播放中／停止狀態。完整網址由 `resolveCheerAudioUrl()` 組成，與首次播放共用同一份邏輯。到達當下的 `HeartbeatOverlay` 只有關閉鈕，未新增重播。
 - 測試：`test/services/cheer_voice_replay_test.dart`（JSON 來回、舊資料相容、錄音／TTS 選擇、網址組合）。
 
+### 2026-10-08 ⏰ 建立當天時間已過的提醒，從下一次開始算（`fix/reminder-created-after-time` 分支）
+
+- `lib/utils/reminder_schedule.dart::appliesToday` 新增 `_existedInTimeToday`：提醒建立當天、提醒時間已經過了，今天不算（首頁「今天要做的事」不再出現已過時的「每天 9 點叫我起來」），從下一次開始；`created_at`（後端 UTC 不帶 Z，經 `ServerTime.parse`）缺漏或時間格式不對時維持舊行為。與後端 `routers/reminder.py::_created_on_or_before` 同一規則，兩邊要一起改。測試：`test/utils/reminder_created_after_time_test.dart`。
+
 ### 2026-10-08 💬 每日一問氣泡樣式（`fix/daily-question-bubble` 分支）
 
 - 聊天分頁的每日一問提問氣泡加上「今日一問」標籤；「我來回答」由實心綠色按鈕改為外框按鈕、圖示改為筆記，避免和底部「按住說話」形成兩顆一樣的麥克風大按鈕。功能與回答面板不變。

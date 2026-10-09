@@ -1,6 +1,8 @@
 // lib/utils/reminder_schedule.dart
 import 'package:intl/intl.dart';
 
+import 'server_time.dart';
+
 /// ⏰ 提醒排程共用邏輯（唯一事實來源 / Single Source of Truth）
 ///
 /// 為什麼需要這個檔案：
@@ -56,6 +58,7 @@ bool _isInactive(Map<String, dynamic> r) {
 /// 另外，非啟用的提醒（見 [_isInactive]）一律回傳 false。
 bool appliesToday(Map<String, dynamic> r, DateTime now) {
   if (_isInactive(r)) return false;
+  if (!_existedInTimeToday(r, now)) return false;
 
   final todayStr = DateFormat('yyyy-MM-dd').format(now);
   const weekdayMap = {1: '週一', 2: '週二', 3: '週三', 4: '週四', 5: '週五', 6: '週六', 7: '週日'};
@@ -76,6 +79,27 @@ bool appliesToday(Map<String, dynamic> r, DateTime now) {
     // ★ 保留原始看門狗的寬鬆預設：無法辨識的 repeat_days 一律視為適用今天
     return true;
   }
+}
+
+/// ★ 2026-10-08：提醒在今天「已經存在、而且還來得及響」——與後端
+/// `routers/reminder.py::_created_on_or_before` 同一套規則，兩邊要一起改。
+///
+/// 建立當天、提醒時間已經過了，就從下一次開始算。原本只看重複規則：長輩晚上
+/// 7 點請小嘎設「每天 9 點叫我起來」，首頁「今天要做的事」立刻多一筆已過時、
+/// 補打卡也沒意義的事。`created_at`（後端 UTC、不帶 Z）缺漏或解析失敗、
+/// `time_str` 解析不出來時一律視為成立（寬鬆，維持舊行為）。
+bool _existedInTimeToday(Map<String, dynamic> r, DateTime now) {
+  final created = ServerTime.parse(r['created_at']);
+  if (created == null) return true;
+  final createdDay = DateTime(created.year, created.month, created.day);
+  final today = DateTime(now.year, now.month, now.day);
+  if (createdDay.isAfter(today)) return false;
+  if (createdDay.isBefore(today)) return true;
+  final remindAt = _parseTimeToday(r, now);
+  if (remindAt == null) return true;
+  final createdMinute = DateTime(
+      created.year, created.month, created.day, created.hour, created.minute);
+  return !createdMinute.isAfter(remindAt);
 }
 
 /// 嘗試把 "HH:mm" 字串解析成「今天」對應的 [DateTime]。
