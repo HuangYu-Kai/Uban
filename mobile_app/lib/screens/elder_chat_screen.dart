@@ -290,14 +290,23 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         if (rawMessages.isNotEmpty) {
           final List<_ChatMessage> remoteLoaded = [];
           for (var item in rawMessages) {
-            final role = item['role'] ?? 'user';
-            final text = item['text'] ?? '';
-            if (text.isNotEmpty) {
+            final h = parseChatHistoryItem(item);
+            if (h == null) continue;
+            if (h.isFamily) {
+              // 家人打卡鼓勵：有錄音就重播錄音，否則由小嘎唸文字。
               remoteLoaded.add(_ChatMessage(
-                text,
-                role == 'user',
-                ttsLanguage: role == 'user' ? null : 'mandarin',
-                ttsText: role == 'user' ? null : _extractCleanTtsText(text),
+                h.text,
+                false,
+                ttsLanguage: 'mandarin',
+                ttsText: h.text,
+                audioUrl: h.audioUrl,
+              ));
+            } else {
+              remoteLoaded.add(_ChatMessage(
+                h.text,
+                h.isUser,
+                ttsLanguage: h.isUser ? null : 'mandarin',
+                ttsText: h.isUser ? null : _extractCleanTtsText(h.text),
               ));
             }
           }
@@ -313,6 +322,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                   _ChatMessage(m.text, false,
                       ttsLanguage: m.ttsLanguage,
                       ttsText: m.ttsText,
+                      audioUrl: m.audioUrl,
                       images: imagesByText[m.text]!)
                 else
                   m

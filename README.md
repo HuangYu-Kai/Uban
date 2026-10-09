@@ -498,6 +498,13 @@ void initPedometer() {
 - **清理**：`elder_pet_tab.dart` 移除已無入口的非胡蘿蔔本機庫存（`_feedingInventory`、`_loadFeedingInventory`、庫存扣減與持久化），並更新仍描述舊多食物模型的註解。保留所有 `PetFoodItem` 定義、家人禮物餵食路徑、`StreakService.carrotsEarned`，以及 `pet_studio_screen`／`garden_feeding_sheet`／`food_milestone_tray`（開發預覽入口 `main_pet_preview.dart` 仍使用）
 - 後端同步：小嘎（Ollama／Gemini）system prompt 加入胡蘿蔔規則，見 `Uban-api/readme.md` 2026-10-09 條目
 
+### 2026-10-09 💌 打卡鼓勵留在聊天紀錄裡（`fix/cheer-in-chat-history` 分支）
+
+- **問題**：家人傳來的鼓勵（含純語音）只存在長輩手機本機；聊天分頁每次重讀 `GET /api/ai/history` 都以伺服器清單整批取代本機清單，鼓勵氣泡因此消失，無從重聽。
+- **修正（以伺服器歷史為唯一來源）**：後端歷史現在併入該長輩的鼓勵（`role:"family"`、`audio_url`、`cheer_id`，依時間排序；長輩清除聊天後只回清除之後的），見 `Uban-api/readme.md` 2026-10-09。前端 `parseChatHistoryItem()`（`checkin_cheer_service.dart`）解析歷史一筆；`elder_chat_screen.dart` 對 family 項目建立小嘎側氣泡並帶 `audioUrl`（有錄音重播錄音、無錄音由小嘎唸文字），與照片比對合併時也保留 `audioUrl`。`_onCareMessage` 仍負責即時顯示，重讀歷史後以伺服器清單為準，不會重複。
+- 同時：後端不再把小嘎轉達的佔位文字當成長輩的綠色氣泡送出。
+- 測試：`test/services/chat_history_item_test.dart`。
+
 ### 2026-10-09 🎙️ 打卡鼓勵可重聽家人真實聲音（`fix/cheer-voice-replay` 分支）
 
 - **問題**：家人傳來的打卡鼓勵錄音只在抵達時播一次，之後聊天室的「再聽一次」唸的是小嘎的合成語音（文字轉語音），長輩再也聽不到子女的真實聲音。
