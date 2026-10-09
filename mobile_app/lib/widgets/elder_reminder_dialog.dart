@@ -1,4 +1,6 @@
 // lib/widgets/elder_reminder_dialog.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -7,7 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../utils/display_text.dart';
+import '../screens/elder_tabs/pet/carrot_checkin_reward.dart';
 import '../screens/elder_tabs/streak/streak_service.dart';
+import '../services/elder_reminder_manager.dart';
 import 'elder_overlay_button.dart';
 import 'ui/pressable_scale.dart';
 import 'ui/uban_dialog.dart';
@@ -162,6 +166,7 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
     HapticFeedback.heavyImpact();
 
     bool success;
+    bool confirmedByBackend = false;
     if (widget.reminderId > 0) {
       try {
         success = await ApiService.completeElderReminder(widget.reminderId);
@@ -177,6 +182,7 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
         await _markCompletedLocally(widget.reminderId);
         // 讓「我的」分頁的連勝卡重讀（後端打卡當下已寫好當天快照）。
         StreakService.changes.value++;
+        confirmedByBackend = true;
       }
     } else {
       // reminderId <= 0：呼叫端（ElderReminderManager）在解析不出後端給的 id
@@ -197,7 +203,8 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
       widget.onCompleted?.call();
       Navigator.of(context).pop();
       final c = UbanColors.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
             '太棒了！已完成「${stripEmoji(widget.title)}」打卡記錄',
@@ -209,6 +216,14 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
           margin: const EdgeInsets.all(20),
         ),
       );
+      // 這次打卡讓小豬多 1 根胡蘿蔔才提示（已達每日上限不提示；失敗靜默）。
+      if (confirmedByBackend) {
+        unawaited(CarrotCheckinReward.announce(
+          messenger,
+          userId: ElderReminderManager.instance.userId,
+          replaceCurrent: true,
+        ));
+      }
     } else {
       // ★ 不 pop()——彈窗留著讓長輩可以再按一次「我做好了」重試；一旦關掉，
       //   長輩會以為流程結束，不會知道還要重新找回這筆提醒才能再打卡。
@@ -355,7 +370,7 @@ class _ElderReminderDialogState extends State<ElderReminderDialog> {
               Expanded(
                 flex: 3,
                 child: OverlayButton(
-                  label: '我做好了！打卡',
+                  label: '我做好了！打卡 🥕+1',
                   loading: _isSubmitting,
                   onPressed: _isSubmitting ? null : _handleComplete,
                 ),

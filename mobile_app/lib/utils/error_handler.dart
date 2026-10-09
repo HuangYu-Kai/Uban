@@ -91,8 +91,18 @@ class ErrorHandler {
     BuildContext context,
     String message, {
     Duration duration = const Duration(seconds: 4),
+  }) =>
+      showSuccessOn(ScaffoldMessenger.of(context), message,
+          duration: duration);
+
+  /// 同 [showSuccess]，但直接用已取得的 [ScaffoldMessengerState]——給「彈窗關閉
+  /// 後才非同步決定要不要提示」的情境（此時原本的 context 已失效）。
+  static void showSuccessOn(
+    ScaffoldMessengerState messenger,
+    String message, {
+    Duration duration = const Duration(seconds: 4),
   }) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
         content: _snackBarContent(Icons.check_circle_rounded, message),
         backgroundColor: const Color(0xFF047857),

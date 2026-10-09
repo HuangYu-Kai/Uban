@@ -49,6 +49,9 @@ class PetBuddyStage extends StatefulWidget {
   /// 呼叫 [onEmptyCarrot]，>0 就照常餵。未提供時直接視為沒有胡蘿蔔。
   final Future<int> Function()? onRefreshCarrot;
 
+  /// 新手導覽高光目標：掛在胡蘿蔔鈕上。
+  final GlobalKey? carrotKey;
+
   /// 一般提示（例如拖放沒落在小豬身上）。
   final ValueChanged<String>? onHint;
 
@@ -77,6 +80,7 @@ class PetBuddyStage extends StatefulWidget {
     this.onEmptyCarrot,
     this.onRefreshCarrot,
     this.onHint,
+    this.carrotKey,
     this.cornerAction,
     this.anchors,
     this.reduceMotionOverride,
@@ -621,7 +625,7 @@ class PetBuddyStageState extends State<PetBuddyStage>
             button: true,
             label: widget.carrotCount > 0
                 ? '餵胡蘿蔔，還有 ${widget.carrotCount} 根'
-                : '胡蘿蔔吃完了，打卡就能賺',
+                : '胡蘿蔔吃完了，走路或打卡就能賺',
             onTap: () => _feed(_buttonCenterInStage()),
             excludeSemantics: true,
             child: Listener(
@@ -631,7 +635,7 @@ class PetBuddyStageState extends State<PetBuddyStage>
               onPointerMove: _onPtrMove,
               onPointerUp: _onPtrUp,
               onPointerCancel: _onPtrCancel,
-              child: PetCarrotButton(count: widget.carrotCount),
+              child: PetCarrotButton(key: widget.carrotKey, count: widget.carrotCount),
             ),
           ),
         ),

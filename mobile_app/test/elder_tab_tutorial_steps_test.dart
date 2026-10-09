@@ -12,6 +12,8 @@ void main() {
         phoneCall: GlobalKey(),
         phoneVideo: GlobalKey(),
         pet: GlobalKey(),
+        petCarrot: GlobalKey(),
+        petCarrotHint: GlobalKey(),
         petGreeting: GlobalKey(),
         chatVoiceToggle: GlobalKey(),
         chatInputArea: GlobalKey(),
@@ -34,11 +36,15 @@ void main() {
     expect(elderTabTutorialSteps(5, k), isEmpty);
   });
 
-  test('小豬分頁第 2 步（每日吉利祝賀圖）有高光目標', () {
+  test('小豬分頁：小豬、胡蘿蔔鈕、進度提示、祝賀圖四步皆有高光目標', () {
     final k = keys();
     final steps = elderTabTutorialSteps(2, k);
-    expect(steps[1].title, contains('祝賀圖'));
-    expect(steps[1].targetKey, isNotNull);
-    expect(steps[1].targetKey, same(k.petGreeting));
+    expect(steps.length, 4);
+    expect(steps[0].targetKey, same(k.pet));
+    expect(steps[1].targetKey, same(k.petCarrot));
+    expect(steps[2].targetKey, same(k.petCarrotHint));
+    expect(steps[2].body, contains('每天最多 5 根'));
+    expect(steps[3].title, contains('祝賀圖'));
+    expect(steps[3].targetKey, same(k.petGreeting));
   });
 }
