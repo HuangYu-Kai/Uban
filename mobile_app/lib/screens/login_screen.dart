@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'registration_screen.dart';
+import 'forgot_password_screen.dart';
 import 'family_onboarding_screen.dart';
 import 'family_main_screen.dart';
 import 'family_profile_onboarding_screen.dart';
@@ -161,23 +162,25 @@ class _LoginScreenState extends State<LoginScreen> {
     return '登入失敗，請稍後再試';
   }
 
-  /// ★ 2026-10-06 登入流程審查：後端目前沒有重設密碼的端點，原本的
-  /// 「已傳送重設連結至您的 Email」是假訊息（沒有送出任何請求）。改為誠實說明。
-  /// 登入前使用者看不到 App 內的意見回饋入口（在登入後的「資料」分頁），
-  /// 所以只引導聯絡團隊。
-  void _showForgotPasswordDialog() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('忘記密碼'),
-        content: const Text('目前還不能線上重設密碼。請聯絡 Uban 團隊協助重設密碼。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('知道了'),
-          ),
-        ],
+  /// 忘記密碼：進入 Email 驗證碼重設流程（`POST /api/auth/email-code`、
+  /// `POST /api/auth/reset-password`）。重設成功會回傳 Email，
+  /// 這裡把它填回 Email 欄、清空密碼欄，請使用者用新密碼登入。
+  Future<void> _openForgotPassword() async {
+    final email = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ForgotPasswordScreen(
+          initialEmail: _emailController.text.trim(),
+        ),
       ),
+    );
+    if (!mounted || email == null || email.isEmpty) return;
+    setState(() {
+      _emailController.text = email;
+      _passwordController.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('密碼已重設，請用新密碼登入')),
     );
   }
 
@@ -249,14 +252,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                         ),
 
-                        // 忘記密碼？（目前無線上重設，顯示誠實說明）
+                        // 忘記密碼？（Email 驗證碼重設）
                         Align(
                           alignment: Alignment.centerRight,
                           child: UbanButton(
                             label: '忘記密碼？',
                             variant: UbanButtonVariant.ghost,
                             expand: false,
-                            onPressed: _showForgotPasswordDialog,
+                            onPressed: _openForgotPassword,
                           ),
                         ),
 

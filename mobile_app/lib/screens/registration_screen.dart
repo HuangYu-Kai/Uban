@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/privacy_policy_content.dart';
@@ -22,6 +24,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  // Email 驗證碼：寄送 `POST /api/auth/email-code`（purpose=register），
+  // 註冊時以 email_code 一併送出。驗證碼綁定寄送時的 Email。
+  final TextEditingController _codeController = TextEditingController();
+  bool _isSendingCode = false;
+  String _sentEmail = '';
+  int _resendRemaining = 0;
+  Timer? _resendTimer;
 
   bool _isLoading = false;
   // ★ 2026-10-06 登入流程審查：同意條款不得預設勾選（需使用者主動同意）。
@@ -115,7 +124,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   /// ★ 將後端錯誤負載轉為可顯示的繁體中文字串。
   /// FastAPI 422 驗證錯誤的 `detail` 是 List（例如密碼長度不足），
   /// 若直接丟進 Text() 會是執行期型別錯誤，必須先轉字串。
-  String _readableError(dynamic raw) {
+  String _readableError(dynamic raw, {String fallback = '註冊失敗，請稍後再試'}) {
     if (raw is String && raw.trim().isNotEmpty) {
       final msg = raw.trim();
       debugPrint('⚠️ [Register] 後端回應: $msg');
@@ -127,7 +136,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         return '目前連不上伺服器，請確認網路後再試一次';
       }
       if (!RegExp(r'[一-鿿]').hasMatch(msg)) {
-        return '註冊失敗，請稍後再試';
+        return fallback;
       }
       return msg;
     }
@@ -143,7 +152,79 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       if (msg != null) return msg.toString();
       return raw.toString();
     }
-    return '註冊失敗，請稍後再試';
+    return fallback;
+  }
+
+  void _startResendCountdown(int seconds) {
+    _resendTimer?.cancel();
+    setState(() => _resendRemaining = seconds);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        _resendRemaining = _resendRemaining > 0 ? _resendRemaining - 1 : 0;
+      });
+      if (_resendRemaining <= 0) t.cancel();
+    });
+  }
+
+  /// 寄碼後又改了 Email → 清空驗證碼並停止倒數，需重新寄送。
+  void _onEmailChanged(String value) {
+    setState(() {
+      _errorMessage = null;
+      if (_sentEmail.isNotEmpty && value.trim() != _sentEmail) {
+        _sentEmail = '';
+        _codeController.clear();
+        _resendTimer?.cancel();
+        _resendRemaining = 0;
+      }
+    });
+  }
+
+  Future<void> _handleSendCode() async {
+    if (_isSendingCode || _isLoading) return;
+    final email = _emailController.text.trim();
+    setState(() => _errorMessage = null);
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _errorMessage = '請先輸入正確的 Email');
+      return;
+    }
+    setState(() => _isSendingCode = true);
+    try {
+      final result = await ApiService.sendEmailCode(
+        email: email,
+        purpose: 'register',
+      );
+      if (!mounted) return;
+      if (result['status'] == 'success') {
+        final data = result['data'];
+        final int resendAfter =
+            (data is Map && data['resend_after'] is int) ? data['resend_after'] : 60;
+        setState(() {
+          _sentEmail = email;
+          _codeController.clear();
+        });
+        _startResendCountdown(resendAfter);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('驗證碼已寄出，10 分鐘內有效')),
+        );
+      } else {
+        // 409（已註冊）、429（太頻繁）、503（寄信失敗）皆顯示後端中文 detail
+        setState(() {
+          _errorMessage = _readableError(
+              result['detail'] ?? result['error'] ?? result['message'],
+              fallback: '驗證碼寄送失敗，請稍後再試');
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Register] 寄送驗證碼例外: $e');
+      if (!mounted) return;
+      setState(() => _errorMessage = '目前連不上伺服器，請確認網路後再試一次');
+    } finally {
+      if (mounted) setState(() => _isSendingCode = false);
+    }
   }
 
   Future<void> _handleRegister() async {
@@ -179,6 +260,17 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       return;
     }
 
+    // Email 驗證碼：必須是寄送過的同一個 Email、6 位數字
+    final emailCode = _codeController.text.trim();
+    if (_sentEmail != email) {
+      setState(() => _errorMessage = '請先按「寄送驗證碼」驗證 Email');
+      return;
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(emailCode)) {
+      setState(() => _errorMessage = '請輸入 6 位數 Email 驗證碼');
+      return;
+    }
+
     // ★ 第五十三輪 onboard53：年齡／居住地改為必填，不提供略過。這裡是唯一
     //   的擋點——三個欄位任一未填都不送出註冊請求。後端 routers/auth.py::
     //   register() 仍會再驗證一次範圍／白名單，這裡的檢查只是提早給出
@@ -198,6 +290,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         age: _age,
         residenceCity: _residenceCity,
         residenceDistrict: _residenceDistrict,
+        emailCode: emailCode,
       );
 
       if (!mounted) return;
@@ -259,6 +352,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
+    _codeController.dispose();
     _locateReset.dispose();
     super.dispose();
   }
@@ -293,6 +388,26 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     _emailController,
                     'Email',
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: _onEmailChanged,
+                  ),
+                  const SizedBox(height: 10),
+                  UbanButton(
+                    label: _resendRemaining > 0
+                        ? '重新寄送（$_resendRemaining 秒）'
+                        : (_sentEmail.isEmpty ? '寄送驗證碼' : '重新寄送'),
+                    variant: UbanButtonVariant.outline,
+                    loading: _isSendingCode,
+                    onPressed: (_isSendingCode || _isLoading || _resendRemaining > 0)
+                        ? null
+                        : _handleSendCode,
+                  ),
+                  const SizedBox(height: 14),
+                  UbanTextField(
+                    controller: _codeController,
+                    label: '6 位數 Email 驗證碼',
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     onChanged: (_) => setState(() => _errorMessage = null),
                   ),
                   const SizedBox(height: 14),
