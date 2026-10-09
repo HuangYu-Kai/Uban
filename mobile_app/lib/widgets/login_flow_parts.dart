@@ -65,45 +65,25 @@ class UbanMarkBox extends StatelessWidget {
   }
 }
 
-/// 設計稿 `#i-heartmark`：品牌愛心標誌（64×64 viewBox）。
-class UbanHeartMark extends StatelessWidget {
+/// 品牌標誌：直接顯示 App 圖示（`assets/images/app_icon.png`）。
+///
+/// 原本是照設計稿 `#i-heartmark` 用 CustomPaint 畫的愛心，造型與實際 App 圖示
+/// 不一致（人頭與愛心比例、線條、配色都不同），改為全 App 共用同一張圖。
+/// 圖檔本身已含綠底與圓角，不要再包 [UbanMarkBox]。
+class UbanAppLogo extends StatelessWidget {
   final double size;
-  const UbanHeartMark({super.key, this.size = 46});
+  final double radius;
+  const UbanAppLogo({super.key, this.size = 72, this.radius = 22});
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: size,
-        height: size,
-        child: CustomPaint(painter: _HeartMarkPainter()),
+  Widget build(BuildContext context) => ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Image.asset(
+          'assets/images/app_icon.png',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          semanticLabel: 'Uban',
+        ),
       );
-}
-
-class _HeartMarkPainter extends CustomPainter {
-  // 品牌標誌固定色（#D1EEE7）。
-  static const Color _ink = Color(0xFFD1EEE7);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 64, size.height / 64);
-    final fill = Paint()..color = _ink;
-    final stroke = Paint()
-      ..color = _ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(const Offset(32, 15), 9, fill);
-    final heart = Path()
-      ..moveTo(32, 54)
-      ..cubicTo(20, 46, 12, 38, 12, 30)
-      ..arcToPoint(const Offset(32, 27), radius: const Radius.circular(10))
-      ..arcToPoint(const Offset(52, 30), radius: const Radius.circular(10))
-      ..cubicTo(52, 38, 44, 46, 32, 54)
-      ..close();
-    canvas.drawPath(heart, stroke);
-    canvas.drawLine(const Offset(17, 37), const Offset(32, 27), stroke);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
 }

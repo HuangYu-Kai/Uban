@@ -237,11 +237,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       children: [
                         const Align(
                           alignment: Alignment.centerLeft,
-                          child: UbanMarkBox(
-                            size: 56,
-                            radius: 18,
-                            child: UbanHeartMark(size: 36),
-                          ),
+                          child: UbanAppLogo(size: 56, radius: 18),
                         ),
                         const SizedBox(height: 8),
                         Text('忘記密碼', style: ubanH1(context)),

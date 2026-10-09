@@ -217,11 +217,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         // 標題區：標誌＋歡迎回來＋說明
                         const Align(
                           alignment: Alignment.centerLeft,
-                          child: UbanMarkBox(
-                            size: 56,
-                            radius: 18,
-                            child: UbanHeartMark(size: 36),
-                          ),
+                          child: UbanAppLogo(size: 56, radius: 18),
                         ),
                         const SizedBox(height: 8),
                         Text('歡迎回來', style: ubanH1(context)),
