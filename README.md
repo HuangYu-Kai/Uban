@@ -489,6 +489,12 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-09 🔑 忘記密碼與註冊 Email 驗證碼（`ui` 分支）
+
+- **忘記密碼**：登入頁「忘記密碼？」改為開啟新畫面 `ForgotPasswordScreen`（`lib/screens/forgot_password_screen.dart`），取代過去「請聯絡團隊」的說明對話框。步驟一輸入 Email 並寄送驗證碼（`POST /api/auth/email-code`，`purpose=reset_password`）；步驟二（同一頁）輸入 6 位數驗證碼與新密碼（至少 6 字、UTF-8 不超過 72 bytes、兩次一致），送出 `POST /api/auth/reset-password`。「重新寄送」依後端 `resend_after`（60 秒）倒數；寄出後若改了 Email 會退回步驟一（驗證碼綁定 Email）。文案寫「如果這個 Email 有註冊過，驗證碼已寄出」，因為對不存在的帳號後端也回成功。成功後回登入頁並帶回 Email、清空密碼欄，顯示「密碼已重設，請用新密碼登入」。
+- **註冊驗證 Email**：註冊頁 Email 欄下方新增「寄送驗證碼」（`purpose=register`，60 秒後可重寄）與 6 位數驗證碼欄；送出註冊時帶 `email_code`（`POST /api/auth/register`）。寄碼後又改 Email 會清空驗證碼、需重寄。409（已註冊）、429（太頻繁）、503（寄信失敗）直接顯示後端中文訊息。
+- API 層：`AuthApi.sendEmailCode` / `resetPassword`、`register` 新增 `emailCode`，`ApiService` 同步委派。
+
 ### 2026-10-09 🥕 胡蘿蔔怎麼拿：進度提示、賺到提示與新手導覽（`feat/carrot-guidance` 分支）
 
 - **小豬分頁常駐進度提示**：舞台下方新增大字提示（`pet_carrot_hint.dart`）：「再走 N 步，或打一次卡，就多 1 根」；達每日上限顯示「今天的胡蘿蔔都拿到了，明天再來 🌙」；後端步數讀不到時退回「走路或打卡就能拿到胡蘿蔔」。數字全由 carrot 的 `PetFoodItem` 欄位（每 500 步／每次打卡／每日 5 根）推導，集中在純函式 `pet/carrot_progress.dart`（有單元測試）
