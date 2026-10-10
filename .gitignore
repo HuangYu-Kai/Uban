@@ -91,3 +91,7 @@ mobile_app/android/app/google-services.json
 .vscode/
 oidc_test_results.txt
 # Ignore all large 3D models (Now tracked by Git LFS)
+
+# Installer build artifacts
+installer/payload/
+installer/Output/

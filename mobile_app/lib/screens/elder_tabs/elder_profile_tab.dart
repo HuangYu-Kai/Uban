@@ -29,6 +29,7 @@ import 'profile/widgets/profile_greet_row.dart';
 import 'profile/widgets/profile_location_hint.dart';
 import 'profile/widgets/profile_task_card.dart';
 import 'streak/streak_celebration.dart';
+import 'pet/carrot_checkin_reward.dart';
 import 'streak/streak_service.dart';
 import 'streak/streak_widgets.dart';
 import 'widgets/elder_task_sheet.dart';
@@ -466,7 +467,14 @@ class _ElderProfileTabState extends State<ElderProfileTab>
         );
       }
       // ★ 連勝紀錄（新功能）：打卡「成功之後」才檢查，上面的樂觀更新／回退邏輯不變。
-      if (success) unawaited(_checkStreak());
+      if (success) {
+        unawaited(_checkStreak());
+        unawaited(CarrotCheckinReward.announce(
+          ScaffoldMessenger.of(context),
+          elderId: _myFriendElderId,
+          userId: widget.userId,
+        ));
+      }
     } else {
       // ★ 取消打卡：後端現在有 DELETE /reminder/{id}/complete，比照上面的
       // 樂觀更新＋失敗回退——否則別台裝置／家屬端仍看到已完成，下次同步又把

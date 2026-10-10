@@ -59,6 +59,7 @@ class ApiService {
     int? age,
     String? residenceCity,
     String? residenceDistrict,
+    String? emailCode,
   }) => AuthApi.register(
         username: username,
         email: email,
@@ -67,7 +68,19 @@ class ApiService {
         age: age,
         residenceCity: residenceCity,
         residenceDistrict: residenceDistrict,
+        emailCode: emailCode,
       );
+
+  static Future<Map<String, dynamic>> sendEmailCode({
+    required String email,
+    required String purpose,
+  }) => AuthApi.sendEmailCode(email: email, purpose: purpose);
+
+  static Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) => AuthApi.resetPassword(email: email, code: code, newPassword: newPassword);
 
   static Future<Map<String, dynamic>> login(String email, String password) => AuthApi.login(email, password);
 

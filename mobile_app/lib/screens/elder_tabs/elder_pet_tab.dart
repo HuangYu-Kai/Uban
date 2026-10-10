@@ -25,8 +25,10 @@ import '../pet_companion_studio/widgets/pet_leaderboard_card.dart';
 
 import 'elder_greeting_tab.dart';
 import 'elder_layout.dart';
+import 'pet/carrot_progress.dart';
 import 'pet/pet_breed_store.dart';
 import 'pet/pet_buddy_stage.dart';
+import 'pet/pet_carrot_hint.dart';
 import 'pet/pet_gift_banner.dart';
 import 'pet/pet_step_challenge_bar.dart';
 import '../../services/api/step_challenge_api.dart';
@@ -43,7 +45,7 @@ import 'streak/streak_service.dart';
 /// 分頁最上方），下半嵌入每日祝福圖（[ElderGreetingTab] 的 embedded 模式）。
 ///
 /// 本檔的 state／方法是從 `elder_profile_tab.dart` 原封不動搬過來的：小豬成長、
-/// 餵食抽屜、胡蘿蔔帳本、食物解鎖、排行榜體重同步，以及餵給小豬成長的
+/// 胡蘿蔔帳本、食物解鎖、家人禮物餵食、排行榜體重同步，以及餵給小豬成長的
 /// 計步／本機 GPS 軌跡。任務清單、GPS 位置分享、家人綁定等仍留在「我的」。
 class ElderPetTab extends StatefulWidget {
   final int userId;
@@ -55,12 +57,20 @@ class ElderPetTab extends StatefulWidget {
   /// 新手指引高光目標（掛在每日吉祥祝賀圖的預覽卡片上）。
   final GlobalKey? greetingKey;
 
+  /// 新手指引高光目標：胡蘿蔔按鈕。
+  final GlobalKey? carrotKey;
+
+  /// 新手指引高光目標：胡蘿蔔進度提示。
+  final GlobalKey? carrotHintKey;
+
   const ElderPetTab({
     super.key,
     required this.userId,
     required this.userName,
     this.petKey,
     this.greetingKey,
+    this.carrotKey,
+    this.carrotHintKey,
   });
 
   @override
@@ -108,24 +118,6 @@ class _ElderPetTabState extends State<ElderPetTab>
 
   PetGrowthState? _petGrowthState;
 
-
-  // 🧺 其他食物的庫存（資料／解鎖邏輯保留；本分頁改版後只剩胡蘿蔔入口，
-  // 食匣抽屜 GardenFeedingSheet 不再開啟）。
-  // ⚠️ 第五十一輪修復：carrot 不再是常駐無限——使用者實機發現可以無限次
-  // 投餵同一顆胡蘿蔔。這裡的 0 只是首幀渲染前的安全預設值，實際可餵份數
-  // 由 build() 每次用 [_carrotAvailable]（賺得－已消耗，見該 getter 說明）
-  // 覆蓋，不採用這個字面值。其餘食物維持舊制：解鎖後給固定份數，見
-  // [_loadFeedingInventory] 的持久化讀取。
-  final Map<String, int> _feedingInventory = {
-    'carrot': 0,
-    'apple': 3,
-    'cabbage': 2,
-    'sweet_potato': 2,
-    'corn': 1,
-    'watermelon': 1,
-    'peach_cake': 1,
-  };
-
   // 🥕 陽光脆胡蘿蔔今天已消耗幾份（`GET /api/pet/food-ledger/{elder_id}` 的
   // `consumed.carrot`）。null 代表尚未成功讀到後端帳本——[_carrotAvailable]
   // 此時保守回傳 0，寧可讓長輩暫時餵不到胡蘿蔔，也不能假設「今天消耗 0
@@ -153,6 +145,11 @@ class _ElderPetTabState extends State<ElderPetTab>
   // 舊行為，見下方 _effectiveStepsForUnlock／_medicationCheckinsToday）。
   PetFoodUnlockSource? _unlockSource;
 
+  // 🥕 步數跨 500 門檻提示的比較基準：上一次讀到的「後端」今日步數。null＝
+  // 本次進入還沒讀過（第一次載入只建立基準、不提示，避免對已過的門檻補放
+  // 慶祝）；跨日步數變小時只重設基準。
+  int? _lastMilestoneSteps;
+
   // ── 🎨 舞台（寶可夢 GO 夥伴舞台）狀態 ─────────────────────
   // 品種（粉紅豬／黑豬）由後端指派；PetBreedStore 只當離線快取（先讀它，後端回應後覆寫）。
   PetBreed _breed = PetBreed.pink;
@@ -165,12 +162,12 @@ class _ElderPetTabState extends State<ElderPetTab>
   bool _wasVisible = false;
   bool _refreshing = false;
 
-  /// 重新同步：食物解鎖來源、胡蘿蔔帳本、小豬成長狀態、排行榜。進行中不重複發。
-  /// 三種觸發共用：下拉刷新、切回本分頁（TickerMode 由不可見→可見，不節流）、
-  /// App 回前景（僅本分頁可見時）。
   // 祝賀圖（嵌在本分頁下半部）監聽此值，變動時重讀小豬品種／階段。
   final ValueNotifier<int> _greetingPigSignal = ValueNotifier<int>(0);
 
+  /// 重新同步：食物解鎖來源、胡蘿蔔帳本、小豬成長狀態、排行榜。進行中不重複發。
+  /// 三種觸發共用：下拉刷新、切回本分頁（TickerMode 由不可見→可見，不節流）、
+  /// App 回前景（僅本分頁可見時）。
   Future<void> _refreshAll() async {
     if (_refreshing || !mounted) return;
     _refreshing = true;
@@ -257,27 +254,6 @@ class _ElderPetTabState extends State<ElderPetTab>
     }
   }
 
-  // ★ 第五十輪：讀取食物庫存持久化狀態（PetStorageService.loadFoodInventory），
-  // 蓋掉 _feedingInventory 的出廠預設值——沒有持久化紀錄的食物 id（例如舊
-  // 使用者第一次升級到本輪、或該食物從未被扣過庫存）維持出廠預設不變。
-  // ⚠️ 第五十一輪：carrot 已改為「賺取制」，可餵份數改由後端食物帳本
-  // （[_carrotConsumedToday]／[_carrotAvailable]）即時算出、每次 build()
-  // 都會覆蓋，這份僅供其餘食物使用的 SharedPreferences 本機庫存快照不再是
-  // carrot 的權威來源，跳過它、不採用裡面的舊值（沿用第五十輪就有的跳過
-  // 邏輯，理由更新為新模型）。
-  Future<void> _loadFeedingInventory() async {
-    final saved = await PetStorageService.loadFoodInventory();
-    if (!mounted || saved.isEmpty) return;
-    setState(() {
-      for (final entry in saved.entries) {
-        if (entry.key == 'carrot') continue;
-        if (_feedingInventory.containsKey(entry.key)) {
-          _feedingInventory[entry.key] = entry.value;
-        }
-      }
-    });
-  }
-
   // ★ 第四十一輪（item 3）：讀取朋友圈好友 ID。權威來源是後端 elder_profile
   // 表（見 FriendService.resolveMyElderId 的說明），不可用 userId 補零臆測。
   Future<void> _loadMyFriendElderId() async {
@@ -324,16 +300,39 @@ class _ElderPetTabState extends State<ElderPetTab>
   /// 跳過——[_unlockSource] 維持 null，[_effectiveStepsForUnlock]／
   /// [_medicationCheckinsToday] 會自動退回裝置端步數與 0 次打卡，等同
   /// 「只靠步數解鎖」的既有行為，不影響既有的餵食流程。失敗只記 log
-  /// （[PetProgressService] 內部已處理過），不彈錯誤對話框——這只是食匣裡
-  /// 「今天達成了沒」的顯示資訊，不是餵食動作本身，失敗不需要打斷長輩。
+  /// （[PetProgressService] 內部已處理過），不彈錯誤對話框——這只是胡蘿蔔
+  /// 「今天賺了幾根」的顯示資訊，不是餵食動作本身，失敗不需要打斷長輩。
   Future<void> _refreshFoodUnlocks() async {
     final eid = _myFriendElderId;
     if (eid == null) return;
     final source = await PetProgressService.loadFoodUnlocks(eid);
     if (mounted && source != null) {
       setState(() => _unlockSource = source);
+      _announceStepMilestone(source);
     }
   }
+
+  /// 步數更新跨過 500 步門檻、且胡蘿蔔真的 +1（未達每日上限）時提示一次。
+  /// 基準每次都前進，所以同一個門檻不會重複提示；分頁不可見時只前進基準、
+  /// 不彈訊息（不在別的分頁亂跳 SnackBar）。
+  void _announceStepMilestone(PetFoodUnlockSource source) {
+    final steps = source.todaySteps;
+    if (steps == null) return;
+    final prev = _lastMilestoneSteps;
+    _lastMilestoneSteps = steps;
+    if (prev == null || !_wasVisible) return;
+    final msg = CarrotProgress(
+      steps: steps,
+      checkins: source.medicationCheckinsToday,
+    ).stepMilestoneMessage(prev);
+    if (msg != null) ErrorHandler.showSuccess(context, msg);
+  }
+
+  /// 給舞台下方提示／零根提示用的進度。後端還沒讀到時 steps＝null（顯示通用文案）。
+  CarrotProgress get _carrotProgress => CarrotProgress(
+        steps: _unlockSource == null ? null : _effectiveStepsForUnlock,
+        checkins: _medicationCheckinsToday,
+      );
 
   /// 今日步數——優先用後端答案（`elder_daily_step` 的即時資料），答不出來
   /// （null，代表後端查詢失敗或該表在目前環境不存在）時退回裝置端既有的
@@ -384,7 +383,7 @@ class _ElderPetTabState extends State<ElderPetTab>
   /// 重新整理「今日食物帳本」中胡蘿蔔已消耗的份數（`GET /api/pet/
   /// food-ledger/{elder_id}`）。elder_id 還沒解析出來時直接跳過——
   /// [_carrotConsumedToday] 維持 null，[_carrotAvailable] 會保守顯示成
-  /// 不可餵，不影響其餘食物的既有餵食流程。失敗只記 log（見
+  /// 不可餵，不影響家人禮物的餵食流程。失敗只記 log（見
   /// [PetProgressService.loadFoodLedger] 內部已處理過），不彈錯誤對話框。
   Future<void> _refreshCarrotLedger() async {
     final eid = _myFriendElderId;
@@ -454,7 +453,6 @@ class _ElderPetTabState extends State<ElderPetTab>
     _autoStartTracking();
     _startStepTracking();
     _loadPetGrowthState();
-    _loadFeedingInventory();
     _loadMyFriendElderId();
     _loadBreed();
     _loadWeather();
@@ -661,6 +659,8 @@ class _ElderPetTabState extends State<ElderPetTab>
 
     try {
       await _gameService.updateSteps(eid, delta);
+      // 上傳成功後重讀後端步數：胡蘿蔔數與「走到 N 步」提示才會即時更新。
+      if (mounted && _wasVisible) unawaited(_refreshFoodUnlocks());
     } catch (e) {
       debugPrint('⚠️ [ElderProfileTab] 步數上傳失敗，不影響裝置端步數顯示: $e');
     }
@@ -850,13 +850,12 @@ class _ElderPetTabState extends State<ElderPetTab>
     final growthState = _effectiveGrowthState;
     final bool isGift = gift != null;
     final bool isCarrot = food.id == 'carrot' && !isGift;
-    final currentCount = _feedingInventory[food.id] ?? food.initialCount;
-    if (!isGift && !food.isUnlimited && currentCount <= 0) {
+    // 本分頁只有兩條餵食路徑：胡蘿蔔鈕（[_requestCarrotFeed]）與家人禮物
+    // （[_feedGift]）。其餘食物沒有入口，若有人誤傳直接拒絕。
+    if (!isGift && !isCarrot) return false;
+    if (isCarrot && _carrotAvailable <= 0) {
       if (!mounted) return false;
-      ErrorHandler.showWarning(
-        context,
-        '【${food.name}】已經吃完囉～多散步解鎖新食材吧！🌾',
-      );
+      ErrorHandler.showWarning(context, _carrotProgress.emptyToast);
       return false;
     }
 
@@ -888,23 +887,15 @@ class _ElderPetTabState extends State<ElderPetTab>
     setState(() {
       _petGrowthState = newState;
       if (isCarrot) {
-        // 賺取制食物：本機樂觀先把「今天已消耗」+1，讓食匣立刻反映最新
+        // 賺取制食物：本機樂觀先把「今天已消耗」+1，讓胡蘿蔔鈕立刻反映最新
         // 可餵份數（_carrotAvailable 會在下次 build() 重新算出），實際是
         // 否記帳成功交給下面的 POST 決定；失敗時整份重讀帳本校正，不用
         // 「減 1」去猜後端真實狀態（見下方 recordFoodConsumption 失敗分支）。
         _carrotConsumedToday = (_carrotConsumedToday ?? 0) + 1;
-      } else if (!isGift && !food.isUnlimited && currentCount > 0) {
-        _feedingInventory[food.id] = currentCount - 1;
       }
     });
 
     await PetStorageService.saveState(newState);
-    // 任務 C：食物庫存持久化，不 await——庫存寫檔慢不應該拖慢餵食後的
-    // 排行榜同步與訊息顯示，且與體重存檔（上面那行）一樣屬於「盡力而為」
-    // 的本機寫入，SharedPreferences 幾乎不會失敗。
-    if (!isGift) {
-      unawaited(PetStorageService.saveFoodInventory(_feedingInventory));
-    }
 
     if (isCarrot) {
       final eid = _myFriendElderId;
@@ -980,12 +971,9 @@ class _ElderPetTabState extends State<ElderPetTab>
   }
 
   /// 胡蘿蔔數為 0 時點按鈕：先重讀解鎖來源與帳本，回傳最新可餵份數。
-  /// 把 `_feedingInventory['carrot']` 同步更新，`_handleFeedFood` 才讀得到新值。
   Future<int> _refreshCarrotForTap() async {
     await Future.wait([_refreshFoodUnlocks(), _refreshCarrotLedger()]);
-    final n = _carrotAvailable;
-    _feedingInventory['carrot'] = n;
-    return n;
+    return _carrotAvailable;
   }
 
   /// 舞台上的胡蘿蔔要餵了：資料一律走既有 [_handleFeedFood]（胡蘿蔔帳本、
@@ -1020,7 +1008,6 @@ class _ElderPetTabState extends State<ElderPetTab>
   @override
   Widget build(BuildContext context) {
     currentSteps = _computeFusedSteps();
-    _feedingInventory['carrot'] = _carrotAvailable;
     final orientation = MediaQuery.of(context).orientation;
     final bool isLandscape = orientation == Orientation.landscape &&
         MediaQuery.of(context).size.width >= 720;
@@ -1046,10 +1033,17 @@ class _ElderPetTabState extends State<ElderPetTab>
                 onFeedDone: _onFeedAnimationDone,
                 onRefreshCarrot: _refreshCarrotForTap,
                 onEmptyCarrot: () =>
-                    ErrorHandler.showWarning(context, '打卡就能賺胡蘿蔔 🥕'),
+                    ErrorHandler.showWarning(context, _carrotProgress.emptyToast),
                 onHint: (m) => ErrorHandler.showWarning(context, m),
+                carrotKey: widget.carrotKey,
                 cornerAction:
                     PetCornerActions(userId: widget.userId, musicOnly: true),
+              ),
+              // 胡蘿蔔進度提示（常駐）：還差幾步／已達上限／後端步數未知的通用文案。
+              const SizedBox(height: 10),
+              KeyedSubtree(
+                key: widget.carrotHintKey,
+                child: PetCarrotHint(text: _carrotProgress.hintText),
               ),
               // ★ 2026-10-07 家庭步數挑戰：精簡「全家一起走」進度條（失敗時整塊隱藏）。
               const PetStepChallengeBar(),

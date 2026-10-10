@@ -17,6 +17,8 @@ class AuthApi {
     int? age,
     String? residenceCity,
     String? residenceDistrict,
+    // Email 驗證碼（先呼叫 sendEmailCode(purpose: 'register') 取得）
+    String? emailCode,
   }) async {
     try {
       final response = await http
@@ -31,6 +33,58 @@ class AuthApi {
               if (age != null) 'age': age,
               if (residenceCity != null) 'residence_city': residenceCity,
               if (residenceDistrict != null) 'residence_district': residenceDistrict,
+              if (emailCode != null) 'email_code': emailCode,
+            }),
+          )
+          .timeout(ApiClient.timeout);
+      return ApiClient.safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      debugPrint('⚠️ [AuthApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
+    }
+  }
+
+  /// 寄送 Email 驗證碼。purpose 為 'register'（註冊）或 'reset_password'（忘記密碼）。
+  /// 成功 data：{expires_in: 600, resend_after: 60}。
+  /// 409＝Email 已註冊（register）、429＝寄送太頻繁、503＝寄信失敗，皆帶中文 detail。
+  static Future<Map<String, dynamic>> sendEmailCode({
+    required String email,
+    required String purpose,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/auth/email-code'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'purpose': purpose}),
+          )
+          .timeout(ApiClient.timeout);
+      return ApiClient.safeDecode(response);
+    } on TimeoutException {
+      return {'status': 'error', 'message': '連線逾時，請檢查網路'};
+    } catch (e) {
+      debugPrint('⚠️ [AuthApi] 網路錯誤: $e');
+      return {'status': 'error', 'message': '目前連不上伺服器，請確認網路後再試一次'};
+    }
+  }
+
+  /// 以 Email 驗證碼重設密碼。400＝驗證碼錯誤／已過期或密碼格式不符。
+  static Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiClient.baseUrl}/auth/reset-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': email,
+              'code': code,
+              'new_password': newPassword,
             }),
           )
           .timeout(ApiClient.timeout);

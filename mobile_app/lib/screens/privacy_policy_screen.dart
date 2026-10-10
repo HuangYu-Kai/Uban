@@ -113,7 +113,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                     children: [
                       const Align(
                         alignment: Alignment.centerLeft,
-                        child: UbanMarkBox(child: UbanHeartMark()),
+                        child: UbanAppLogo(),
                       ),
                       const SizedBox(height: 22),
                       Text('開始之前，\n先跟您說三件事', style: ubanH1(context)),

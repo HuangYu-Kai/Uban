@@ -26,6 +26,9 @@ class ElderReminderManager {
   List<Map<String, dynamic>> _reminders = [];
   final Set<String> _triggeredKeys = {};
   int? _userId;
+
+  /// 目前守護中的長輩 userId（未啟動為 null）。
+  int? get userId => _userId;
   String _elderName = '長輩';
   bool _isStarted = false;
   bool _isDialogOpen = false;

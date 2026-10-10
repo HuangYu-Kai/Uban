@@ -70,6 +70,23 @@ class CheckinCheer {
   String get speakText => displayText;
 }
 
+/// 把後端回傳的錄音路徑組成可播放的完整網址（已是 http(s) 則原樣回傳）。
+/// 首次播放（[CheckinCheerService]）與聊天室重聽共用，避免兩處各寫一份。
+String resolveCheerAudioUrl(String relativeUrl, {String? root}) {
+  if (relativeUrl.startsWith('http')) return relativeUrl;
+  return '${root ?? ApiClient.serverRootUrl}$relativeUrl';
+}
+
+/// 聊天室氣泡「再聽一次」的來源：有家人錄音就重播錄音，否則維持小嘎 TTS。
+bool chatReplaysRecording(String? audioUrl) =>
+    audioUrl != null && audioUrl.isNotEmpty;
+
+/// 重播鈕的標籤：錄音 →「家人的聲音」；TTS → 國語／台語。
+String chatReplayLabel({String? audioUrl, String? ttsLanguage}) {
+  if (chatReplaysRecording(audioUrl)) return '家人的聲音';
+  return ttsLanguage == 'taigi' ? '台語' : '國語';
+}
+
 /// 純邏輯佇列：依序處理、同一個 cheerId 只處理一次（Socket 推播與 unread 撈取可能重複）。
 class CheerQueue {
   final List<CheckinCheer> _pending = [];
@@ -168,9 +185,7 @@ class CheckinCheerService {
   }
 
   Future<void> _playAudio(String relativeUrl) async {
-    final url = relativeUrl.startsWith('http')
-        ? relativeUrl
-        : '${ApiClient.serverRootUrl}$relativeUrl';
+    final url = resolveCheerAudioUrl(relativeUrl);
     // 只在「是我設的」才還原，避免蓋掉其他媒體（同 elder_chat_screen）。
     final paused = !isMediaPlayingNotifier.value;
     if (paused) isMediaPlayingNotifier.value = true;
@@ -206,4 +221,30 @@ class CheckinCheerService {
       await p?.stop();
     } catch (_) {}
   }
+}
+
+/// `GET /api/ai/history` 的一則訊息（解析後）。role：user／assistant／family。
+/// ★ 2026-10-09：家人的打卡鼓勵改由伺服器歷史提供（role='family'，含 audio_url），
+/// 聊天室重讀歷史時才不會把只存在本機的鼓勵洗掉。
+class ChatHistoryItem {
+  final String role;
+  final String text;
+  final String? audioUrl;
+  const ChatHistoryItem(this.role, this.text, this.audioUrl);
+
+  bool get isUser => role == 'user';
+  bool get isFamily => role == 'family';
+}
+
+/// 解析歷史的一筆；文字為空或格式不對回 null。audio_url 空字串視為沒有錄音。
+ChatHistoryItem? parseChatHistoryItem(dynamic item) {
+  if (item is! Map) return null;
+  final text = (item['text'] ?? '').toString();
+  if (text.isEmpty) return null;
+  final audio = (item['audio_url'] ?? '').toString();
+  return ChatHistoryItem(
+    (item['role'] ?? 'user').toString(),
+    text,
+    item['role'] == 'family' && audio.isNotEmpty ? audio : null,
+  );
 }

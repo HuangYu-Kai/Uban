@@ -489,6 +489,39 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-10-09 🔑 忘記密碼與註冊 Email 驗證碼（`ui` 分支）
+
+- **忘記密碼**：登入頁「忘記密碼？」改為開啟新畫面 `ForgotPasswordScreen`（`lib/screens/forgot_password_screen.dart`），取代過去「請聯絡團隊」的說明對話框。步驟一輸入 Email 並寄送驗證碼（`POST /api/auth/email-code`，`purpose=reset_password`）；步驟二（同一頁）輸入 6 位數驗證碼與新密碼（至少 6 字、UTF-8 不超過 72 bytes、兩次一致），送出 `POST /api/auth/reset-password`。「重新寄送」依後端 `resend_after`（60 秒）倒數；寄出後若改了 Email 會退回步驟一（驗證碼綁定 Email）。文案寫「如果這個 Email 有註冊過，驗證碼已寄出」，因為對不存在的帳號後端也回成功。成功後回登入頁並帶回 Email、清空密碼欄，顯示「密碼已重設，請用新密碼登入」。
+- **註冊驗證 Email**：註冊頁 Email 欄下方新增「寄送驗證碼」（`purpose=register`，60 秒後可重寄）與 6 位數驗證碼欄；送出註冊時帶 `email_code`（`POST /api/auth/register`）。寄碼後又改 Email 會清空驗證碼、需重寄。409（已註冊）、429（太頻繁）、503（寄信失敗）直接顯示後端中文訊息。
+- API 層：`AuthApi.sendEmailCode` / `resetPassword`、`register` 新增 `emailCode`，`ApiService` 同步委派。
+
+### 2026-10-09 🥕 胡蘿蔔怎麼拿：進度提示、賺到提示與新手導覽（`feat/carrot-guidance` 分支）
+
+- **小豬分頁常駐進度提示**：舞台下方新增大字提示（`pet_carrot_hint.dart`）：「再走 N 步，或打一次卡，就多 1 根」；達每日上限顯示「今天的胡蘿蔔都拿到了，明天再來 🌙」；後端步數讀不到時退回「走路或打卡就能拿到胡蘿蔔」。數字全由 carrot 的 `PetFoodItem` 欄位（每 500 步／每次打卡／每日 5 根）推導，集中在純函式 `pet/carrot_progress.dart`（有單元測試）
+- **賺到的當下提示**：打卡成功後（提醒彈窗、首頁任務清單、「我的」分頁三個入口）若這次真的讓胡蘿蔔 +1 就顯示「打卡完成！小豬多了 1 根胡蘿蔔 🥕」（已達上限不顯示；成功後讀一次 `food-unlocks`，失敗靜默，`pet/carrot_checkin_reward.dart`）；小豬分頁步數更新跨過 500 步門檻且未達上限時顯示「走到 N 步了！小豬多了 1 根胡蘿蔔 🥕」，每個門檻只提示一次，首次載入不補放已過的門檻。步數上傳成功後會重讀後端步數，數字才即時更新。提醒彈窗按鈕改為「我做好了！打卡 🥕+1」
+- **0 根時的提示**：由「打卡就能賺胡蘿蔔」改為「走路每 500 步，或打卡一次，就能拿到 1 根胡蘿蔔（每天最多 5 根）」；已達上限且吃完則顯示「今天的 5 根胡蘿蔔都吃完了，明天再來 🌙」
+- **小豬分頁新手導覽升為 `elder_pet_v2`**：小豬 → 胡蘿蔔鈕 → 進度提示 → 每日祝賀圖四步（升版讓看過舊導覽的長輩也看一次；沿用既有 `_onNavTap` 首次切到分頁才播放的機制）
+- **清理**：`elder_pet_tab.dart` 移除已無入口的非胡蘿蔔本機庫存（`_feedingInventory`、`_loadFeedingInventory`、庫存扣減與持久化），並更新仍描述舊多食物模型的註解。保留所有 `PetFoodItem` 定義、家人禮物餵食路徑、`StreakService.carrotsEarned`，以及 `pet_studio_screen`／`garden_feeding_sheet`／`food_milestone_tray`（開發預覽入口 `main_pet_preview.dart` 仍使用）
+- 後端同步：小嘎（Ollama／Gemini）system prompt 加入胡蘿蔔規則，見 `Uban-api/readme.md` 2026-10-09 條目
+
+### 2026-10-09 💌 打卡鼓勵留在聊天紀錄裡（`fix/cheer-in-chat-history` 分支）
+
+- **問題**：家人傳來的鼓勵（含純語音）只存在長輩手機本機；聊天分頁每次重讀 `GET /api/ai/history` 都以伺服器清單整批取代本機清單，鼓勵氣泡因此消失，無從重聽。
+- **修正（以伺服器歷史為唯一來源）**：後端歷史現在併入該長輩的鼓勵（`role:"family"`、`audio_url`、`cheer_id`，依時間排序；長輩清除聊天後只回清除之後的），見 `Uban-api/readme.md` 2026-10-09。前端 `parseChatHistoryItem()`（`checkin_cheer_service.dart`）解析歷史一筆；`elder_chat_screen.dart` 對 family 項目建立小嘎側氣泡並帶 `audioUrl`（有錄音重播錄音、無錄音由小嘎唸文字），與照片比對合併時也保留 `audioUrl`。`_onCareMessage` 仍負責即時顯示，重讀歷史後以伺服器清單為準，不會重複。
+- 同時：後端不再把小嘎轉達的佔位文字當成長輩的綠色氣泡送出。
+- 測試：`test/services/chat_history_item_test.dart`。
+
+### 2026-10-09 🎙️ 打卡鼓勵可重聽家人真實聲音（`fix/cheer-voice-replay` 分支）
+
+- **問題**：家人傳來的打卡鼓勵錄音只在抵達時播一次，之後聊天室的「再聽一次」唸的是小嘎的合成語音（文字轉語音），長輩再也聽不到子女的真實聲音。
+- **修正**：`CareMessage` 新增選用欄位 `audioUrl`（相對路徑，舊資料無此欄位仍可讀）；首頁 `_presentCheer` 把錄音路徑一併留存；聊天室 `_ChatMessage` 帶著 `audioUrl` 並寫入本機聊天紀錄。有錄音的氣泡，「再聽一次」改播原始錄音、標籤顯示「家人的聲音」；純文字鼓勵維持小嘎國語／台語朗讀。
+- 播放前先停掉正在播的 TTS，播放期間暫停首頁喚醒詞（只在本頁設定時才還原）；按鈕沿用既有播放中／停止狀態。完整網址由 `resolveCheerAudioUrl()` 組成，與首次播放共用同一份邏輯。到達當下的 `HeartbeatOverlay` 只有關閉鈕，未新增重播。
+- 測試：`test/services/cheer_voice_replay_test.dart`（JSON 來回、舊資料相容、錄音／TTS 選擇、網址組合）。
+
+### 2026-10-08 ⏰ 建立當天時間已過的提醒，從下一次開始算（`fix/reminder-created-after-time` 分支）
+
+- `lib/utils/reminder_schedule.dart::appliesToday` 新增 `_existedInTimeToday`：提醒建立當天、提醒時間已經過了，今天不算（首頁「今天要做的事」不再出現已過時的「每天 9 點叫我起來」），從下一次開始；`created_at`（後端 UTC 不帶 Z，經 `ServerTime.parse`）缺漏或時間格式不對時維持舊行為。與後端 `routers/reminder.py::_created_on_or_before` 同一規則，兩邊要一起改。測試：`test/utils/reminder_created_after_time_test.dart`。
+
 ### 2026-10-08 💬 每日一問氣泡樣式（`fix/daily-question-bubble` 分支）
 
 - 聊天分頁的每日一問提問氣泡加上「今日一問」標籤；「我來回答」由實心綠色按鈕改為外框按鈕、圖示改為筆記，避免和底部「按住說話」形成兩顆一樣的麥克風大按鈕。功能與回答面板不變。

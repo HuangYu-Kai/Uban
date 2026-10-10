@@ -25,6 +25,7 @@ import '../widgets/youtube_bubble_player.dart';
 import 'news_listen_player/news_listen_player_screen.dart';
 import 'elder_screen.dart';
 import '../services/care_message_store.dart';
+import '../services/checkin_cheer_service.dart';
 import '../services/api/family_updates_api.dart';
 import '../widgets/elder_floating_chrome.dart';
 import 'elder_tabs/chat/chat_images.dart';
@@ -67,6 +68,7 @@ class _ChatMessage {
   bool isPlayingAudio; // 當前是否正在播放中
   DailyQuestion? dailyQuestion; // ★ 每日一問：非 null 時氣泡下方顯示「我來回答」
   final List<String> images; // ★ 家人分享轉述：氣泡下方的照片網址（可為相對路徑）
+  final String? audioUrl; // ★ 家人打卡鼓勵的原始錄音（相對路徑）；有值則「再聽」播錄音而非 TTS
 
   _ChatMessage(
     this.text,
@@ -78,6 +80,7 @@ class _ChatMessage {
     this.ttsAudioPath,
     this.isPlayingAudio = false,
     this.images = const [],
+    this.audioUrl,
   }) : id = id ?? '${DateTime.now().millisecondsSinceEpoch}_${text.hashCode.abs()}';
 }
 
@@ -91,6 +94,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   final SpeechToText _speechToText = SpeechToText();
   String? _sttLocaleToUse;
   bool _pausedWakeWord = false; // 是否由本頁暫停了首頁喚醒詞監聽
+  bool _pausedForRecording = false; // 是否由本頁為「重播家人錄音」暫停了喚醒詞
   bool _speechReady = false;
   bool _isListening = false;
   String _recognized = '';
@@ -124,6 +128,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     } catch (_) {}
 
     _audioPlayer.onPlayerComplete.listen((_) {
+      _restoreRecordingWakeWord();
       if (mounted) {
         setState(() {
           for (final m in _messages) {
@@ -135,6 +140,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (state == PlayerState.stopped || state == PlayerState.completed) {
+        _restoreRecordingWakeWord();
         if (mounted) {
           setState(() {
             for (final m in _messages) {
@@ -257,6 +263,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                   ttsText: item['ttsText'],
                   ttsAudioPath: item['ttsAudioPath'],
                   images: decodeChatImages(item['images']),
+                  audioUrl: (item['audioUrl'] ?? '').toString().isEmpty
+                      ? null
+                      : item['audioUrl'].toString(),
                 ))
             .where((m) => m.text.isNotEmpty)
             .toList();
@@ -281,14 +290,23 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         if (rawMessages.isNotEmpty) {
           final List<_ChatMessage> remoteLoaded = [];
           for (var item in rawMessages) {
-            final role = item['role'] ?? 'user';
-            final text = item['text'] ?? '';
-            if (text.isNotEmpty) {
+            final h = parseChatHistoryItem(item);
+            if (h == null) continue;
+            if (h.isFamily) {
+              // 家人打卡鼓勵：有錄音就重播錄音，否則由小嘎唸文字。
               remoteLoaded.add(_ChatMessage(
-                text,
-                role == 'user',
-                ttsLanguage: role == 'user' ? null : 'mandarin',
-                ttsText: role == 'user' ? null : _extractCleanTtsText(text),
+                h.text,
+                false,
+                ttsLanguage: 'mandarin',
+                ttsText: h.text,
+                audioUrl: h.audioUrl,
+              ));
+            } else {
+              remoteLoaded.add(_ChatMessage(
+                h.text,
+                h.isUser,
+                ttsLanguage: h.isUser ? null : 'mandarin',
+                ttsText: h.isUser ? null : _extractCleanTtsText(h.text),
               ));
             }
           }
@@ -304,6 +322,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                   _ChatMessage(m.text, false,
                       ttsLanguage: m.ttsLanguage,
                       ttsText: m.ttsText,
+                      audioUrl: m.audioUrl,
                       images: imagesByText[m.text]!)
                 else
                   m
@@ -362,6 +381,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         false,
         ttsText: msg.text,
         ttsLanguage: 'mandarin',
+        audioUrl: msg.audioUrl,
       ));
     });
     _scrollToBottom();
@@ -435,6 +455,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
                 'ttsText': m.ttsText,
                 'ttsAudioPath': m.ttsAudioPath,
                 if (m.images.isNotEmpty) 'images': m.images,
+                if (m.audioUrl != null) 'audioUrl': m.audioUrl,
               })
           .toList();
       await prefs.setString('chat_history_${widget.userId}', jsonEncode(listData));
@@ -636,6 +657,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     CareMessageStore.instance.latest.removeListener(_onCareMessage);
     _speechToText.stop();
     _restoreWakeWord();
+    _restoreRecordingWakeWord();
     _audioPlayer.dispose();
     _controller.dispose();
     _scroll.dispose();
@@ -739,6 +761,51 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         .replaceAll(RegExp(r'!\[.*?\]\(.*?\)|\[.*?\]\(.*?\)', caseSensitive: false), '')
         .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}]', unicode: true), '') // 移除 Emoji
         .trim();
+  }
+
+  /// 重聽家人打卡鼓勵的原始錄音（不是小嘎的 TTS）。
+  /// 播放期間暫停首頁喚醒詞；只在「是本頁設的」才還原。
+  Future<void> _playFamilyRecording(_ChatMessage msg) async {
+    if (msg.isPlayingAudio) {
+      await _audioPlayer.stop();
+      if (mounted) setState(() => msg.isPlayingAudio = false);
+      _restoreRecordingWakeWord();
+      return;
+    }
+    await _audioPlayer.stop(); // 先停掉正在播的 TTS
+    if (mounted) {
+      setState(() {
+        for (final m in _messages) {
+          m.isPlayingAudio = false;
+        }
+        msg.isPlayingAudio = true;
+      });
+    }
+    try {
+      await _audioPlayer
+          .play(UrlSource(resolveCheerAudioUrl(msg.audioUrl!)));
+      // play 之後才暫停喚醒詞：避免上面 stop() 遲到的 stopped 事件把它立刻還原。
+      if (!_pausedForRecording && !isMediaPlayingNotifier.value) {
+        _pausedForRecording = true;
+        isMediaPlayingNotifier.value = true;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Chat] 家人錄音播放失敗: $e');
+      _restoreRecordingWakeWord();
+      if (mounted) {
+        setState(() => msg.isPlayingAudio = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('家人的語音暫時無法播放，請檢查網路')),
+        );
+      }
+    }
+  }
+
+  void _restoreRecordingWakeWord() {
+    if (_pausedForRecording) {
+      _pausedForRecording = false;
+      isMediaPlayingNotifier.value = false;
+    }
   }
 
   /// 語音播放與重播控制（包含多候選伺服器備援與台語 100% 本機快取防重複計費機制）
@@ -1325,8 +1392,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   Widget _buildTtsReplayBar(_ChatMessage msg) {
     return ChatReplayButton(
       isPlaying: msg.isPlayingAudio,
-      languageLabel: msg.ttsLanguage == 'taigi' ? '台語' : '國語',
-      onTap: () => _playOrReplayTts(msg),
+      languageLabel: chatReplayLabel(
+          audioUrl: msg.audioUrl, ttsLanguage: msg.ttsLanguage),
+      onTap: () => chatReplaysRecording(msg.audioUrl)
+          ? _playFamilyRecording(msg)
+          : _playOrReplayTts(msg),
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'elder_tabs/elder_home_tab.dart';
 import 'friends_screen.dart';
 import 'elder_tabs/elder_pet_tab.dart';
+import 'elder_tabs/pet/carrot_progress.dart';
 import 'elder_tabs/elder_layout.dart';
 import 'elder_chat_screen.dart';
 import 'elder_tabs/elder_profile_tab.dart';
@@ -108,6 +109,9 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   final GlobalKey _chatLanguageToggleKey = GlobalKey();
   // 小豬分頁（掛在 PetHeroStage 上）
   final GlobalKey _petKey = GlobalKey();
+  // 小豬分頁：胡蘿蔔鈕與進度提示（導覽第 2、3 步）
+  final GlobalKey _petCarrotKey = GlobalKey();
+  final GlobalKey _petCarrotHintKey = GlobalKey();
   // 小豬分頁「每日吉祥祝賀圖」預覽卡片（導覽第 2 步高光目標）
   final GlobalKey _petGreetingKey = GlobalKey();
   // 我的分頁
@@ -1221,7 +1225,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 留存為關懷訊息並顯示 HeartbeatOverlay（不朗讀；語音由 service 決定）。
   Future<void> _presentCheer(CheckinCheer c) async {
     await CareMessageStore.instance
-        .add(text: c.displayText, type: 'family', emotion: 'happy');
+        .add(
+            text: c.displayText,
+            type: 'family',
+            emotion: 'happy',
+            audioUrl: c.audioUrl);
     if (!mounted) return;
     showDialog(
       context: context,
@@ -1530,7 +1538,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   static const List<String> _tabTutorialIds = [
     'elder_home_v1',
     'elder_phone_v1',
-    'elder_pet_v1',
+    // v2（2026-10-09）：加入胡蘿蔔教學；升版讓看過舊導覽的長輩也看一次。
+    'elder_pet_v2',
     'elder_chat_v1',
     'elder_profile_v1',
   ];
@@ -1547,6 +1556,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           phoneCall: _phoneCallKey,
           phoneVideo: _phoneVideoKey,
           pet: _petKey,
+          petCarrot: _petCarrotKey,
+          petCarrotHint: _petCarrotHintKey,
           petGreeting: _petGreetingKey,
           chatVoiceToggle: _chatVoiceToggleKey,
           chatInputArea: _chatInputAreaKey,
@@ -1614,6 +1625,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
                 userName: widget.userName,
                 petKey: _petKey,
                 greetingKey: _petGreetingKey,
+                carrotKey: _petCarrotKey,
+                carrotHintKey: _petCarrotHintKey,
               ),
               // 3 聊天（小雲 AI 聊天）
               ElderChatScreen(
@@ -1755,6 +1768,8 @@ class ElderTutorialKeys {
       phoneCall,
       phoneVideo,
       pet,
+      petCarrot,
+      petCarrotHint,
       petGreeting,
       chatVoiceToggle,
       chatInputArea,
@@ -1771,6 +1786,8 @@ class ElderTutorialKeys {
     required this.phoneCall,
     required this.phoneVideo,
     required this.pet,
+    required this.petCarrot,
+    required this.petCarrotHint,
     required this.petGreeting,
     required this.chatVoiceToggle,
     required this.chatInputArea,
@@ -1831,7 +1848,17 @@ List<TutorialStep> elderTabTutorialSteps(int index, ElderTutorialKeys k) {
         TutorialStep(
           targetKey: k.pet,
           title: '您的小豬夥伴',
-          body: '這是陪伴您的小豬，按一下摸摸牠，牠會陪您一起變健康。',
+          body: '這是你的小豬，餵牠吃東西會慢慢長大',
+        ),
+        TutorialStep(
+          targetKey: k.petCarrot,
+          title: '餵胡蘿蔔',
+          body: '按這裡，或把胡蘿蔔拖到小豬身上，就能餵牠',
+        ),
+        TutorialStep(
+          targetKey: k.petCarrotHint,
+          title: '怎麼拿胡蘿蔔',
+          body: CarrotProgress.rules.tutorialRulesText,
         ),
         TutorialStep(
           // 高光祝賀圖預覽卡；導覽會先把它捲進視野（SpotlightTutorial 內建）。

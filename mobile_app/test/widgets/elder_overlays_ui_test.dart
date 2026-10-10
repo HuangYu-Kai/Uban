@@ -204,7 +204,7 @@ void main() {
 
       expect(find.text('用藥提醒'), findsOneWidget);
       expect(find.text('稍後提醒'), findsOneWidget);
-      expect(find.text('我做好了！打卡'), findsOneWidget);
+      expect(find.text('我做好了！打卡 🥕+1'), findsOneWidget);
       expect(tester.takeException(), isNull);
       _expectElderButtons(tester);
 
@@ -212,7 +212,7 @@ void main() {
       final left = tester.getSize(find.ancestor(
           of: find.text('稍後提醒'), matching: find.byType(OverlayButton)));
       final right = tester.getSize(find.ancestor(
-          of: find.text('我做好了！打卡'), matching: find.byType(OverlayButton)));
+          of: find.text('我做好了！打卡 🥕+1'), matching: find.byType(OverlayButton)));
       expect(right.width / left.width, closeTo(1.5, 0.15));
     });
 

@@ -25,6 +25,7 @@ import 'elder_layout.dart';
 import 'widgets/elder_task_sheet.dart';
 import 'widgets/elder_goal_form.dart';
 import 'streak/streak_celebration.dart';
+import 'pet/carrot_checkin_reward.dart';
 import 'streak/streak_service.dart';
 import 'widgets/gem_in.dart';
 import 'widgets/weather_glyph.dart';
@@ -407,7 +408,14 @@ class _ElderHomeTabState extends State<ElderHomeTab>
       );
     }
     // ★ 連勝紀錄（新功能）：打卡「成功之後」才檢查，上面的樂觀更新／回退邏輯不變。
-    if (success) unawaited(_checkStreak());
+    if (success) {
+      unawaited(_checkStreak());
+      unawaited(CarrotCheckinReward.announce(
+        ScaffoldMessenger.of(context),
+        elderId: _resolvedElderId ?? widget.roomId,
+        userId: widget.userId,
+      ));
+    }
   }
 
   bool _taskSheetOpen = false;
