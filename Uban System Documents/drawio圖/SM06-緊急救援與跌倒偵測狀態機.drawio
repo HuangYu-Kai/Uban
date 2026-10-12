@@ -23,7 +23,7 @@
         <mxPoint x="360" y="202" as="targetPoint"/>
       </mxGeometry>
     </mxCell>
-    <mxCell id="s_safe_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 載入 YOLOv8 姿態評估模型&lt;br/&gt;• do / 即時人體骨骼關節追蹤&lt;br/&gt;• exit / 保存異常前 10 秒影像快照&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
+    <mxCell id="s_safe_acts" value="&lt;font color='#334155' style='font-size:10px;'&gt;• entry / 載入 YOLOv8 人物偵測模型&lt;br/&gt;• do / 每 2 秒分析人物框變化&lt;br/&gt;• exit / 保存現場截圖&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;fontFamily=Consolas,Microsoft JhengHei;spacingLeft=6;spacingTop=2;" vertex="1" parent="1">
       <mxGeometry x="134" y="206" width="222" height="60" as="geometry"/>
     </mxCell>
     <mxCell id="s_count" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeColor=#ea580c;strokeWidth=2;fillColor=#ffffff;shadow=1;" vertex="1" parent="1">
