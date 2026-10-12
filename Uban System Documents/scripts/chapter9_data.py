@@ -24,7 +24,7 @@ FRONTEND_PROGRAM_LIST = [
     ("screens/news_listen_player/news_listen_player_screen.dart", "語音新聞朗讀播放器", "將每日時事精選轉換為自然國語語音流暢播報，提供大按鈕播放控制與清單切換。"),
     ("screens/elder_tabs/elder_greeting_tab.dart", "親友大頭像電話名冊", "以超大圓形彩色頭像展示綁定之兒女親友，支援一鍵發起語音通話與高畫質視訊。"),
     ("screens/elder_community_screen.dart", "長者社群生活圈", "提供早安祝福圖卡發布、親友生活動態照片瀏覽、一鍵愛心點讚與溫馨語音問候。"),
-    ("screens/elder_tabs/elder_chat_tab.dart", "AI 語音陪伴對話分頁", "搭載國台雙語語音辨識與 Google Gemini 情感陪伴助理，呈現波紋視覺回饋。"),
+    ("screens/elder_chat_screen.dart", "AI 語音陪伴對話分頁", "國語語音辨識、回答可選台語朗讀，由 AI 小嘎（Ollama Gemma 4，Gemini 備援）陪伴對話。"),
     ("screens/elder_tabs/elder_profile_tab.dart", "個人檔案與萌寵舞台", "整合手繪小豬養成舞台、計步能量轉換與今日任務。"),
     ("screens/widgets/google_assistant_overlay.dart", "語音指令校正覆蓋層", "長者發話時浮現大字體覆蓋確認面板，即時呈現語音辨識結果並提供校正機制。"),
     ("screens/widgets/global_assistant_button.dart", "全域安心助理引導面板", "全域常駐紅色救生圈按鈕，提供步驟高光指引、迷路救援與一鍵返家協助。"),
@@ -57,17 +57,17 @@ BACKEND_PROGRAM_LIST = [
     ("routers/alert.py", "智慧安全警報管理路由", "提供警報事件分頁查詢、未處理篩選、狀態標記已讀、抓拍相片存取與處置備註。"),
     ("routers/reminder.py", "用藥排程與作息提醒路由", "處理日常用藥與生活提醒之新增、修改、刪除，並維護長者每日服藥打卡紀錄。"),
     ("routers/auth.py", "身分認證與權限簽發路由", "負責家屬與開發者之註冊、密碼雜湊驗證、JWT 存取權杖簽發與 Session 釋放。"),
-    ("routers/memoir.py", "人生回憶錄故事典藏路由", "儲存與檢索長者人生自傳篇章，支援年代主題分類、老照片附件關聯與語音重播。"),
-    ("database.py", "資料庫連線與 ORM 模型映射", "建立 SQLAlchemy 資料庫引擎，配置連線池參數並管理各資料表之模型結構宣告。"),
+    ("routers/daily_question.py", "每日一問與回憶錄路由", "指派每日回憶提問、保存長輩的文字或語音回答，並提供家屬查詢歷史回答（回憶錄）。"),
+    ("database.py", "資料庫連線管理", "以 mysql-connector 建立連線池，提供 db_cursor 執行參數化查詢（不使用 ORM），並支援以本機 SQLite 作為備援。"),
 ]
 
 ADMIN_PROGRAM_LIST = [
     ("src/App.tsx", "主控台前端路由與全域佈局", "配置 React Router 路由表、頂部導航列、側邊選單與身分認證守門攔截器。"),
-    ("src/pages/Overview.tsx", "系統運作即時監控儀表板", "即時展示連線長者總數、在線邊緣監控設備、今日警報統計與各房間活動分布圖。"),
-    ("src/pages/ElderList.tsx", "受守護長者名冊清單", "支援長者姓名關鍵字搜尋、年齡與性別篩選、查看關聯家屬帳號與已綁定設備序號。"),
-    ("src/pages/ElderDetail.tsx", "長者個別生活歷程詳情", "檢視長者目前所在房間、歷史活動折線圖、用藥排程狀態與 AI 對話陪伴紀錄摘要。"),
-    ("src/pages/AlertHistory.tsx", "安全警報事件處置中心", "列出全系統跌倒與滯留告警日誌，展示現場即時抓拍影像並支援管理員簽核處置備註。"),
-    ("src/pages/DataAnalytics.tsx", "活動力趨勢與空間熱點分析", "運用 ECharts 繪製長者日常活動力趨勢圖、睡眠時段分析長條圖與房間停留比例圓餅圖。"),
+    ("src/pages/OverviewPage.tsx", "平台統計儀表板", "呈現使用者年齡與居住地、緊急警報與緊急通話統計，可切換時間區間。"),
+    ("src/pages/EldersPage.tsx", "使用者列表", "分為長輩與家屬兩個分頁，依互動天數、未接來電與警報次數標示風險等級，可搜尋與排序。"),
+    ("src/pages/ElderDetailPage.tsx", "長輩個案詳情", "檢視與編輯長輩基本資料，查看綁定家屬、AI 與關懷設定及每日步數。"),
+    ("src/pages/AlertsPage.tsx", "安全警報事件處置中心", "列出全體使用者的跌倒與異常爬行事件，開發者可選擇再次通知家屬、建議報警或結案。"),
+    ("src/pages/BugReportsPage.tsx", "BUG 回饋管理", "列出家屬與長輩 App 提交的問題回報，可依標題關鍵字搜尋。"),
 ]
 
 # ==============================================================================
@@ -175,8 +175,8 @@ CODE_SNIPPETS_9_2 = [
     },
     {
         "table_id": "表 9-2-2",
-        "title": "家屬端戶外 GPS 移動軌跡回溯與停留點標記演算法",
-        "file_source": "E:/114Project/Uban/mobile_app/lib/screens/family/elder_location_map_screen.dart",
+        "title": "戶外 GPS 定位點清洗演算法",
+        "file_source": "E:/114Project/uban-api/services/location_summary.py",
         "design_purpose": (
             "家屬外出時需要隨時掌握長輩戶外活動足跡。本模組自伺服器撈取長者一日定位座標，"
             "將經緯度數值即時繪製為折線軌跡，並對時空停留點進行聚類渲染，"
@@ -367,8 +367,8 @@ CODE_SNIPPETS_9_2 = [
     },
     {
         "table_id": "表 9-2-6",
-        "title": "Google Gemini 長者日常陪伴對話與意圖理解服務",
-        "file_source": "E:/114Project/uban-api/gemini_service.py",
+        "title": "Google Gemini 備援對話與模型輪替服務",
+        "file_source": "uban-api/services/gemini_service.py",
         "design_purpose": (
             "長者日常陪伴需要具備高度親和力與共情能力。本模組介接 Google Gemini 模型，"
             "注入銀髮對話系統提示詞，支援時間與天氣等日常生活工具調用，"
@@ -412,15 +412,15 @@ CODE_SNIPPETS_9_2 = [
     },
     {
         "table_id": "表 9-2-7",
-        "title": "長者戶外移動安全警戒與異常滯留提醒機制",
-        "file_source": "E:/114Project/uban-api/location_alert_watch.py",
+        "title": "長者戶外安心提醒判斷機制",
+        "file_source": "E:/114Project/uban-api/services/location_alert_rules.py、services/location_alert_watch.py",
         "design_purpose": (
             "長輩單獨外出散步時，可能因迷途或身體突發狀況於偏僻處停留過久。"
             "本排程服務每 5 分鐘掃描受守護長者之 GPS 移動軌跡，檢測夜間逗留、"
             "活動範圍異常與長時間未位移等危險徵兆，並在達到門檻時主動向家屬通報以防範走失憾事。"
         ),
         "code_text": (
-            "# 檔案來源: uban-api/location_alert_watch.py\n"
+            "# 檔案來源: uban-api/services/location_alert_rules.py、services/location_alert_watch.py\n"
             "# 模組功能: 長者戶外 GPS 定位異常滯留與安全警戒主動巡檢排程\n"
             "import datetime # 匯入日期時間處理模組\n"
             "from typing import List, Dict # 匯入資料結構型別\n"
@@ -561,9 +561,9 @@ DEPENDENCIES_ADMIN = [
 # ==============================================================================
 
 EXTERNAL_API_LIST = [
-    ("Google Gemini 2.5 Flash API", "HTTPS / REST", "提供長者端雙語日常陪伴對話、生活工具意圖調用以及數位人生回憶錄自傳章節智慧萃取。"),
-    ("Firebase Cloud Messaging (FCM)", "HTTP/2 / TLS", "發送最高優先權緊急警報通知，在手機鎖屏休眠狀態下強制喚醒發出蜂鳴與震動。"),
+    ("Google Gemini API（Flash 系列）", "HTTPS / REST", "作為本機 Ollama Gemma 4 的雲端備援，提供陪伴對話與工具呼叫；多個型號依序輪替。"),
+    ("Firebase Cloud Messaging (FCM)", "HTTP/2 / TLS", "發送高優先權純資料推播：長輩端在 App 關閉時可被喚醒接聽緊急通話，家屬端則在鎖定畫面顯示警報通知。"),
     ("OpenStreetMap Tile Server", "HTTPS / WMS", "提供免 API Key 之全球開放圖資瓦片圖層，支援家屬端長者戶外移動軌跡與停留點回溯。"),
     ("Open-Meteo Weather API", "HTTPS / JSON", "依據長者居住行政區座標，提供無廣告限制之即時氣溫、降雨機率與節氣生活指數。"),
-    ("Tailscale Secure Overlay VPN", "WireGuard 協定", "建立邊緣攝影機、FastAPI 伺服器與開發者環境之加密虛擬專網，確保串流絕對安全。"),
+    ("Tailscale Secure Overlay VPN", "WireGuard 協定", "建立 FastAPI 伺服器、AI 伺服器與開發者環境之加密虛擬專網，並以 Funnel 提供 HTTPS 對外連線。"),
 ]
