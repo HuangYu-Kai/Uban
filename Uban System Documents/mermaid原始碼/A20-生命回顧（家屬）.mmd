@@ -1,13 +1,14 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["家屬"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([於『資料』分頁點『回憶錄』]):::act
     S2(["看見長輩的故事"]):::act
-    EN_S2(("●")):::endterm
     S3(["看見空狀態"]):::act
-    EN_S3(("●")):::endterm
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
   subgraph FE["家屬端"]
     A1["回憶錄畫廊畫面"]:::act
@@ -16,6 +17,7 @@ flowchart TD
     A4["過濾示範用假資料"]:::act
     A5{"本機有資料？"}:::dec
     A6["顯示故事內容"]:::act
+    M_A2{" "}:::dec
   end
   subgraph FE2["長輩端"]
     PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -33,20 +35,20 @@ flowchart TD
   E2 -.->|"[未實作]"| N1
   N1 -.-> N2
   N2 -.->|"[未實作]"| N3
-  N3 -.-> A2
+  N3 -.-> M_A2
   S1 --> A1
-  A1 --> A2
+  A1 --> M_A2
   A2 --> A3
   A3 --> A4
   A4 --> A5
   A5 -->|"[是]"| A6
   A6 --> S2
   A5 -->|"[否]"| S3
-  S2 --> EN_S2
-  S3 --> EN_S3
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  S2 --> M_END
+  S3 --> M_END
+  M_A2 --> A2
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ FE2
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

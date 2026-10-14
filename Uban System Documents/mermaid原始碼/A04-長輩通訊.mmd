@@ -1,12 +1,12 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["長輩"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
     S1([於『電話』分頁點選好友]):::act
     S2{"來電響鈴<br/>是否接聽？"}:::dec
     S3(["進行視訊通話"]):::act
-    EN_S3(("●")):::endterm
   end
   subgraph FE["長輩機 App（Signaling 單例）"]
     A1["送出 call-request<br/>帶 targetId，不廣播"]:::act
@@ -18,9 +18,9 @@ flowchart TD
     A7["ICE candidate 佇列<br/>待 setRemoteDescription 後 flush"]:::act
     A8(["進入 ElderScreen 通話房"]):::act
     A9["送出 call-busy"]:::act
-    EN_A9(("●")):::endterm
     D1(["丟棄，不響鈴"]):::act
-    EN_D1(("●")):::endterm
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
   subgraph BE["uban-api 信令（Socket.IO）"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -29,7 +29,7 @@ flowchart TD
     B3["FCM 推送（離線備援）"]:::act
   end
   subgraph NET["媒體軌（與信令實體分離）"]
-    PAD_NET["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
+    PAD_NET["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     M1[("Oracle Cloud Coturn<br/>turn:152.69.196.5:3478<br/>UDP 中繼")]:::act
   end
 
@@ -37,7 +37,7 @@ flowchart TD
   S1 --> A1
   A1 --> B1
   B1 --> B2
-  B1 --> B3
+  B1 -.-> B3
   B2 --> A2
   B3 --> A2
   A2 --> A3
@@ -50,13 +50,12 @@ flowchart TD
   A6 --> A7
   A7 --> A8
   A8 --> S3
-  A6 --> M1
-  S3 --> EN_S3
-  A9 --> EN_A9
-  D1 --> EN_D1
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  A6 -.-> M1
+  S3 --> M_END
+  A9 --> M_END
+  D1 --> M_END
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE ~~~ NET
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

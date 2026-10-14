@@ -24,18 +24,18 @@ FRONTEND_PROGRAM_LIST = [
     ("screens/news_listen_player/news_listen_player_screen.dart", "語音新聞朗讀播放器", "將每日時事精選轉換為自然國語語音流暢播報，提供大按鈕播放控制與清單切換。"),
     ("screens/elder_tabs/elder_greeting_tab.dart", "親友大頭像電話名冊", "以超大圓形彩色頭像展示綁定之兒女親友，支援一鍵發起語音通話與高畫質視訊。"),
     ("screens/elder_community_screen.dart", "長者社群生活圈", "提供早安祝福圖卡發布、親友生活動態照片瀏覽、一鍵愛心點讚與溫馨語音問候。"),
-    ("screens/elder_tabs/elder_chat_tab.dart", "AI 語音陪伴對話分頁", "搭載國台雙語語音辨識與 Google Gemini 情感陪伴助理，呈現波紋視覺回饋。"),
+    ("screens/elder_chat_screen.dart", "AI 語音陪伴對話分頁", "國語語音辨識、回答可選台語朗讀，由 AI 小嘎（Ollama Gemma 4，Gemini 備援）陪伴對話。"),
     ("screens/elder_tabs/elder_profile_tab.dart", "個人檔案與萌寵舞台", "整合手繪小豬養成舞台、計步能量轉換與今日任務。"),
     ("screens/widgets/google_assistant_overlay.dart", "語音指令校正覆蓋層", "長者發話時浮現大字體覆蓋確認面板，即時呈現語音辨識結果並提供校正機制。"),
     ("screens/widgets/global_assistant_button.dart", "全域安心助理引導面板", "全域常駐紅色救生圈按鈕，提供步驟高光指引、迷路救援與一鍵返家協助。"),
     ("screens/video_call_screen.dart", "雙向視訊守護連線", "基於 WebRTC 點對點連線之全螢幕視訊通話，具備防鎖屏覆蓋與通話喚醒保護。"),
     ("screens/elder_pairing_display_screen.dart", "長者安全配對碼展示", "以特大字體呈現 4 位數字專屬配對安全碼與動態 QR Code，支援長連線秒速綁定。"),
-    ("screens/family/family_home_tab.dart", "家屬守護首頁中樞", "整合長者在線極光卡片、室內房間幾何定位、今日心晴指數、最新警報與 GPS 軌跡。"),
+    ("screens/family/family_home_tab.dart", "家屬守護首頁中樞", "整合長者在線極光卡片、室內所在位置偵測、今日心晴指數、最新警報與 GPS 軌跡。"),
     ("screens/family/elder_location_map_screen.dart", "戶外定位軌跡地圖", "以 OpenStreetMap 呈現長者即時座標、整日移動折線路徑、停留點聚類與歷史回溯。"),
     ("screens/family/family_ai_copilot_screen.dart", "AI 照護副駕駛對話介面", "分析長者日常作息與情緒數據，為子女提供暖心破冰話題與自然語言用藥排程建立。"),
     ("screens/family/family_interaction_tab.dart", "家屬互動通話中樞", "提供發起視訊/語音電話入口、AI 照護副駕駛對話建議與居家監控鏡頭捷徑。"),
     ("screens/family/family_friend_feed_body.dart", "家庭生活時光牆", "匯整長輩每日問候圖卡與生活打卡動態，支援家屬上傳照片留言互動增進感情。"),
-    ("screens/camera_screen.dart", "居家 CCTV 監控串流", "即時接收客廳/臥室鏡頭之 WebRTC 串流，疊加 YOLOv8 骨架點並支援雙向對講。"),
+    ("screens/camera_screen.dart", "居家 CCTV 監控串流", "即時接收客廳/臥室鏡頭之 WebRTC 串流，並支援雙向對講。"),
     ("screens/family/alert_center_screen.dart", "智慧安全警報中心", "分級呈現跌倒事件、異常滯留與 SOS 警報，支援未處理篩選、抓拍相片與日誌註記。"),
     ("screens/family/health_reminder_screen.dart", "用藥與健康管理排程", "設定長輩早中晚用藥時程與語音提醒內容，同步追蹤長輩服藥打卡遵從率。"),
     ("screens/family/memoirs_gallery_screen.dart", "數位人生回憶錄畫廊", "展示由 Gemini 從日常陪伴對話中萃取之長者人生自傳故事篇章與老照片珍藏。"),
@@ -48,8 +48,8 @@ FRONTEND_PROGRAM_LIST = [
 BACKEND_PROGRAM_LIST = [
     ("main.py", "FastAPI 主程式進入點", "配置 CORS 中介軟體、載入環境變數、註冊各模組 API 路由並掛載 Socket.IO 伺服器。"),
     ("socket_app.py", "Socket.IO 即時信令中心", "管理客戶端連線池、WebRTC 視訊信令單播路由、即時在線狀態推播與配對監聽。"),
-    ("yolo_alert_dispatcher.py", "YOLO 跌倒警報派發器", "接收邊緣影像分析之跌倒與滯留事件，自動產生警報紀錄並發送 FCM 高優先權推播。"),
-    ("indoor_position.py", "多邊形空間室內定位演算法", "基於腳底接觸點與射線交集法，計算人體於多邊形房間之所在區域。"),
+    ("yolo_alert_dispatcher.py", "YOLO 跌倒警報派發器", "接收伺服器端 YOLO 偵測到的跌倒、爬行與久未活動事件，自動產生警報紀錄並發送 FCM 高優先權推播。"),
+    ("indoor_position.py", "室內所在位置判定", "記錄長輩最近一次出現在哪台監視設備前；若已設定房間範圍，再以人物框底邊中點與射線法判定所在區域。"),
     ("gemini_service.py", "Google Gemini 陪伴與生活助理", "整合 Gemini 大語言模型，支援日常對話、天氣/時間工具自動呼叫與人生回憶錄萃取。"),
     ("location_alert_watch.py", "戶外移動安全警戒排程", "分析長者 GPS 移動軌跡，檢測夜間逗留、異常偏離安全區域與長時間未位移警示。"),
     ("location_daily.py", "每日 GPS 軌跡與停留點計算", "將長者全日經緯度點位進行時空聚類分析，計算移動總里程、停留點位與停留時長。"),
@@ -57,17 +57,17 @@ BACKEND_PROGRAM_LIST = [
     ("routers/alert.py", "智慧安全警報管理路由", "提供警報事件分頁查詢、未處理篩選、狀態標記已讀、抓拍相片存取與處置備註。"),
     ("routers/reminder.py", "用藥排程與作息提醒路由", "處理日常用藥與生活提醒之新增、修改、刪除，並維護長者每日服藥打卡紀錄。"),
     ("routers/auth.py", "身分認證與權限簽發路由", "負責家屬與開發者之註冊、密碼雜湊驗證、JWT 存取權杖簽發與 Session 釋放。"),
-    ("routers/memoir.py", "人生回憶錄故事典藏路由", "儲存與檢索長者人生自傳篇章，支援年代主題分類、老照片附件關聯與語音重播。"),
-    ("database.py", "資料庫連線與 ORM 模型映射", "建立 SQLAlchemy 資料庫引擎，配置連線池參數並管理各資料表之模型結構宣告。"),
+    ("routers/daily_question.py", "每日一問與回憶錄路由", "指派每日回憶提問、保存長輩的文字或語音回答，並提供家屬查詢歷史回答（回憶錄）。"),
+    ("database.py", "資料庫連線管理", "以 mysql-connector 建立連線池，提供 db_cursor 執行參數化查詢（不使用 ORM），並支援以本機 SQLite 作為備援。"),
 ]
 
 ADMIN_PROGRAM_LIST = [
     ("src/App.tsx", "主控台前端路由與全域佈局", "配置 React Router 路由表、頂部導航列、側邊選單與身分認證守門攔截器。"),
-    ("src/pages/Overview.tsx", "系統運作即時監控儀表板", "即時展示連線長者總數、在線邊緣監控設備、今日警報統計與各房間活動分布圖。"),
-    ("src/pages/ElderList.tsx", "受守護長者名冊清單", "支援長者姓名關鍵字搜尋、年齡與性別篩選、查看關聯家屬帳號與已綁定設備序號。"),
-    ("src/pages/ElderDetail.tsx", "長者個別生活歷程詳情", "檢視長者目前所在房間、歷史活動折線圖、用藥排程狀態與 AI 對話陪伴紀錄摘要。"),
-    ("src/pages/AlertHistory.tsx", "安全警報事件處置中心", "列出全系統跌倒與滯留告警日誌，展示現場即時抓拍影像並支援管理員簽核處置備註。"),
-    ("src/pages/DataAnalytics.tsx", "活動力趨勢與空間熱點分析", "運用 ECharts 繪製長者日常活動力趨勢圖、睡眠時段分析長條圖與房間停留比例圓餅圖。"),
+    ("src/pages/OverviewPage.tsx", "平台統計儀表板", "呈現使用者年齡與居住地、緊急警報與緊急通話統計，可切換時間區間。"),
+    ("src/pages/EldersPage.tsx", "使用者列表", "分為長輩與家屬兩個分頁，依互動天數、未接來電與警報次數標示風險等級，可搜尋與排序。"),
+    ("src/pages/ElderDetailPage.tsx", "長輩個案詳情", "檢視與編輯長輩基本資料，查看綁定家屬、AI 與關懷設定及每日步數。"),
+    ("src/pages/AlertsPage.tsx", "安全警報事件處置中心", "列出全體使用者的跌倒與異常爬行事件，開發者可選擇再次通知家屬、建議報警或結案。"),
+    ("src/pages/BugReportsPage.tsx", "BUG 回饋管理", "列出家屬與長輩 App 提交的問題回報，可依標題關鍵字搜尋。"),
 ]
 
 # ==============================================================================
@@ -175,8 +175,8 @@ CODE_SNIPPETS_9_2 = [
     },
     {
         "table_id": "表 9-2-2",
-        "title": "家屬端戶外 GPS 移動軌跡回溯與停留點標記演算法",
-        "file_source": "E:/114Project/Uban/mobile_app/lib/screens/family/elder_location_map_screen.dart",
+        "title": "戶外 GPS 定位點清洗演算法",
+        "file_source": "E:/114Project/uban-api/services/location_summary.py",
         "design_purpose": (
             "家屬外出時需要隨時掌握長輩戶外活動足跡。本模組自伺服器撈取長者一日定位座標，"
             "將經緯度數值即時繪製為折線軌跡，並對時空停留點進行聚類渲染，"
@@ -298,105 +298,77 @@ CODE_SNIPPETS_9_2 = [
     },
     {
         "table_id": "表 9-2-4",
-        "title": "YOLOv8 姿態骨架辨識與跌倒警報派發機制",
-        "file_source": "E:/114Project/uban-api/yolo_alert_dispatcher.py",
+        "title": "YOLOv8 人物偵測與多幀跌倒判定機制",
+        "file_source": "E:/114Project/uban-api/yolo_detector_service.py、uban-api/services/yolo_alert_dispatcher.py",
         "design_purpose": (
-            "邊緣攝影機偵測到人體骨架急遽傾倒且軀幹中心高度驟降時，判定為跌倒事件。"
-            "本模組負責驗證警報真實性、防止重複誤報、非同步寫入資料庫日誌，"
-            "並透過 Firebase Cloud Messaging 第一時間向家屬手機推送高優先權警報訊息與抓拍影像。"
+            "監視設備每 2 秒將一張畫面送到伺服器，由 YOLOv8 預訓練模型（yolov8n）偵測畫面中的人物並取得人物框。"
+            "系統不以單張影像下判斷，而是看連續 7 幀（約 14 秒）的人物框變化：人物框必須持續呈現寬扁（寬高比大於 1.6，7 幀中至少 4 幀），且質心下移超過站姿身高的 20%，才計算跌倒分數；"
+            "若是慢慢躺下（如睡覺）則不判為跌倒，以避免走動或就寢造成誤報。"
+            "確認跌倒後，同一台設備 15 秒內不重複推播，並由 yolo_alert_dispatcher 寫入資料庫、保存現場截圖，再透過 Socket.IO 與 Firebase Cloud Messaging 通知家屬。"
         ),
         "code_text": (
-            "# 檔案來源: uban-api/yolo_alert_dispatcher.py\n"
-            "# 模組功能: YOLO 人體姿態骨架跌倒事件判定與 FCM 高優先權警報派發器\n"
-            "import time # 匯入系統時間處理模組\n"
-            "import logging # 匯入日誌記錄模組\n"
-            "from database import get_db_context # 匯入資料庫連線上下文管理器\n"
-            "from services.fcm_service import send_urgent_push # 匯入 FCM 緊急推播發送服務\n"
-            "\n"
-            "logger = logging.getLogger('YoloAlertDispatcher') # 初始化警報派發專用日誌記錄器\n"
-            "\n"
-            "class YoloAlertDispatcher: # 定義跌倒警報派發器核心類別\n"
-            "    def __init__(self, debounce_seconds: int = 15): # 建構函式並設定防抖時間門檻為 15 秒\n"
-            "        self.debounce_seconds = debounce_seconds # 記錄防抖時間以防止同一事件短時間重複派發\n"
-            "        self._last_alert_time = {} # 記錄各長者最近發布警報時間戳記之雜湊對應表\n"
-            "\n"
-            "    async def dispatch_fall_event(self, elder_id: int, camera_id: str, snapshot_path: str, confidence: float): # 派發跌倒事件非同步函式\n"
-            "        current_time = time.time() # 取得當前時間戳記\n"
-            "        last_time = self._last_alert_time.get(elder_id, 0) # 查詢該長者上次觸發警報之時間\n"
-            "\n"
-            "        if current_time - last_time < self.debounce_seconds: # 比對是否在防抖抑制冷卻期內\n"
-            "            logger.info(f'長者 {elder_id} 跌倒警報處於冷卻抑制狀態，略過重複派送') # 記錄日誌\n"
-            "            return False # 抑制派發直接回傳失敗\n"
-            "\n"
-            "        self._last_alert_time[elder_id] = current_time # 更新該長者最新警報派發時間點\n"
-            "        logger.warning(f'⚠️ [緊急] 偵測到長者 {elder_id} 跌倒！攝影機: {camera_id}, 置信度: {confidence:.2f}') # 輸出警告\n"
-            "\n"
-            "        async with get_db_context() as session: # 進入非同步資料庫操作上下文\n"
-            "            alert_record = await session.create_alert_log( # 將異常事件寫入警報紀錄資料表\n"
-            "                elder_id=elder_id, # 綁定受害長者編號\n"
-            "                alert_type='fall_detected', # 標註警報類別為跌倒偵測事件\n"
-            "                severity='critical', # 設置威脅嚴重度為最高等級 critical\n"
-            "                device_name=camera_id, # 標註觸發警報之監控鏡頭名稱\n"
-            "                snapshot_url=snapshot_path, # 儲存現場現場抓拍照片之檔案路徑\n"
-            "                is_processed=False # 初始標記為未處理狀態待家屬確認\n"
-            "            ) # 資料庫寫入完畢\n"
-            "\n"
-            "        # 透過 FCM 向全體綁定家屬發送最高優先權喚醒通知\n"
-            "        await send_urgent_push( # 呼叫緊急推播函式\n"
-            "            elder_id=elder_id, # 指定目標長者關聯之家屬清單\n"
-            "            title='🚨 緊急跌倒警報通知', # 推播大標題\n"
-            "            body=f'AI 監控設備偵測到長者在 {camera_id} 疑似跌倒，請立即確認！', # 推播內文\n"
-            "            data={'alert_id': str(alert_record.id), 'type': 'fall', 'img': snapshot_path} # 附帶資料\n"
-            "        ) # 推播發送完畢\n"
-            "        return True # 派發成功回傳 True"
+            "# 檔案來源: uban-api/yolo_detector_service.py\n"
+            "# [核心演算法片段] YOLOv8 人物框多幀跌倒判定（節錄自 yolo_detector_service.py 的 _check_fall）\n"
+            "half = FALL_WINDOW_FRAMES // 2  # 7 幀窗口（約 14 秒）切成前後兩半\n"
+            "first = tracks[-FALL_WINDOW_FRAMES:-half]  # 前半段：倒下前的影格\n"
+            "last = tracks[-half:]  # 後半段：倒下後的影格\n"
+            "cx_first, cy_first = _avg_center(first)  # 前半段人物框質心的平均位置\n"
+            "cx_last, cy_last = _avg_center(last)  # 後半段人物框質心的平均位置\n"
+            "standing_h = max(h_vals)  # 窗口內最高的人物框高度，視為站姿身高\n"
+            "vertical_shift = (cy_last - cy_first) / standing_h  # 質心下移量除以身高，消除遠近造成的尺度差異\n"
+            "sustained_wide_frames = sum(  # 計算人物框寬扁（躺平）的幀數\n"
+            "    1 for t in tracks[-FALL_WINDOW_FRAMES:]  # 逐一檢查窗口內的每一幀\n"
+            "    if t.h > 0 and (t.w / max(t.h, 1e-6)) > FALL_WIDE_BBOX_RATIO  # 寬高比大於 1.6 視為躺平\n"
+            ")\n"
+            "is_wide_sustained = sustained_wide_frames >= FALL_SUSTAINED_WIDE_MIN_FRAMES  # 7 幀中至少 4 幀寬扁才成立，排除單幀雜訊\n"
+            "fall_score = 0.0  # 跌倒分數預設為 0\n"
+            "if is_wide_sustained:  # 必要條件：人物框持續躺平，走動時人物框直立，不會進入計分\n"
+            "    entry_style = self._classify_lying_entry(tracks)  # 回溯判斷是驟然倒下還是慢慢躺下\n"
+            "    if entry_style != 'gradual':  # 慢慢躺下（如睡覺）不給跌倒分數\n"
+            "        if vertical_shift > FALL_VERTICAL_RATIO_WITH_WIDE:  # 質心下移超過身高的 20%\n"
+            "            fall_score = 0.7  # 中信心跌倒\n"
+            "        if vertical_shift > FALL_VERTICAL_RATIO:  # 質心下移超過身高的 30%\n"
+            "            fall_score = max(fall_score, min(1.0, vertical_shift * 2.0))  # 高信心，下移越多分數越高\n"
+            "if fall_score < 0.55:  # 未達警報門檻\n"
+            "    return None  # 不發出跌倒警報"
         ),
     },
     {
         "table_id": "表 9-2-5",
-        "title": "空間多邊形射線室內區域定位判定機制",
-        "file_source": "E:/114Project/uban-api/indoor_position.py",
+        "title": "室內區域定位判定機制",
+        "file_source": "E:/114Project/uban-api/services/indoor_position.py",
         "design_purpose": (
-            "為了讓遠端家屬確切知曉長者在家中哪一個房間活動，本系統拋棄穿戴式藍牙定位標籤，"
-            "改採視覺幾何定位演算法。依據人體框底部中心提取腳底二維座標，利用射線交集法"
-            "判定該點位於客廳、臥室或走廊等自訂凸/凹多邊形室內空間內部，計算極為精確高效。"
+            "家屬需要知道長輩目前在家中的位置。"
+            "本系統沿用監視設備的 YOLO 偵測結果，不需額外配戴定位裝置：只要某台監視設備偵測到人物，就更新長輩出現在該設備前的時間，家屬端據此標示長輩所在位置。"
+            "若已為鏡頭畫面設定房間範圍，系統再以人物框底邊中點作為腳點，以射線法判定腳點落在哪個房間範圍內，並以連續多幀平滑判定，避免在房間交界處來回跳動。"
         ),
         "code_text": (
-            "# 檔案來源: uban-api/indoor_position.py\n"
-            "# 模組功能: 腳底空間座標射線法室內區域多邊形定位計算引擎\n"
-            "from typing import List, Tuple, Optional, Dict # 匯入靜態型別標註工具\n"
-            "\n"
-            "class IndoorPositionService: # 定義室內空間幾何定位服務類別\n"
-            "    @staticmethod # 宣告為靜態方法以提供純函式幾何運算\n"
-            "    def is_point_in_polygon(point: Tuple[float, float], polygon: List[Tuple[float, float]]) -> bool: # 射線判定函式\n"
-            "        x, y = point # 解構長者腳底接觸點之 (X, Y) 座標\n"
-            "        n = len(polygon) # 取得房間幾何多邊形頂點總數\n"
-            "        inside = False # 初始預設交集狀態為外部 False\n"
-            "\n"
-            "        p1_x, p1_y = polygon[0] # 取出多邊形起始邊的第一個端點座標\n"
-            "        for i in range(1, n + 1): # 逐一歷遍多邊形的所有封閉線段\n"
-            "            p2_x, p2_y = polygon[i % n] # 取出該線段的第二個端點座標（循環索引）\n"
-            "            # 判定測試點之 Y 座標是否落在線段垂直跨度範圍內\n"
-            "            if min(p1_y, p2_y) < y <= max(p1_y, p2_y): # 垂直區間交集檢查\n"
-            "                # 計算水平向右射線與該線段交點之 X 座標\n"
-            "                if p1_y != p2_y: # 排除水平線除以零之邊界條件\n"
-            "                    x_inters = (y - p1_y) * (p2_x - p1_x) / (p2_y - p1_y) + p1_x # 計算交點橫座標\n"
-            "                    if p1_x == p2_x or x <= x_inters: # 測試點位於交點左側\n"
-            "                        inside = not inside # 每交會一條邊則翻轉奇偶狀態\n"
-            "            p1_x, p1_y = p2_x, p2_y # 將端點前進推進至下一個頂點\n"
-            "        return inside # 回傳最終奇偶判定結果（奇數為內部 True，偶數為外部 False）\n"
-            "\n"
-            "    @classmethod # 宣告為類別方法\n"
-            "    def locate_elder_room(cls, foot_coord: Tuple[float, float], room_configs: Dict[str, List[Tuple[float, float]]]) -> Optional[str]: # 房間定位查詢函式\n"
-            "        for room_name, polygon in room_configs.items(): # 逐一比對各房間之幾何多邊形定義\n"
-            "            if cls.is_point_in_polygon(foot_coord, polygon): # 若腳底點落在該房間多邊形內\n"
-            "                return room_name # 即時回傳長者所在房間名稱（例如：客廳、臥室）\n"
-            "        return '走道或未知區域' # 若所有預定義房間皆不吻合則回傳過渡區域"
+            "# 檔案來源: uban-api/services/indoor_position.py\n"
+            "# [核心演算法片段] 射線法判定腳點是否落在房間範圍內（節錄自 services/indoor_position.py 的 point_in_polygon）\n"
+            "def point_in_polygon(pt: Tuple[float, float], polygon: List[List[float]]) -> bool:\n"
+            "    if not polygon or len(polygon) < 3:  # 頂點不足 3 個圍不出範圍，視為無效\n"
+            "        return False\n"
+            "    x, y = pt  # 腳點座標（已正規化到 0~1）\n"
+            "    inside = False  # 射線與邊界交點數為奇數時代表在範圍內\n"
+            "    n = len(polygon)  # 房間範圍的頂點數\n"
+            "    x1, y1 = polygon[0]  # 從第一個頂點開始逐邊檢查\n"
+            "    for i in range(1, n + 1):  # 走訪每一條邊（最後一條邊回到起點）\n"
+            "        x2, y2 = polygon[i % n]  # 這條邊的另一個頂點\n"
+            "        if y > min(y1, y2) and y <= max(y1, y2) and x <= max(x1, x2):  # 往 +x 方向的水平射線可能與這條邊相交\n"
+            "            if y1 != y2:  # 非水平邊才需要計算交點\n"
+            "                x_intersect = (y - y1) * (x2 - x1) / (y2 - y1) + x1  # 射線與邊的交點 x 座標\n"
+            "            else:\n"
+            "                x_intersect = x1\n"
+            "            if x1 == x2 or x <= x_intersect:  # 交點在腳點右側\n"
+            "                inside = not inside  # 每穿過一條邊就切換一次內外\n"
+            "        x1, y1 = x2, y2  # 移到下一條邊\n"
+            "    return inside  # 回傳腳點是否在房間範圍內"
         ),
     },
     {
         "table_id": "表 9-2-6",
-        "title": "Google Gemini 長者日常陪伴對話與意圖理解服務",
-        "file_source": "E:/114Project/uban-api/gemini_service.py",
+        "title": "Google Gemini 備援對話與模型輪替服務",
+        "file_source": "uban-api/services/gemini_service.py",
         "design_purpose": (
             "長者日常陪伴需要具備高度親和力與共情能力。本模組介接 Google Gemini 模型，"
             "注入銀髮對話系統提示詞，支援時間與天氣等日常生活工具調用，"
@@ -440,15 +412,15 @@ CODE_SNIPPETS_9_2 = [
     },
     {
         "table_id": "表 9-2-7",
-        "title": "長者戶外移動安全警戒與異常滯留提醒機制",
-        "file_source": "E:/114Project/uban-api/location_alert_watch.py",
+        "title": "長者戶外安心提醒判斷機制",
+        "file_source": "E:/114Project/uban-api/services/location_alert_rules.py、services/location_alert_watch.py",
         "design_purpose": (
             "長輩單獨外出散步時，可能因迷途或身體突發狀況於偏僻處停留過久。"
             "本排程服務每 5 分鐘掃描受守護長者之 GPS 移動軌跡，檢測夜間逗留、"
             "活動範圍異常與長時間未位移等危險徵兆，並在達到門檻時主動向家屬通報以防範走失憾事。"
         ),
         "code_text": (
-            "# 檔案來源: uban-api/location_alert_watch.py\n"
+            "# 檔案來源: uban-api/services/location_alert_rules.py、services/location_alert_watch.py\n"
             "# 模組功能: 長者戶外 GPS 定位異常滯留與安全警戒主動巡檢排程\n"
             "import datetime # 匯入日期時間處理模組\n"
             "from typing import List, Dict # 匯入資料結構型別\n"
@@ -568,11 +540,10 @@ DEPENDENCIES_BACKEND = [
     ("fastapi", "^0.115.0", "現代化高效能非同步 Python Web 框架，具備自動 OpenAPI 文件產製功能。"),
     ("python-socketio", "^5.12.0", "Python Socket.IO 非同步通訊套件，管理長連線工作階段與信令交換。"),
     ("google-generativeai", "^0.8.0", "Google Gemini 官方 SDK，提供對話意圖分析與自傳回憶錄萃取服務。"),
-    ("ultralytics", "^8.3.0", "YOLOv8 深度學習框架，執行人體 17 個關節點骨架姿態推論與跌倒判定。"),
+    ("ultralytics", "^8.3.0", "YOLOv8 物件偵測框架，載入 yolov8n 預訓練模型偵測畫面中的人物，作為跌倒判定與室內位置偵測的依據。"),
     ("sqlalchemy", "^2.0.30", "Python ORM 資料庫對映工具，支援非同步 async/await 與連線池管理。"),
     ("firebase-admin", "^6.5.0", "Firebase 管理者端 SDK，向家屬手機派發 FCM 最高優先權推播警報。"),
     ("pydantic", "^2.9.0", "資料結構模型驗證與型別轉換工具，保障 API 輸入與輸出資料完整性。"),
-    ("shapely", "^2.0.6", "計算幾何運算套件，提供多邊形射線交集運算與室內空間拓撲判斷。"),
     ("uvicorn", "^0.30.0", "ASGI 非同步網頁伺服器，負責運行 FastAPI 與高併發 Socket.IO 連線池。"),
 ]
 
@@ -590,9 +561,9 @@ DEPENDENCIES_ADMIN = [
 # ==============================================================================
 
 EXTERNAL_API_LIST = [
-    ("Google Gemini 2.5 Flash API", "HTTPS / REST", "提供長者端雙語日常陪伴對話、生活工具意圖調用以及數位人生回憶錄自傳章節智慧萃取。"),
-    ("Firebase Cloud Messaging (FCM)", "HTTP/2 / TLS", "發送最高優先權緊急警報通知，在手機鎖屏休眠狀態下強制喚醒發出蜂鳴與震動。"),
+    ("Google Gemini API（Flash 系列）", "HTTPS / REST", "作為本機 Ollama Gemma 4 的雲端備援，提供陪伴對話與工具呼叫；多個型號依序輪替。"),
+    ("Firebase Cloud Messaging (FCM)", "HTTP/2 / TLS", "發送高優先權純資料推播：長輩端在 App 關閉時可被喚醒接聽緊急通話，家屬端則在鎖定畫面顯示警報通知。"),
     ("OpenStreetMap Tile Server", "HTTPS / WMS", "提供免 API Key 之全球開放圖資瓦片圖層，支援家屬端長者戶外移動軌跡與停留點回溯。"),
     ("Open-Meteo Weather API", "HTTPS / JSON", "依據長者居住行政區座標，提供無廣告限制之即時氣溫、降雨機率與節氣生活指數。"),
-    ("Tailscale Secure Overlay VPN", "WireGuard 協定", "建立邊緣攝影機、FastAPI 伺服器與開發者環境之加密虛擬專網，確保串流絕對安全。"),
+    ("Tailscale Secure Overlay VPN", "WireGuard 協定", "建立 FastAPI 伺服器、AI 伺服器與開發者環境之加密虛擬專網，並以 Funnel 提供 HTTPS 對外連線。"),
 ]

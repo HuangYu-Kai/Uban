@@ -3,31 +3,31 @@ flowchart TD
   subgraph ROLE["開發者"]
     PAD_ROLE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     ST_S1(("&nbsp;")):::term
-    S1([進入『寵物賽季與皮膚』頁]):::act
-    S2{"要做什麼？"}:::dec
-    S3(["新賽季開始"]):::act
-    EN_S3(("●")):::endterm
+    S1([進入寵物賽季與造型管理頁]):::act
+    S2{"選擇營運管理<br/>項目？"}:::dec
+    S3(["新賽季開啟完成"]):::act
     S4(["造型上架完成"]):::act
-    EN_S4(("●")):::endterm
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
   subgraph FE["開發者管理端（寵物賽季與造型頁）"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     A1["顯示賽季清單與結算明細"]:::act
-    A2["造型表單<br/>是否付費、售價、<br/>所需層級、是否上架"]:::act
+    A2["造型管理表單<br/>設定售價、所需層級與上架狀態"]:::act
   end
   subgraph FE2["長輩端"]
     PAD_FE2["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
-    E1["取得上架造型清單"]:::act
-    E2["套用已擁有的造型"]:::act
+    E1["取得最新上架造型清單"]:::act
+    E2["套用長輩已擁有之造型"]:::act
   end
   subgraph BE["uban-api 後端"]
-    B1["查詢賽季清單<br/>與結算名次"]:::act
-    B2["結算並開啟新賽季"]:::act
+    B1["查詢歷史賽季清單<br/>與結算名次數據"]:::act
+    B2["執行賽季結算並籌備新賽季"]:::act
     B3["原子更新賽季狀態<br/>（重複執行只生效一次）"]:::act
     B4["封存最終體重與名次"]:::act
-    B5["全平台體重重設為 1250 克"]:::act
-    B6["開啟新賽季"]:::act
-    B7["查詢、新增造型<br/>更新售價、所需層級、上架狀態"]:::act
+    B5["全平台寵物體重重設為 1250 克"]:::act
+    B6["寫入並啟用新賽季"]:::act
+    B7["新增或更新造型資料<br/>更新售價與上架狀態"]:::act
     D1[("賽季資料表")]:::act
     D2[("賽季結算名次表")]:::act
     D3[("寵物體重資料表")]:::act
@@ -37,32 +37,31 @@ flowchart TD
   end
 
   ST_S1 --> S1
-  S1 --> B1
+  S1 --> A1
+  A1 --> B1
   B1 --> A1
   A1 --> S2
   S2 -->|"[賽季結算]"| B2
   B2 --> B3
-  B3 --> D1
   B3 --> B4
-  B4 --> D2
+  B4 -.-> D2
   B4 --> B5
-  B5 --> D3
+  B5 -.-> D3
   B5 --> B6
-  B6 --> D1
+  B6 -.-> D1
   B6 --> S3
+  S3 --> M_END
   S2 -->|"[管理造型]"| A2
   A2 --> B7
-  B7 --> D4
-  D4 --> S4
-  D4 --> E1
+  B7 -.-> D4
+  B7 -.-> GAP
+  B7 --> E1
   E1 --> E2
-  E2 --> D5
-  D4 -.-> GAP
-  S3 --> EN_S3
-  S4 --> EN_S4
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  E2 -.-> D5
+  E2 --> S4
+  S4 --> M_END
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ FE2 ~~~ BE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

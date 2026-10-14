@@ -11,8 +11,8 @@ Strictly adheres to:
 """
 
 import os
-
-IMAGES_DIR = r"E:\114Project\Uban\Uban System Documents\章節性文件\Chapter 12\images"
+HERE = os.path.dirname(os.path.abspath(__file__))
+IMAGES_DIR = os.path.join(os.path.dirname(HERE), "章節性文件", "Chapter 12", "images")
 
 # 12-1 系統通用登入與身分確認
 SECTION_12_1_INTRO = (
@@ -454,7 +454,7 @@ MANUAL_ITEMS_12_3 = [
         "target_role": "家屬照護者",
         "core_functions": (
             "1. WebRTC 低延遲影像直連串流：以秒級延遲呈現客廳或臥室監控設備之即時影像畫面。\n"
-            "2. YOLOv8 AI 人體骨架跌倒檢測疊加：畫面自動繪製長者姿態骨架點，即時標記人體軀幹姿態變化。\n"
+            "2. YOLOv8 跌倒偵測：伺服器持續分析監視畫面，偵測到跌倒或長時間未活動時通知家屬。\n"
             "3. 多鏡頭多視角切換：支援在多個已綁定之室內監控鏡頭之間自由切換畫面。\n"
             "4. 遠端全雙工對話功能：可開啟鏡頭對講功能，家屬可直接透過手機向客廳鏡頭說話呼喚長輩。"
         ),

@@ -1,11 +1,13 @@
 %%{init:{"layout":"elk","elk":{"mergeEdges":false,"nodePlacementStrategy":"NETWORK_SIMPLEX"},"flowchart":{"htmlLabels":true},"themeVariables":{"clusterBkg":"#FFFFFF","clusterBorder":"#000000","edgeLabelBackground":"#FFFFFF","textColor":"#000000","nodeTextColor":"#000000","titleColor":"#000000","lineColor":"#000000","fontSize":"24px"}}}%%
 flowchart TD
+  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
   subgraph ROLE["家屬（代長輩填寫）"]
     ST_S1(("&nbsp;")):::term
     S1([於『資料』分頁點編輯長輩檔案]):::act
     S2["填寫年齡（選填）"]:::act
     S3{"居住地<br/>如何填？"}:::dec
     S4(["送出儲存"]):::act
+    M_S4{" "}:::dec
   end
   subgraph FE["家屬機 App"]
     PAD_FE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
@@ -15,16 +17,17 @@ flowchart TD
     A4["取得座標後反查<br/>縣市／行政區文字"]:::act
     A5["提示改為手動輸入"]:::act
     A6["顯示：居住地僅供統計<br/>可不填寫"]:::act
+    M_A2{" "}:::dec
   end
   subgraph BE["uban-api 後端"]
     PAD_BE["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]:::pad
     B1["elder 更新長輩資料・空白欄位略過"]:::act
     B2{"欄位是否留白？"}:::dec
     B3["略過該欄<br/>維持原值不動"]:::act
-    EN_B3(("●")):::endterm
     B4["寫入 elder_profile<br/>age / residence_city / residence_district"]:::act
     C1["admin/stats/demographics<br/>年齡與居住地分布統計<br/>（開發者管理端）"]:::act
-    EN_C1(("●")):::endterm
+    M_END{" "}:::dec
+    EN_ALL(("●")):::endterm
   end
 
   ST_S1 --> S1
@@ -32,23 +35,24 @@ flowchart TD
   A1 --> A6
   A6 --> S2
   S2 --> S3
-  S3 -->|"[手動]"| A2
-  A2 --> S4
+  S3 -->|"[手動]"| M_A2
+  A2 --> M_S4
   S3 -->|"[用定位]"| A3
   A3 -->|"[是]"| A4
-  A4 --> S4
+  A4 --> M_S4
   A3 -->|"[否]"| A5
-  A5 --> A2
+  A5 --> M_A2
   S4 --> B1
   B1 --> B2
   B2 -->|"[是]"| B3
   B2 -->|"[否]"| B4
   B4 --> C1
-  B3 --> EN_B3
-  C1 --> EN_C1
-  %% 鎖住泳道順序：ELK 不照宣告順序排，沒有這條鏈後端會跑到最上面
+  B3 --> M_END
+  C1 --> M_END
+  M_A2 --> A2
+  M_S4 --> S4
+  M_END --> EN_ALL
   ROLE ~~~ FE ~~~ BE
-
   classDef pad  fill:none,stroke:none,color:#FFFFFF
   classDef act  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000
   classDef dec  fill:#FFFFFF,stroke:#000000,stroke-width:1px,color:#000000

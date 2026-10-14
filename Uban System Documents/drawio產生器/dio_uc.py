@@ -230,7 +230,7 @@ def to_xml(m, title):
     for i, (a, b) in enumerate(m['links']):
         if a not in m['nodes'] or b not in m['nodes']:
             continue
-        o.append('<mxCell id="l%d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;'
+        o.append('<mxCell id="l%d" style="edgeStyle=none;rounded=0;html=1;endArrow=none;'
                  'strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitPerimeter=0;entryPerimeter=0;" '
                  'edge="1" parent="1" source="n_%s" target="n_%s"><mxGeometry relative="1" as="geometry"/></mxCell>'
                  % (i, a, b))

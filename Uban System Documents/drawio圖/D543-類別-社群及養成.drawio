@@ -117,8 +117,8 @@
 <mxGeometry y="42" width="300" height="28" as="geometry" /></mxCell>
 <mxCell id="r0" value="發布" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" edge="1" parent="1" source="c9" target="c0">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="819" y="948" />
-<mxPoint x="610.5" y="948" />
+<mxPoint x="819" y="956" />
+<mxPoint x="610.5" y="956" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r0_am" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r0">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
@@ -126,8 +126,8 @@
 <mxGeometry x="0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
 <mxCell id="r1" value="交友" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" edge="1" parent="1" source="c10" target="c1">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="819" y="126" />
-<mxPoint x="219.5" y="126" />
+<mxPoint x="819" y="134" />
+<mxPoint x="219.5" y="134" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r1_am" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r1">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
@@ -135,8 +135,8 @@
 <mxGeometry x="0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
 <mxCell id="r2" value="交友" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" edge="1" parent="1" source="c9" target="c2">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="819" y="948" />
-<mxPoint x="999.5" y="948" />
+<mxPoint x="819" y="956" />
+<mxPoint x="999.5" y="956" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r2_am" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r2">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
@@ -144,8 +144,8 @@
 <mxGeometry x="0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
 <mxCell id="r3" value="飼養" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" edge="1" parent="1" source="c10" target="c4">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="819" y="126" />
-<mxPoint x="644" y="126" />
+<mxPoint x="819" y="134" />
+<mxPoint x="644" y="134" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r3_am" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r3">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
@@ -153,8 +153,8 @@
 <mxGeometry x="0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
 <mxCell id="r4" value="對應階段" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" edge="1" parent="1" source="c4" target="c5">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="644" y="484" />
-<mxPoint x="655.5" y="484" />
+<mxPoint x="644" y="492" />
+<mxPoint x="655.5" y="492" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r4_am" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r4">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
@@ -162,10 +162,10 @@
 <mxGeometry x="0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
 <mxCell id="r5" value="封存" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.25;entryY=0;;" edge="1" parent="1" source="c6" target="c7">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="1010.5" y="758" />
-<mxPoint x="861" y="758" />
-<mxPoint x="861" y="224" />
-<mxPoint x="970.5" y="224" />
+<mxPoint x="1010.5" y="766" />
+<mxPoint x="861" y="766" />
+<mxPoint x="861" y="216" />
+<mxPoint x="970.5" y="216" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r5_am" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r5">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
@@ -173,8 +173,8 @@
 <mxGeometry x="0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
 <mxCell id="r6" value="名次" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" edge="1" parent="1" source="c10" target="c7">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="819" y="126" />
-<mxPoint x="1052" y="126" />
+<mxPoint x="819" y="134" />
+<mxPoint x="1052" y="134" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r6_am" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r6">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
@@ -182,8 +182,8 @@
 <mxGeometry x="0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>
 <mxCell id="r7" value="擁有並套用" style="edgeStyle=none;rounded=0;html=1;endArrow=none;endFill=0;startArrow=none;startFill=0;strokeColor=#000000;fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;exitPerimeter=0;entryPerimeter=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;;" edge="1" parent="1" source="c10" target="c8">
 <mxGeometry relative="1" as="geometry"><Array as="points">
-<mxPoint x="819" y="126" />
-<mxPoint x="1446.5" y="126" />
+<mxPoint x="819" y="134" />
+<mxPoint x="1446.5" y="134" />
 </Array></mxGeometry></mxCell>
 <mxCell id="r7_am" value="0..*" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=17;fontColor=#000000;labelBackgroundColor=#FFFFFF;" vertex="1" connectable="0" parent="r7">
 <mxGeometry x="-0.75" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry></mxCell>

@@ -49,7 +49,9 @@ def _gap(g, r):
     top, rh = g['row_y'][r]
     bottom = top + rh
     nxt = g['row_y'][ranks[i + 1]][0] if i + 1 < len(ranks) else bottom + ROW_GAP
-    return bottom + 6, max(bottom + 8, nxt - 6)
+    lo = bottom + CLEAR + 2
+    hi = max(lo + 4, nxt - CLEAR - 2)
+    return lo, hi
 
 def route(model, e, slot=0):
     """回傳中間轉折點（不含端點）。draw.io 與 SVG 共用。"""
