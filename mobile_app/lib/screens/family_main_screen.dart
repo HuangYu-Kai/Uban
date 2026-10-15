@@ -382,7 +382,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   //   _onItemTapped / _maybeShowTabTutorial。
   final List<GlobalKey> _navItemKeys = List.generate(3, (_) => GlobalKey());
   // 首頁分頁
-  final GlobalKey _homeElderHeaderKey = GlobalKey();
   final GlobalKey _homeMonitorStatusKey = GlobalKey();
   final GlobalKey _homeAiMoodRadarKey = GlobalKey();
   final GlobalKey _homeAlertPreviewKey = GlobalKey();
@@ -2613,11 +2612,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       buttonHeight: 48,
       steps: [
         TutorialStep(
-          targetKey: _homeElderHeaderKey,
-          title: '長輩目前狀態',
-          body: '這裡會顯示長輩現在在不在線上、目前的位置，還有今天走了幾步路。',
-        ),
-        TutorialStep(
           targetKey: _homeMonitorStatusKey,
           title: '監控設備狀態',
           body: '這裡看監視器有沒有連線。偵測到跌倒時卡片會變紅色提醒您，長輩出現在鏡頭前時會變成青色。',
@@ -2916,7 +2910,6 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                   },
                   // ★ 第四十一輪 item 2（第二階段）：新手指引高光目標，見本檔
                   //   `_showHomeTabTutorial` 與欄位宣告處的說明。
-                  elderHeaderKey: _homeElderHeaderKey,
                   monitorStatusKey: _homeMonitorStatusKey,
                   aiMoodRadarKey: _homeAiMoodRadarKey,
                   alertPreviewKey: _homeAlertPreviewKey,
