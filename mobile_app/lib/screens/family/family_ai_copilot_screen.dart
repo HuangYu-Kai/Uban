@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../utils/error_handler.dart';
 import '../../services/api/daily_question_api.dart';
 import 'daily_question_screen.dart'
     show DailyAsker, DailyAudioButton, DailyHistoryLoader, resolveFamilyId;
+import 'family_copilot_history.dart';
 import 'family_question_draft.dart';
 import 'family_share_draft.dart';
 import 'widgets/fam_interaction_ui.dart';
@@ -71,10 +73,18 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   bool _speechReady = false;
   bool _speechInitializing = false;
 
+  // ★ 2026-10-15 對話紀錄：本機存檔狀態。
+  // _historyKey 為 null（家屬身分或長輩 id 讀不到）時，整個存檔功能靜默停用，畫面照舊運作。
+  SharedPreferences? _prefs;
+  String? _historyKey;
+
+  /// 歷史讀完（或讀取失敗）前不可存檔，否則會用「只有新訊息」的內容蓋掉舊紀錄。
+  bool _historyLoaded = false;
+  Future<void>? _historyReady;
+
   @override
   void initState() {
     super.initState();
-    final elderName = widget.currentElder?.displayName ?? '長輩';
     final initial = widget.initialMessage;
     if (initial != null && initial.isNotEmpty) {
       _messageController.value = TextEditingValue(
@@ -82,14 +92,136 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         selection: TextSelection.collapsed(offset: initial.length),
       );
     }
-    _chatMessages.add({
+    _chatMessages.add(_buildWelcomeMessage());
+    // ★ 2026-10-15 對話紀錄：先讀本機歷史、再轉告長輩回答（轉告才會接在歷史後面）。
+    _initChat();
+  }
+
+  /// 歡迎詞。標記 ephemeral：不寫入本機紀錄，有歷史時也不顯示。
+  Map<String, dynamic> _buildWelcomeMessage() {
+    final elderName = widget.currentElder?.displayName ?? '長輩';
+    return {
       'isUser': false,
+      'ephemeral': true,
+      'ts': DateTime.now().toIso8601String(),
       'text': '您好！我是您的 AI 照護秘書 🤖\n我可以幫您：\n・分享近況或照片給 $elderName（例如：「跟$elderName說：今天孫子考了 100 分」，也可以附照片）\n・查詢「$elderName 今天過得怎麼樣？」\n・出題給 $elderName（例如：「想問$elderName：小時候住哪裡？」）\n・建立提醒（例如：「每天早上 8 點與晚上 8 點提醒 $elderName 吃降血壓藥」）',
       'statusSummary': null,
       'scheduleDrafts': null,
-    });
+    };
+  }
+
+  Future<void> _initChat() async {
+    _historyReady = _loadHistory();
+    await _historyReady;
+    if (!mounted) return;
     // ★ 2026-10-07 交接 A2：長輩回答由秘書轉告。
-    _loadAnswerRelays();
+    await _loadAnswerRelays();
+  }
+
+  /// ★ 2026-10-15 對話紀錄：讀本機歷史。有歷史就取代歡迎詞（保留讀取期間家屬已送出的新訊息）。
+  /// 任何失敗都靜默略過（紀錄是加分功能，不能讓秘書打不開）。
+  Future<void> _loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final familyUserId = prefs.getInt('caregiver_id');
+      final elderId =
+          widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
+      if (familyUserId == null || elderId == null) return;
+      _prefs = prefs;
+      final key = copilotHistoryKey(familyUserId, elderId);
+      _historyKey = key;
+
+      final restored = <Map<String, dynamic>>[];
+      for (final json in decodeCopilotHistory(prefs.getString(key))) {
+        try {
+          restored.add(deserializeCopilotMessage(json));
+        } catch (e) {
+          debugPrint('⚠️ [FamilyCopilot] 略過損毀的對話紀錄：$e');
+        }
+      }
+      if (!mounted || restored.isEmpty) return;
+      setState(() {
+        _chatMessages.removeWhere((m) => m['ephemeral'] == true);
+        _chatMessages.insertAll(0, restored);
+      });
+      _jumpToBottom();
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 讀取對話紀錄失敗：$e');
+    } finally {
+      _historyLoaded = true;
+    }
+  }
+
+  /// ★ 2026-10-15 對話紀錄：把目前對話寫進本機。
+  /// 序列化在第一個 await 之前同步完成——dispose 時要先讀完輸入框文字、控制器才能銷毀。
+  Future<void> _saveHistory() async {
+    final key = _historyKey;
+    final prefs = _prefs;
+    if (!_historyLoaded || key == null || prefs == null) return;
+    try {
+      final elderName = widget.currentElder?.displayName ?? '長輩';
+      final encoded = encodeCopilotHistory(_chatMessages, elderName: elderName);
+      if (encoded == '[]') {
+        await prefs.remove(key);
+      } else {
+        await prefs.setString(key, encoded);
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 儲存對話紀錄失敗：$e');
+    }
+  }
+
+  /// 清除這位長輩的對話紀錄（不動「已看過的長輩回答」清單，免得舊回答又被轉告一次）。
+  Future<void> _clearHistory() async {
+    if (_isSending) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清除對話紀錄？'),
+        content: const Text('這台手機上與小嘎秘書的對話會全部刪除，無法復原。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    // 等歷史讀完，免得稍後才插入的舊紀錄又冒出來。
+    await _historyReady;
+    if (!mounted) return;
+    try {
+      final key = _historyKey;
+      if (key != null) await _prefs?.remove(key);
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 清除對話紀錄失敗：$e');
+    }
+    if (!mounted) return;
+    // 控制器等舊卡片從畫面移除後（下一個 frame）再銷毀，避免卡片還在監聽時被銷毀。
+    final oldControllers = <TextEditingController>[
+      for (final m in _chatMessages) ...[
+        if (m['shareController'] is TextEditingController)
+          m['shareController'] as TextEditingController,
+        if (m['questionController'] is TextEditingController)
+          m['questionController'] as TextEditingController,
+      ],
+    ];
+    setState(() {
+      _chatMessages
+        ..clear()
+        ..add(_buildWelcomeMessage());
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final c in oldControllers) {
+        c.dispose();
+      }
+    });
+    ErrorHandler.showSuccess(context, '已清除對話紀錄');
   }
 
   /// ★ 2026-10-07 交接 A2：打開秘書時讀每日一問歷史，把近 7 天、本機沒看過的回答
@@ -114,6 +246,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         for (final it in fresh) {
           _chatMessages.add({
             'isUser': false,
+            'ts': DateTime.now().toIso8601String(),
             'text': answerRelayText(elderName, it),
             'relayAudioUrl': it.hasAudio ? it.answerAudioUrl : null,
             'statusSummary': null,
@@ -121,6 +254,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
           });
         }
       });
+      unawaited(_saveHistory());
       _scrollToBottom();
       await saveSeenAnswerIds(
           elderId, {...seen, ...fresh.map((e) => e.id.toString())});
@@ -131,6 +265,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
   @override
   void dispose() {
+    // ★ 2026-10-15 對話紀錄：必須在銷毀控制器之前呼叫——_saveHistory 會同步讀完輸入框文字，
+    // 之後才非同步寫檔。
+    unawaited(_saveHistory());
     _speechToText.stop();
     _messageController.dispose();
     for (final m in _chatMessages) {
@@ -264,6 +401,21 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     });
   }
 
+  /// ★ 2026-10-15 對話紀錄：還原歷史後直接跳到最底（不要從最舊的訊息開始看）。
+  /// ListView 是惰性建構、最大捲動量會隨建構更新，所以連跳兩個 frame。
+  void _jumpToBottom() {
+    void jump() {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      jump();
+      WidgetsBinding.instance.addPostFrameCallback((_) => jump());
+    });
+  }
+
   Future<void> _sendMessage([String? presetText]) async {
     final text = (presetText ?? _messageController.text).trim();
     final imageFile = presetText == null ? _attachedImage : null;
@@ -309,12 +461,16 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       _attachedImage = null;
       _chatMessages.add({
         'isUser': true,
+        'ts': DateTime.now().toIso8601String(),
         'text': sendText,
         'localImage': imageFile,
+        // ★ 2026-10-15 對話紀錄：本機 File 不存檔，改存上傳後的網址供還原顯示。
+        'imageUrl': uploadedUrl,
         'statusSummary': null,
         'scheduleDrafts': null,
       });
     });
+    unawaited(_saveHistory());
     _scrollToBottom();
 
     final elderName = widget.currentElder?.displayName ?? '長輩';
@@ -347,6 +503,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
       if (!mounted) return;
       setState(() => _addBotMessage(data, uploadedImageUrl: uploadedUrl));
+      unawaited(_saveHistory());
     } catch (e) {
       debugPrint('⚠️ [FamilyCopilot] 送出失敗：$e');
       if (!mounted) return;
@@ -354,6 +511,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
           ? _buildServerErrorResponse(elderName, null)
           : _serverFailureResponse(text, elderName, null);
       setState(() => _addBotMessage(fallbackData));
+      unawaited(_saveHistory());
     } finally {
       if (mounted) {
         setState(() {
@@ -434,6 +592,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         msg['shareError'] = error;
       }
     });
+    unawaited(_saveHistory());
     _scrollToBottom();
   }
 
@@ -486,10 +645,14 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         msg['questionError'] = error;
       }
     });
+    unawaited(_saveHistory());
     _scrollToBottom();
   }
 
   Future<void> _confirmBatchSchedule(List<dynamic> drafts, int messageIndex) async {
+    // ★ 2026-10-15 對話紀錄：下面有 await，期間歷史可能被插到清單最前面使索引位移，
+    // 所以在第一個 await 之前就抓住這則訊息本身，之後都改用這個參照。
+    final msg = _chatMessages[messageIndex];
     final elderIdStr = widget.currentElder?.elderId ?? widget.currentElder?.id.toString() ?? '2';
 
     // 🔒 第四十九輪追加：family_id 同樣改讀真實家屬身分（見 _sendMessage
@@ -511,8 +674,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
 
     // 1. 立即更新 UI 反饋，按鈕轉為成功狀態
     setState(() {
-      _chatMessages[messageIndex]['isApplied'] = true;
+      msg['isApplied'] = true;
     });
+    unawaited(_saveHistory());
 
     // ★ 第五十輪（適老化）：改用統一的大字級／高對比 SnackBar 封裝。
     ErrorHandler.showSuccess(context, '已成功建立 ${drafts.length} 筆關懷排程，並同步至長輩端！');
@@ -665,6 +829,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   @visibleForTesting
   void testInjectBotReply(Map<String, dynamic> data) {
     setState(() => _addBotMessage(data));
+    unawaited(_saveHistory());
   }
 
   /// 把回覆資料加成一則機器人訊息。
@@ -694,6 +859,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         'shareError': null,
       },
       'isUser': false,
+      'ts': DateTime.now().toIso8601String(),
       'text': (data['reply_text'] ?? '已為您處理完成！').toString(),
       'statusSummary': data['status_summary'],
       'scheduleDrafts': data['schedule_drafts'] != null ? List<dynamic>.from(data['schedule_drafts']) : null,
@@ -717,6 +883,14 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       appBar: famSubBar(
         context,
         title: 'AI 照護秘書',
+        // ★ 2026-10-15 對話紀錄：清除這台手機上的對話紀錄（送出中停用）。
+        trailing: [
+          FamIconButton(
+            icon: Icons.delete_sweep_outlined,
+            tooltip: '清除對話紀錄',
+            onTap: _isSending ? null : _clearHistory,
+          ),
+        ],
       ),
       body: SafeArea(
         top: false,
@@ -774,6 +948,15 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                   final sharePhase = msg['sharePhase'] as ShareCardPhase?;
                   final questionPhase = msg['questionPhase'] as QuestionCardPhase?;
                   final relayAudioUrl = msg['relayAudioUrl'] as String?;
+                  // ★ 2026-10-15 對話紀錄：還原訊息專用欄位。
+                  final restoredImageUrl = msg['imageUrl'] as String?;
+                  final archivedImageUrl = msg['archivedImageUrl'] as String?;
+                  final archivedLines =
+                      (msg['archivedLines'] as List<dynamic>?)?.cast<String>() ??
+                          const <String>[];
+                  final statusCaption = msg['restored'] == true
+                      ? _statusCaption(msg['ts'] as String?)
+                      : null;
 
                   return FamChatBubble(
                     mine: isUser,
@@ -791,7 +974,21 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                             child: Image.file(localImage,
                                 width: 120, height: 120, fit: BoxFit.cover),
                           ),
+                        ] else if (isUser && restoredImageUrl != null) ...[
+                          const SizedBox(height: 6),
+                          _buildNetworkThumb(restoredImageUrl),
                         ],
+                        // 還原的「已分享」照片
+                        if (!isUser && archivedImageUrl != null) ...[
+                          const SizedBox(height: 6),
+                          _buildNetworkThumb(archivedImageUrl),
+                        ],
+                        // 還原的草稿卡／分享卡／出題卡：只留過去式文字，沒有按鈕
+                        for (final line in archivedLines)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(line, style: famText(c.text3, 13.5, height: 1.5)),
+                          ),
                         // 分享草稿卡
                         if (!isUser && sharePhase != null)
                           ShareDraftCard(
@@ -801,8 +998,10 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                             phase: sharePhase,
                             errorText: msg['shareError'] as String?,
                             onSend: () => _confirmShare(index),
-                            onCancel: () => setState(
-                                () => msg['sharePhase'] = ShareCardPhase.cancelled),
+                            onCancel: () {
+                              setState(() => msg['sharePhase'] = ShareCardPhase.cancelled);
+                              unawaited(_saveHistory());
+                            },
                           ),
                         // ★ 2026-10-07 交接 A2：出題卡
                         if (!isUser && questionPhase != null)
@@ -812,8 +1011,11 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                             phase: questionPhase,
                             errorText: msg['questionError'] as String?,
                             onSend: () => _confirmQuestion(index),
-                            onCancel: () => setState(
-                                () => msg['questionPhase'] = QuestionCardPhase.cancelled),
+                            onCancel: () {
+                              setState(
+                                  () => msg['questionPhase'] = QuestionCardPhase.cancelled);
+                              unawaited(_saveHistory());
+                            },
                           ),
                         // ★ 2026-10-07 交接 A2：長輩語音回答的播放鈕
                         if (!isUser && relayAudioUrl != null) ...[
@@ -822,7 +1024,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                         ],
                         // 近況摘要
                         if (!isUser && statusSummary != null)
-                          _buildStatusSummary(statusSummary),
+                          _buildStatusSummary(statusSummary, caption: statusCaption),
                         // 排程草稿確認卡（`.sched`）
                         if (!isUser && scheduleDrafts != null && scheduleDrafts.isNotEmpty)
                           _buildScheduleDraft(scheduleDrafts, index, isApplied),
@@ -938,8 +1140,39 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     );
   }
 
+  /// ★ 2026-10-15 對話紀錄：還原訊息的網路縮圖（與本機照片同為 120×120 圓角）；載入失敗顯示破圖佔位。
+  Widget _buildNetworkThumb(String url) {
+    final c = UbanColors.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.network(
+        url,
+        width: 120,
+        height: 120,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: 120,
+          height: 120,
+          alignment: Alignment.center,
+          color: c.brandContainer,
+          child: Icon(Icons.broken_image_outlined, size: 28, color: c.text3),
+        ),
+      ),
+    );
+  }
+
+  /// ★ 2026-10-15 對話紀錄：還原的近況快照標題，例如「10/15 08:30 查詢的近況」；時間解析不到回 null。
+  String? _statusCaption(String? ts) {
+    final t = ts == null ? null : DateTime.tryParse(ts)?.toLocal();
+    if (t == null) return null;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${t.month}/${t.day} ${two(t.hour)}:${two(t.minute)} 查詢的近況';
+  }
+
   /// 近況摘要：放在 AI 泡泡內，純文字列（不放小圖示）。
-  Widget _buildStatusSummary(Map<String, dynamic> summary) {
+  ///
+  /// ★ 2026-10-15 對話紀錄：[caption]（還原的舊訊息才有）標明查詢時間，避免把舊快照當成今天的狀況。
+  Widget _buildStatusSummary(Map<String, dynamic> summary, {String? caption}) {
     final c = UbanColors.of(context);
 
     Widget line(String label, String value) => Padding(
@@ -960,6 +1193,10 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (caption != null) ...[
+            Text(caption, style: famText(c.text3, 12.5, weight: FontWeight.w700)),
+            const SizedBox(height: 6),
+          ],
           // ★ 第四十九輪誠實性修復：mood_title 改名 mood_status，內容從
           //   模型自由發揮的短標籤改成 Python 依真實資料組出的完整句子，
           //   長度不再可控，所以在泡泡內自然換行（鐵律 #14）。
