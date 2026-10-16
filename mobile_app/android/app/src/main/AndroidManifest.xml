@@ -111,6 +111,20 @@
             android:foregroundServiceType="location"
             android:exported="false" />
         
+        <!-- 手機小幫手：跨 App 求助浮鈕（無障礙服務），見 screenhelper/ScreenHelperService.kt -->
+        <service
+            android:name=".screenhelper.ScreenHelperService"
+            android:label="@string/screen_helper_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/screen_helper_service" />
+        </service>
+
         <!-- FCM 背景喚醒的預設 Channel 設定 -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
