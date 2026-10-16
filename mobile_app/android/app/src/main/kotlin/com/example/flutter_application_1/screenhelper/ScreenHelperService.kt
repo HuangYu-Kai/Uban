@@ -3,7 +3,16 @@ package com.example.flutter_application_1.screenhelper
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.animation.ValueAnimator
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.os.Bundle
+import androidx.core.content.ContextCompat
+import com.example.flutter_application_1.R
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Outline
@@ -25,20 +34,19 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
-import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 /**
  * 手機小幫手（跨 App 求助浮鈕）— Day 1 風險驗證版。
  *
  * 只驗證三件事：無障礙服務能在展示機開啟、浮動按鈕能疊在任何 App 上、
- * 按下去能截圖並抓到畫面元件清單。截圖存到
- * `/sdcard/Android/data/com.example.flutter_application_1/files/screen_helper/`，
- * 元件清單印到 logcat（tag = ScreenHelper）。後端呼叫、畫框與語音是 Day 3 的事。
+ * 按下去能截圖並抓到畫面元件清單。截圖改存記憶體 JPEG，
+ * 連同元件清單送後端分析，結果以高亮框、說明卡片與語音呈現（Day 3）。
  *
  * 用 TYPE_ACCESSIBILITY_OVERLAY，不需要 SYSTEM_ALERT_WINDOW；
  * 截圖用 takeScreenshot()（API 30+），不會像 MediaProjection 每次跳同意視窗。
@@ -51,6 +59,15 @@ class ScreenHelperService : AccessibilityService() {
         private const val CORNER_DP = 14
         private const val MAX_NODES = 80
         private const val SHOT_WIDTH = 720
+        private const val WAIT_MS = 12_000L
+        private const val AUTH_TEXT = "請先打開 Uban 登入一次，我才能幫您看喔。"
+        private const val MIC_FAIL_TEXT = "我沒聽清楚，可以再按一次麥克風喔"
+        private val FILLER_IDS = intArrayOf(
+            R.raw.filler_01, R.raw.filler_02, R.raw.filler_03, R.raw.filler_04,
+            R.raw.filler_05, R.raw.filler_06, R.raw.filler_07, R.raw.filler_08,
+            R.raw.filler_09, R.raw.filler_10, R.raw.filler_11, R.raw.filler_12,
+        )
+        private val WAIT_IDS = intArrayOf(R.raw.wait_01, R.raw.wait_02)
         private const val IDLE_ALPHA = 0.4f
         private const val ACTIVE_ALPHA = 1f
         private const val IDLE_DELAY_MS = 3000L
@@ -65,24 +82,67 @@ class ScreenHelperService : AccessibilityService() {
     private var params: WindowManager.LayoutParams? = null
     private var busy = false
 
+    private var audio: HelperAudio? = null
+    private var highlight: HighlightOverlay? = null
+    private var panel: HelperPanel? = null
+    private var executor: ExecutorService? = null
+    private var recognizer: SpeechRecognizer? = null
+
+    private var requestId = 0          // 讓過期的回應失效
+    private var listenToken = 0        // 讓過期的「播完提示音後開始聽」失效
+    private var pressPkg = "?"         // 按下當下的前景 App
+    private var lastNodes = JSONArray()
+    private val waitRunnable = Runnable { audio?.playRaw(randomOf(WAIT_IDS)) }
+
+    private fun randomOf(ids: IntArray) = ids[ids.indices.random()]
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.i(TAG, "service connected, sdk=${Build.VERSION.SDK_INT}")
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        windowManager = wm
+        audio = HelperAudio(this)
+        highlight = HighlightOverlay(this, wm)
+        panel = HelperPanel(this, wm, onAsk = { startVoiceQuestion() }, onDismiss = { dismissAll() })
+        executor = Executors.newSingleThreadExecutor()
         addFloatingButton()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        // 換了別的 App 視窗，長輩多半已經點了目標，把框收掉。自己的浮層不算。
+        if (pkg != packageName && pkg != pressPkg && highlight?.isShowing == true) highlight?.hide()
+    }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
+        // 系統要求中斷回饋：停掉聲音、收起浮層，但服務仍在，物件保留。
+        dismissAll()
+        stopListening()
+    }
 
     override fun onDestroy() {
         main.removeCallbacks(idleFade)
+        main.removeCallbacks(waitRunnable)
+        requestId++
+        stopListening()
+        panel?.hide(); panel = null
+        highlight?.hide(); highlight = null
+        audio?.release(); audio = null
+        executor?.shutdownNow(); executor = null
         spinner?.stop()
         spinner = null
         button?.let { runCatching { windowManager?.removeView(it) } }
         button = null
         super.onDestroy()
+    }
+
+    /** 「知道了」：收起卡片、高亮框並停掉聲音。 */
+    private fun dismissAll() {
+        listenToken++
+        panel?.hide()
+        highlight?.hide()
+        audio?.stopAll()
     }
 
     // ── 浮動按鈕 ────────────────────────────────────────────────
@@ -185,51 +245,118 @@ class ScreenHelperService : AccessibilityService() {
 
     private fun onHelpPressed() {
         if (busy) return
+        // 正在聽或卡片還開著時再按，視為重新求助。
+        stopListening()
+        runFlow(null)
+    }
+
+    /** 完整流程：墊音 → 抓元件 → 截圖 → 送後端 → 顯示結果。question 為語音提問（可空）。 */
+    private fun runFlow(question: String?) {
         busy = true
-        val pkg = rootInActiveWindow?.packageName?.toString() ?: "?"
+        val myId = ++requestId
+        listenToken++
+        // 截圖前先收掉卡片與高亮框，避免擋住或被拍進畫面。
+        panel?.hide()
+        highlight?.hide()
+        audio?.stopAll()
+        audio?.playRaw(randomOf(FILLER_IDS))
+
+        pressPkg = rootInActiveWindow?.packageName?.toString() ?: "?"
         val nodes = collectNodes()
-        Log.i(TAG, "pressed on package=$pkg, nodes=${nodes.length()}")
+        lastNodes = nodes
+        Log.i(TAG, "pressed on package=$pressPkg, nodes=${nodes.length()}, question=${question != null}")
         // logcat 單行有長度上限，逐筆印。
         for (i in 0 until nodes.length()) Log.i(TAG, "node ${nodes.getJSONObject(i)}")
 
         // 截圖前先藏起按鈕，避免它出現在截圖裡擋住畫面。
         button?.visibility = View.INVISIBLE
-        main.postDelayed({ capture(pkg, nodes.length()) }, 150)
+        val pkg = pressPkg
+        main.postDelayed({
+            capture { jpeg ->
+                if (myId != requestId) return@capture
+                showThinking()
+                submit(myId, jpeg, nodes.toString(), pkg, question)
+            }
+        }, 150)
     }
 
-    private fun capture(pkg: String, nodeCount: Int) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            showThinking()
-            finish("這支手機版本太舊，無法截圖（元件 $nodeCount 個）")
-            return
+    /** 背景送出請求；12 秒還沒回就播一句「再等等」。 */
+    private fun submit(myId: Int, jpeg: ByteArray?, nodesJson: String, pkg: String, question: String?) {
+        main.removeCallbacks(waitRunnable)
+        main.postDelayed(waitRunnable, WAIT_MS)
+        val ex = executor
+        if (ex == null) { onResult(myId, HelperResult.NetworkError("no executor")); return }
+        try {
+            ex.execute {
+                val r = HelperApi.analyze(applicationContext, jpeg, nodesJson, pkg, question)
+                main.post { onResult(myId, r) }
+            }
+        } catch (e: Exception) {
+            onResult(myId, HelperResult.NetworkError("rejected"))
         }
+    }
+
+    private fun onResult(myId: Int, r: HelperResult) {
+        if (myId != requestId) return
+        main.removeCallbacks(waitRunnable)
+        finish()
+        when (r) {
+            is HelperResult.Success -> {
+                val rect = r.nodeId?.let { rectOfNode(it) }
+                Log.i(TAG, "result node=${r.nodeId} sensitive=${r.sensitive}")
+                if (rect != null) highlight?.show(rect)
+                panel?.show(r.speech, rect)
+                audio?.speak(r.speech)
+            }
+            HelperResult.AuthMissing -> {
+                panel?.show(AUTH_TEXT, null)
+                audio?.speak(AUTH_TEXT)
+            }
+            is HelperResult.NetworkError -> {
+                Log.w(TAG, "network error: ${r.reason}")
+                panel?.show("網路好像有點慢，等一下再按我一次好嗎？", null)
+                audio?.playRaw(R.raw.err_network)
+            }
+        }
+    }
+
+    /** 依本地元件清單的 id 取得螢幕座標。 */
+    private fun rectOfNode(id: Int): Rect? {
+        for (i in 0 until lastNodes.length()) {
+            val o = lastNodes.getJSONObject(i)
+            if (o.optInt("id") == id) {
+                val b = o.getJSONArray("bounds")
+                return Rect(b.getInt(0), b.getInt(1), b.getInt(2), b.getInt(3))
+            }
+        }
+        return null
+    }
+
+    /** 截圖，成功給 JPEG bytes；失敗（例如禁止截圖的畫面）給 null，仍會只送元件清單。 */
+    private fun capture(done: (ByteArray?) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) { done(null); return }
         takeScreenshot(
             android.view.Display.DEFAULT_DISPLAY,
             mainExecutor,
             object : TakeScreenshotCallback {
                 override fun onSuccess(result: ScreenshotResult) {
-                    showThinking()
-                    val file = runCatching { saveShot(result) }
-                        .onFailure { Log.e(TAG, "save failed", it) }
+                    val jpeg = runCatching { toJpeg(result) }
+                        .onFailure { Log.e(TAG, "encode failed", it) }
                         .getOrNull()
-                    finish(
-                        if (file != null) "截圖成功（$pkg，元件 $nodeCount 個）"
-                        else "截圖存檔失敗（元件 $nodeCount 個）"
-                    )
-                    file?.let { Log.i(TAG, "screenshot saved: ${it.absolutePath} (${it.length() / 1024} KB)") }
+                    Log.i(TAG, "screenshot ${(jpeg?.size ?: 0) / 1024} KB")
+                    done(jpeg)
                 }
 
                 override fun onFailure(errorCode: Int) {
-                    showThinking()
                     // 5 = SECURE_WINDOW（銀行、支付等禁止截圖的畫面）；3 = 間隔太短。
                     Log.w(TAG, "screenshot failed, errorCode=$errorCode")
-                    finish("截圖失敗（代碼 $errorCode），元件 $nodeCount 個")
+                    done(null)
                 }
             },
         )
     }
 
-    private fun saveShot(result: ScreenshotResult): File {
+    private fun toJpeg(result: ScreenshotResult): ByteArray {
         val hw = Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
             ?: error("wrapHardwareBuffer returned null")
         val soft = hw.copy(Bitmap.Config.ARGB_8888, false)
@@ -238,12 +365,11 @@ class ScreenHelperService : AccessibilityService() {
         val scaled = if (soft.width > SHOT_WIDTH) {
             Bitmap.createScaledBitmap(soft, SHOT_WIDTH, soft.height * SHOT_WIDTH / soft.width, true)
         } else soft
-        val dir = File(getExternalFilesDir(null), "screen_helper").apply { mkdirs() }
-        val file = File(dir, "shot_${System.currentTimeMillis()}.jpg")
-        FileOutputStream(file).use { scaled.compress(Bitmap.CompressFormat.JPEG, 60, it) }
+        val out = ByteArrayOutputStream()
+        scaled.compress(Bitmap.CompressFormat.JPEG, 60, out)
         if (scaled !== soft) scaled.recycle()
         soft.recycle()
-        return file
+        return out.toByteArray()
     }
 
     /** 截圖拍完後按鈕重新出現並轉圈，表示小嘎正在處理。 */
@@ -257,12 +383,83 @@ class ScreenHelperService : AccessibilityService() {
         spinner?.start()
     }
 
-    private fun finish(message: String) {
+    private fun finish() {
         spinner?.stop()
         button?.visibility = View.VISIBLE
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         busy = false
         scheduleIdle()
+    }
+
+    // ── 語音提問 ────────────────────────────────────────────────
+
+    private fun startVoiceQuestion() {
+        if (busy) return
+        val p = panel ?: return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            p.setText("請到 Uban 的權限設定打開麥克風喔")
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            p.setText(MIC_FAIL_TEXT)
+            return
+        }
+        audio?.stopAll()
+        stopListening()
+        p.setText("我在聽，請說…")
+        val token = ++listenToken
+        audio?.playRaw(R.raw.listen_prompt)
+        // 等提示音播完才開始收音，避免錄到自己的聲音。
+        audio?.runWhenIdle { if (token == listenToken) startListening() }
+    }
+
+    private fun startListening() {
+        val sr = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer = sr
+        sr.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+
+            override fun onError(error: Int) {
+                Log.w(TAG, "recognizer error $error")
+                stopListening()
+                val msg = if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS)
+                    "請到 Uban 的權限設定打開麥克風喔" else MIC_FAIL_TEXT
+                panel?.setText(msg)
+            }
+
+            override fun onResults(results: Bundle?) {
+                val q = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()?.trim()
+                stopListening()
+                if (q.isNullOrEmpty()) { panel?.setText(MIC_FAIL_TEXT); return }
+                Log.i(TAG, "heard: $q")
+                panel?.setText("您說：「$q」")
+                runFlow(q)
+            }
+        })
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        runCatching { sr.startListening(intent) }.onFailure {
+            Log.w(TAG, "startListening failed", it)
+            stopListening()
+            panel?.setText(MIC_FAIL_TEXT)
+        }
+    }
+
+    private fun stopListening() {
+        listenToken++
+        recognizer?.let { runCatching { it.cancel(); it.destroy() } }
+        recognizer = null
     }
 
     // ── 元件清單 ────────────────────────────────────────────────

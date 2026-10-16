@@ -266,6 +266,16 @@ flowchart TD
 - **外出趨勢**：「資料」分頁的入口，7／30 天的每日移動距離、外出次數、在外時間長條圖；點某一天可看當天軌跡。
 - **隱私**：長輩關閉分享後，家屬看不到任何位置資料（含過去軌跡），也不會再有任何提醒；位置資料保存 90 天後自動清除（隱私權政策第 9 節）。
 
+### 七、手機小幫手（跨 App 求助浮鈕，僅 Android）
+
+長輩在任何 App 裡不會操作時，按一下螢幕旁的半透明浮鈕，小嘎會看畫面並用語音說出要按哪裡（也可按麥克風用國語直接問）。
+
+- **原生端**：Android 無障礙服務「Uban 手機小幫手」，程式在 `mobile_app/android/.../screenhelper/`（浮鈕、截圖、無障礙元件清單、對話框、語音播放）。按下時截圖＋走訪元件清單，送後端分析後以元件編號畫出閃爍框。
+- **入口與設定頁**：長輩端「我的」分頁的「手機小幫手」卡 → `lib/screens/screen_helper_setup_screen.dart`（三步驟帶長輩到系統無障礙設定；開關灰色時教「允許受限設定」並可開 App 資訊頁）。
+- **後端端點**：`POST /api/screen_helper/analyze`（multipart：`image`、`nodes`、`package`、`question`；需 Bearer token）。以 Ollama 看圖回 `{speech, node_id, target_text, sensitive}`；付款、密碼等敏感畫面只建議請家人協助。
+- **SharedPreferences 鍵**：Flutter 設定頁寫入 `screen_helper_base_url`（伺服器根網址，不含 `/api`）；原生端另讀既有的 `access_token`（原生實際讀 `FlutterSharedPreferences` 的 `flutter.` 前綴鍵）。
+- **隱私**：只有長輩按下浮鈕時才截圖，影像只在記憶體中處理、後端不存檔，log 只記使用者、套件名與耗時。
+
 ---
 
 ## 快速開始

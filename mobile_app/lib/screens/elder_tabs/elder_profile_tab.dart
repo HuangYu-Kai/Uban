@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import '../identification_screen.dart';
+import '../screen_helper_setup_screen.dart';
 import '../../services/session_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/friend_service.dart';
@@ -762,6 +763,21 @@ class _ElderProfileTabState extends State<ElderProfileTab>
                         child: LocationStatusHint(status: status!),
                       );
                     },
+                  ),
+                  gap,
+
+                  // 手機小幫手（跨 App 求助浮鈕的設定入口）
+                  UbanActionTile(
+                    icon: Icons.touch_app_rounded,
+                    title: '手機小幫手',
+                    subtitle: '不會用時按一下',
+                    trailing: UbanActionTile.chevron(context),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ScreenHelperSetupScreen(),
+                      ),
+                    ),
                   ),
                   gap,
 
