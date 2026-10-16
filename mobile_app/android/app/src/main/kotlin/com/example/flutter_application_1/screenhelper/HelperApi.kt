@@ -52,7 +52,7 @@ object HelperApi {
             conn = (URL(baseUrl(ctx) + "/api/screen_helper/analyze").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 10_000
-                readTimeout = 35_000
+                readTimeout = 50_000  // 後端呼叫 Ollama 上限 45 秒
                 doOutput = true
                 setRequestProperty("Authorization", "Bearer $token")
                 setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
