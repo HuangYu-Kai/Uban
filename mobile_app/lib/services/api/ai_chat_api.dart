@@ -49,6 +49,9 @@ class AiChatApi {
     String message, {
     String? appellation,
     String? userName,
+    // ★ 2026-10-17 拍照問小嘎：先用 /ai/upload_image 上傳後取得的相對網址（/uploads/xxx）。
+    //   null（預設）時請求內容與舊版完全相同。
+    String? imageUrl,
   }) async* {
     final targetUrl = '${ApiClient.baseUrl}/ai/chat_stream';
     final client = http.Client();
@@ -61,6 +64,7 @@ class AiChatApi {
         'message': message,
         if (appellation != null && appellation.isNotEmpty) 'appellation': appellation,
         if (userName != null && userName.isNotEmpty) 'user_name': userName,
+        if (imageUrl != null) 'image_url': imageUrl,
       });
 
       final streamedResponse = await client.send(request).timeout(const Duration(seconds: 40));

@@ -265,6 +265,12 @@ class ChatInputBar extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
 
+  /// ★ 2026-10-17 拍照問小嘎：相機鈕的點擊回呼。為 null 時不顯示相機鈕（舊呼叫端不受影響）。
+  final VoidCallback? onCamera;
+
+  /// 相機鈕是否可點（回覆串流中、錄音中為 false，鈕變淡且不回應）。
+  final bool cameraEnabled;
+
   /// 距離螢幕底的留白（含浮動導覽列）。
   final double bottomPadding;
 
@@ -284,6 +290,8 @@ class ChatInputBar extends StatelessWidget {
     required this.bottomPadding,
     this.toggleKey,
     this.inputAreaKey,
+    this.onCamera,
+    this.cameraEnabled = true,
   });
 
   @override
@@ -318,6 +326,36 @@ class ChatInputBar extends StatelessWidget {
               ),
             ),
           ),
+          // ★ 2026-10-17 拍照問小嘎：相機鈕。固定 56×56（比切換／送出鈕的 64 小一點），
+          //   讓 360dp 寬的螢幕上中間的輸入區（Expanded）仍有足夠寬度，不會 RenderFlex 溢位。
+          if (onCamera != null) ...[
+            const SizedBox(width: 10),
+            Semantics(
+              button: true,
+              enabled: cameraEnabled,
+              label: '拍照給小嘎看',
+              excludeSemantics: true,
+              child: Opacity(
+                opacity: cameraEnabled ? 1 : 0.4,
+                child: PressableScale(
+                  onTap: onCamera,
+                  enabled: cameraEnabled,
+                  child: Container(
+                    key: const ValueKey('chat_camera_button'),
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: c.surface,
+                      boxShadow: c.shadows.card,
+                    ),
+                    child: Icon(Icons.photo_camera_rounded,
+                        color: c.brandStrong, size: 28),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(width: 10),
           Expanded(
             child: KeyedSubtree(

@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
@@ -17,6 +18,7 @@ import '../services/api_service.dart';
 import '../services/friend_service.dart';
 import '../services/api/elder_daily_question_api.dart';
 import '../theme/app_theme.dart';
+import '../utils/error_handler.dart';
 import '../widgets/ui/ui.dart';
 import 'elder_tabs/chat/chat_widgets.dart';
 import 'elder_tabs/daily_question_answer_sheet.dart';
@@ -29,6 +31,7 @@ import '../services/checkin_cheer_service.dart';
 import '../services/api/family_updates_api.dart';
 import '../widgets/elder_floating_chrome.dart';
 import 'elder_tabs/chat/chat_images.dart';
+import 'elder_tabs/chat/chat_photo.dart';
 
 /// 長輩端「和小嘎聊天」—— AI 聊天頁（串流 + Markdown 渲染）。
 ///
@@ -69,6 +72,7 @@ class _ChatMessage {
   DailyQuestion? dailyQuestion; // ★ 每日一問：非 null 時氣泡下方顯示「我來回答」
   final List<String> images; // ★ 家人分享轉述：氣泡下方的照片網址（可為相對路徑）
   final String? audioUrl; // ★ 家人打卡鼓勵的原始錄音（相對路徑）；有值則「再聽」播錄音而非 TTS
+  final File? localImage; // ★ 2026-10-17 拍照問小嘎：使用者氣泡的本機照片縮圖（不存進本機聊天紀錄）
 
   _ChatMessage(
     this.text,
@@ -81,6 +85,7 @@ class _ChatMessage {
     this.isPlayingAudio = false,
     this.images = const [],
     this.audioUrl,
+    this.localImage,
   }) : id = id ?? '${DateTime.now().millisecondsSinceEpoch}_${text.hashCode.abs()}';
 }
 
@@ -666,16 +671,41 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   }
 
   /// 發送訊息，使用串流接收 AI 回應
-  Future<void> _send() async {
-    final text = _controller.text.trim();
+  ///
+  /// ★ 2026-10-17 拍照問小嘎：[photo] 不為 null 時，這次是「帶照片的提問」——先把照片
+  ///   傳到 `/ai/upload_image`，成功後才呼叫串流並帶上 `image_url`；之後的串流、TTS、
+  ///   存檔流程與純文字訊息完全共用。沒打字就直接送照片時，用預設問句
+  ///   [kChatPhotoDefaultText]。
+  Future<void> _send({File? photo}) async {
+    final typed = _controller.text.trim();
+    final text = (photo != null && typed.isEmpty) ? kChatPhotoDefaultText : typed;
     if (text.isEmpty || _isThinking) return;
 
+    final userMsg = _ChatMessage(text, true, localImage: photo);
     setState(() {
-      _messages.add(_ChatMessage(text, true));
+      _messages.add(userMsg);
       _isThinking = true;
       _controller.clear();
     });
     _scrollToBottom();
+
+    // 先上傳照片；失敗就如實告知（不假裝送出成功）：移除剛加的氣泡，並把長輩打的字放回輸入框。
+    String? uploadedUrl;
+    if (photo != null) {
+      uploadedUrl = await _uploadChatPhoto(photo);
+      if (!mounted) return;
+      if (uploadedUrl == null) {
+        setState(() {
+          _messages.remove(userMsg);
+          _isThinking = false;
+          if (typed.isNotEmpty && _controller.text.isEmpty) {
+            _controller.text = typed;
+          }
+        });
+        ErrorHandler.showWarning(context, '照片沒有傳出去，請檢查網路後再試一次');
+        return;
+      }
+    }
 
     // 加入一個空白的 AI 訊息泡泡，稍後會在串流中逐字填入
     final aiMsg = _ChatMessage('', false, isStreaming: true);
@@ -686,6 +716,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         text,
         appellation: _currentAppellation.isNotEmpty ? _currentAppellation : widget.userName,
         userName: widget.userName,
+        imageUrl: uploadedUrl, // ★ 2026-10-17 拍照問小嘎：純文字訊息為 null，行為不變
       );
       bool firstToken = true;
 
@@ -750,6 +781,55 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       _saveLocalChatHistory();
     }
     _scrollToBottom();
+  }
+
+  /// ★ 2026-10-17 拍照問小嘎：上傳照片到既有的 `/ai/upload_image`，成功回相對網址
+  ///   （`/uploads/xxx.jpg`，後端直接從本機磁碟讀），逾時 30 秒或任何失敗回 null。
+  Future<String?> _uploadChatPhoto(File photo) async {
+    try {
+      final res = await ApiService.uploadImage(photo.path)
+          .timeout(const Duration(seconds: 30));
+      return extractUploadedImageUrl(res);
+    } catch (e) {
+      debugPrint('⚠️ [Chat] 照片上傳失敗: $e');
+      return null;
+    }
+  }
+
+  /// ★ 2026-10-17 拍照問小嘎：相機鈕是否可按。回覆等待／串流中、錄音中都不可按
+  ///   （與送出鈕以 `_isThinking` 擋重送的行為一致，另外補上首個 token 之後仍在串流的情況）。
+  bool get _canPickPhoto =>
+      !_isThinking && !_isListening && !_messages.any((m) => m.isStreaming);
+
+  /// ★ 2026-10-17 拍照問小嘎：開底部選單 → 拍照／相簿 → 直接送出。
+  Future<void> _pickAndSendPhoto() async {
+    if (!_canPickPhoto) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final source = await showChatPhotoSourceSheet(context);
+    if (source == null || !mounted) return;
+
+    XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+    } catch (e) {
+      // 權限被拒、沒有相機、相簿開啟失敗等：用白話警告，不丟例外給長輩看。
+      debugPrint('⚠️ [Chat] 選照片失敗: $e');
+      if (mounted) {
+        ErrorHandler.showWarning(context, chatPhotoPickErrorMessage(e, source));
+      }
+      return;
+    }
+    if (picked == null || !mounted) return; // 長輩在相機／相簿按了返回
+    // 選圖期間若已有別的訊息在等回覆（例如先前送出的文字），不能同時送兩則。
+    if (_isThinking) {
+      ErrorHandler.showWarning(context, '小嘎還在回答，等一下再傳照片喔');
+      return;
+    }
+    await _send(photo: File(picked.path));
   }
 
   /// 提取純淨 TTS 朗讀文字：移除影片標籤、Markdown 語法與 Emoji
@@ -1277,10 +1357,17 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         isUser: isUser,
         // ── 使用者訊息：純文字；AI 訊息：Markdown 渲染 ──
         child: isUser
-            ? Text(
-                msg.text,
-                style: ubanText(20, FontWeight.w600, c.onBrand, height: 1.5),
-              )
+            ? (msg.localImage != null
+                // ★ 2026-10-17 拍照問小嘎：使用者傳的照片縮圖＋文字
+                ? ChatPhotoBubbleContent(
+                    image: FileImage(msg.localImage!),
+                    text: msg.text,
+                    textColor: c.onBrand,
+                  )
+                : Text(
+                    msg.text,
+                    style: ubanText(20, FontWeight.w600, c.onBrand, height: 1.5),
+                  ))
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1434,6 +1521,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       onHoldEnd: _stopListeningAndSend,
       controller: _controller,
       onSend: _send,
+      // ★ 2026-10-17 拍照問小嘎
+      onCamera: _pickAndSendPhoto,
+      cameraEnabled: _canPickPhoto,
       bottomPadding: MediaQuery.of(context).viewInsets.bottom > 0
           ? 12
           : elderNavClearance(context),
