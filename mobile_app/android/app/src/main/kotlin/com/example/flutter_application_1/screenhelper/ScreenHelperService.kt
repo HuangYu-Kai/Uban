@@ -482,6 +482,8 @@ class ScreenHelperService : AccessibilityService() {
                 put("id", out.length() + 1)
                 put("text", label)
                 put("clickable", node.isClickable)
+                // 目前所在的分頁（例如底部導覽「首頁」）會是 selected，讓 AI 別叫人再去按它。
+                put("selected", node.isSelected || node.isChecked)
                 put("bounds", JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom)))
             })
         }
