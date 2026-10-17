@@ -393,8 +393,13 @@ class ScreenHelperService : AccessibilityService() {
     // ── 語音提問 ────────────────────────────────────────────────
 
     private fun startVoiceQuestion() {
-        if (busy) return
         val p = panel ?: return
+        if (busy) {
+            // 分析到一半也能直接改用問的：讓進行中的請求結果作廢。
+            ++requestId
+            main.removeCallbacks(waitRunnable)
+            finish()
+        }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -409,9 +414,9 @@ class ScreenHelperService : AccessibilityService() {
         stopListening()
         p.setText("我在聽，請說…")
         val token = ++listenToken
-        audio?.playRaw(R.raw.listen_prompt)
-        // 等提示音播完才開始收音，避免錄到自己的聲音。
-        audio?.runWhenIdle { if (token == listenToken) startListening() }
+        // 實機回報：先播完「您想做什麼呢」才收音，每次都要等。改成按下就打斷小嘎，
+        // 隔 150ms（讓喇叭停乾淨、不錄到尾音）直接開始聽，提示改看卡片上的字。
+        main.postDelayed({ if (token == listenToken) startListening() }, 150)
     }
 
     private fun startListening() {

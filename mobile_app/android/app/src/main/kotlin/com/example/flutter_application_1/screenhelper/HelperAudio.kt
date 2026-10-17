@@ -54,11 +54,6 @@ class HelperAudio(private val ctx: Context) {
 
     fun speak(text: String) = enqueue(Item.Speak(text))
 
-    /** 佇列播完（或已閒置）時執行一次。 */
-    fun runWhenIdle(action: () -> Unit) {
-        if (!playing) action() else main.postDelayed({ runWhenIdle(action) }, 100)
-    }
-
     private fun enqueue(item: Item) {
         queue.addLast(item)
         if (!playing) next()
