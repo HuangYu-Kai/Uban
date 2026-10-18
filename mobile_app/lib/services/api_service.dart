@@ -160,7 +160,9 @@ class ApiService {
     String message, {
     String? appellation,
     String? userName,
-  }) => AiChatApi.aiChatStream(userId, message, appellation: appellation, userName: userName);
+    String? imageUrl, // ★ 2026-10-17 拍照問小嘎
+  }) => AiChatApi.aiChatStream(userId, message,
+      appellation: appellation, userName: userName, imageUrl: imageUrl);
 
   static Future<Map<String, dynamic>> petGreeting(int userId, String context) => AiChatApi.petGreeting(userId, context);
   static Future<List<dynamic>> getPersonaTemplates() => AiChatApi.getPersonaTemplates();
