@@ -5,7 +5,6 @@ import '../../models/elder.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/ui/uban_glass_nav_bar.dart';
-import 'home/widgets/home_elder_header_card.dart';
 import 'home/widgets/home_checkin_card.dart';
 import 'home/widgets/home_analysis_card.dart';
 import 'home/widgets/home_zone_card.dart';
@@ -57,7 +56,6 @@ class FamilyHomeTab extends StatefulWidget {
   final ValueChanged<String?>? onOpenMonitorView;
 
   // ★ 第四十一輪 item 2（第二階段）：新手指引用的高光目標 GlobalKey。
-  final GlobalKey? elderHeaderKey;
   final GlobalKey? monitorStatusKey;
   final GlobalKey? aiMoodRadarKey;
   final GlobalKey? alertPreviewKey;
@@ -78,7 +76,6 @@ class FamilyHomeTab extends StatefulWidget {
     this.dismissedKeysLoaded = true,
     this.onAlertItemDismissed,
     this.onOpenMonitorView,
-    this.elderHeaderKey,
     this.monitorStatusKey,
     this.aiMoodRadarKey,
     this.alertPreviewKey,
@@ -224,14 +221,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                             familyId: widget.userId!,
                             refreshToken: widget.questionRefreshToken,
                           ),
-                        HomeElderHeaderCard(
-                          headerKey: widget.elderHeaderKey,
-                          currentElder: widget.currentElder,
-                          isElderOnline: widget.isElderOnline,
-                          realLogs: _realLogs,
-                          refreshToken: _checkinRefresh,
-                        ),
-                        const SizedBox(height: 16),
                         HomeCheckinCard(
                           currentElder: widget.currentElder,
                           refreshToken: _checkinRefresh + widget.checkinRefreshToken,
@@ -333,15 +322,6 @@ class _FamilyHomeTabState extends State<FamilyHomeTab>
                         familyId: widget.userId!,
                         refreshToken: widget.questionRefreshToken,
                       ),
-                    // 1. 長輩頂部極光卡片與在線狀態
-                    HomeElderHeaderCard(
-                      headerKey: widget.elderHeaderKey,
-                      currentElder: widget.currentElder,
-                      isElderOnline: widget.isElderOnline,
-                      realLogs: _realLogs,
-                      refreshToken: _checkinRefresh,
-                    ),
-                    const SizedBox(height: 16),
 
                     // 1.2 ✅ 今日打卡進度（含長輩自建目標）
                     HomeCheckinCard(
