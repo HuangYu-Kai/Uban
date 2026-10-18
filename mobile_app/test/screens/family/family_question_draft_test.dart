@@ -92,7 +92,9 @@ void main() {
 
     await tester.pumpWidget(const SizedBox()); // 卸載舊畫面，讓下一次重新 initState
     await pumpScreen(tester, FamilyAiCopilotScreen(currentElder: elder, historyLoader: loader));
-    expect(find.textContaining('回答了『最愛吃的菜 11』'), findsNothing);
+    // ★ 2026-10-15 對話紀錄：第一次轉告的訊息已存進本機對話紀錄，重開會從歷史還原——
+    // 所以仍看得到一則（來自歷史），但不會因為又被轉告而變成兩則。
+    expect(find.textContaining('回答了『最愛吃的菜 11』'), findsOneWidget);
   });
 
   testWidgets('出題卡：失敗顯示真實原因、成功顯示小嘎會在…下次聊天時問', (tester) async {
