@@ -72,6 +72,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
   bool _isListening = false;
   bool _speechReady = false;
   bool _speechInitializing = false;
+  /// 本次點擊麥克風是否已因靜音逾時自動重試過一次（點擊時重置）。
+  bool _sttAutoRetried = false;
 
   // ★ 2026-10-15 對話紀錄：本機存檔狀態。
   // _historyKey 為 null（家屬身分或長輩 id 讀不到）時，整個存檔功能靜默停用，畫面照舊運作。
@@ -292,6 +294,13 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       return;
     }
     if (_isSending || _speechInitializing) return;
+    // 使用者主動點麥克風：重置「靜音逾時自動重試一次」旗標。
+    _sttAutoRetried = false;
+    await _startListening();
+  }
+
+  /// 實際啟動辨識（供 [_toggleVoiceInput] 與靜音逾時的自動重試共用）。
+  Future<void> _startListening() async {
 
     if (!_speechReady) {
       _speechInitializing = true;
@@ -352,7 +361,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
         listenMode: ListenMode.dictation,
       ),
       listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 3),
+      pauseFor: const Duration(seconds: 6),
       onResult: (result) {
         if (!mounted) return;
         // 只寫回輸入框、游標移到最後；不可在 result.finalResult 時自動送出。
@@ -377,6 +386,24 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     debugPrint('⚠️ [FamilyCopilot STT Error] ${err.errorMsg}');
     if (!mounted) return;
     setState(() => _isListening = false);
+
+    final isSilenceError = err.errorMsg == 'error_speech_timeout' ||
+        err.errorMsg == 'error_no_match';
+    if (isSilenceError) {
+      // 沒聽到聲音：輸入框仍空且本次點擊尚未重試過 → 自動重試一次（不自動送出）。
+      if (!_sttAutoRetried && _messageController.text.trim().isEmpty) {
+        _sttAutoRetried = true;
+        Future<void>.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted || _isListening || _isSending || _speechInitializing) {
+            return;
+          }
+          _startListening();
+        });
+        return;
+      }
+      ErrorHandler.showWarning(context, '沒有聽到聲音，請按麥克風後靠近手機直接說');
+      return;
+    }
     // 可重試（改用打字或再試一次），非硬錯誤，用 showWarning。
     ErrorHandler.showWarning(context, '語音辨識發生錯誤，請改用打字或再試一次');
   }
