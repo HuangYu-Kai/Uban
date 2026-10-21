@@ -125,14 +125,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// SharedPreferences 完成旗標。
   final Set<int> _tabTutorialAttempted = {};
 
-  // ★ 「怎麼用？」膠囊：預設縮進右緣只露半圓突起；點突起展開、約 4 秒或開始捲動
-  //   就再縮回；當前分頁捲到底（或內容不可捲）時常駐展開，離開底部再縮回。
+  // ★ 「怎麼用？」膠囊：預設縮進右緣只露半圓突起，點突起直接開救生圈；
+  //   當前分頁捲到底（或內容不可捲）時常駐展開，離開底部再縮回。
   final ElderBottomTracker _bottomTracker = ElderBottomTracker();
-  bool _helpPillManualOpen = false;
-  Timer? _helpPillTuckTimer;
 
-  bool get _helpPillExpanded =>
-      _helpPillManualOpen || _bottomTracker.atBottom(_selectedIndex);
+  bool get _helpPillExpanded => _bottomTracker.atBottom(_selectedIndex);
 
   /// setState 的安全版：捲動 metrics 通知可能在 build／layout 期間送達，
   /// 這時延後到影格結束後再重建。
@@ -150,23 +147,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     }
   }
 
-  /// 點突起：暫時展開，4 秒後自動縮回。
-  void _expandHelpPill() {
-    _helpPillManualOpen = true;
-    _helpPillTuckTimer?.cancel();
-    _helpPillTuckTimer = Timer(const Duration(seconds: 4), () {
-      if (!mounted) return;
-      _helpPillManualOpen = false;
-      _refreshHelpPill();
-    });
-    setState(() {});
-  }
-
-  void _tuckHelpPill() {
-    _helpPillTuckTimer?.cancel();
-    _helpPillManualOpen = false;
-  }
-
   /// 接收垂直捲動／metrics 通知（不限深度，水平的忽略；巢狀捲動區由
   /// [ElderBottomTracker] 只認 viewport 最大者）。
   bool _onTabScroll(Notification n) {
@@ -179,11 +159,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
         : (n is ScrollMetricsNotification ? n.context : null);
     final accepted = _bottomTracker.update(_selectedIndex, m, src ?? 0);
     if (!accepted) return false;
-    // 使用者真的在捲動：先把手動展開的膠囊縮回（若在底部則由底部規則維持展開）。
-    if (n is ScrollStartNotification ||
-        (n is ScrollUpdateNotification && (n.scrollDelta ?? 0) != 0)) {
-      _tuckHelpPill();
-    }
     _refreshHelpPill();
     return false;
   }
@@ -747,42 +722,54 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       });
     }
 
-    // ★ 第四十九輪 item 8：長輩說「幫我打電話／視訊給家人／好友」時，
-    //   GoogleAssistantOverlay 已經念完確認語並帶出撥號請求，這裡接手實際
-    //   撥出——完全比照 friends_screen.dart::_startCall() /
-    //   _startFriendCall() 的既有配方，透過建構 ElderScreen(autoCall:true,
-    //   ...) 完成，不呼叫 Signaling() 任何方法。`friendElderId` 有值時
-    //   （後端 tools_service.py::initiate_video_call 已在真實好友清單裡唯一
-    //   定位到對象）走好友通話（進對方房間、指定對象）；為 null 時走家人
-    //   通話（整戶已綁定家屬的手機一起響，不支援指定某一位）——兩者都是
-    //   ElderScreen 既有支援的公開建構參數，本檔沒有新增或修改該檔任何邏輯。
     if (mounted && assistantResult != null && assistantResult['autoCall'] == true) {
-      String? roomId;
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        roomId = prefs.getString('elder_room_id')?.trim();
-      } catch (e) {
-        debugPrint('⚠️ [ElderHomeScreen] 讀取 elder_room_id 失敗: $e');
-      }
-      if (!mounted) return;
-      if (roomId == null || roomId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('找不到您的通話帳號資料，請重新登入後再試')),
-        );
-      } else {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ElderScreen(
-              roomId: roomId!,
-              friendCallTargetElderId: assistantResult['friendElderId'] as String?,
-              deviceName: _userName,
-              autoCall: true,
-              isVideoCall: assistantResult['isVideo'] == true,
-            ),
+      await _startOutgoingCall(
+        isVideo: assistantResult['isVideo'] == true,
+        friendElderId: assistantResult['friendElderId'] as String?,
+      );
+    }
+  }
+
+  // ★ 第四十九輪 item 8：長輩說「幫我打電話／視訊給家人／好友」時，
+  //   GoogleAssistantOverlay 已經念完確認語並帶出撥號請求，這裡接手實際
+  //   撥出——完全比照 friends_screen.dart::_startCall() /
+  //   _startFriendCall() 的既有配方，透過建構 ElderScreen(autoCall:true,
+  //   ...) 完成，不呼叫 Signaling() 任何方法。`friendElderId` 有值時
+  //   （後端 tools_service.py::initiate_video_call 已在真實好友清單裡唯一
+  //   定位到對象）走好友通話（進對方房間、指定對象）；為 null 時走家人
+  //   通話（整戶已綁定家屬的手機一起響，不支援指定某一位）——兩者都是
+  //   ElderScreen 既有支援的公開建構參數，本檔沒有新增或修改該檔任何邏輯。
+  //   同時也供救生圈「打電話給家人」按鈕使用（語音通話，friendElderId 為 null
+  //   ＝整戶家屬一起響）。
+  Future<void> _startOutgoingCall({
+    required bool isVideo,
+    String? friendElderId,
+  }) async {
+    String? roomId;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      roomId = prefs.getString('elder_room_id')?.trim();
+    } catch (e) {
+      debugPrint('⚠️ [ElderHomeScreen] 讀取 elder_room_id 失敗: $e');
+    }
+    if (!mounted) return;
+    if (roomId == null || roomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('找不到您的通話帳號資料，請重新登入後再試')),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ElderScreen(
+            roomId: roomId!,
+            friendCallTargetElderId: friendElderId,
+            deviceName: _userName,
+            autoCall: true,
+            isVideoCall: isVideo,
           ),
-        );
-      }
+        ),
+      );
     }
   }
 
@@ -1299,7 +1286,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   @override
   void dispose() {
-    _helpPillTuckTimer?.cancel();
     scheduleMicrotask(() {
       elderFloatingChromeHidden.value = false;
       elderChatTabActive.value = false;
@@ -1448,8 +1434,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   /// 頁」——這正是為什麼判斷邏輯放在這裡（nav 的 onTap），而不是放進各分頁
   /// 自己的檔案。
   void _onNavTap(int index) {
-    // 切分頁：先縮回，再依該分頁最後已知的捲動位置決定是否展開（見 _helpPillExpanded）。
-    _tuckHelpPill();
+    // 切分頁後依該分頁最後已知的捲動位置決定是否展開（見 _helpPillExpanded）。
     setState(() => _selectedIndex = index);
     if (_tabTutorialAttempted.add(index)) {
       // 等下一影格畫出（IndexedStack 切換後的新 index 已經 paint）再嘗試，
@@ -1667,7 +1652,6 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               expanded: _helpPillExpanded,
               visible: _selectedIndex != 3,
               onTap: _showHelpSheet,
-              onExpand: _expandHelpPill,
             ),
           ),
         ],
@@ -1711,20 +1695,20 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
               variant: UbanButtonVariant.tonal,
               onPressed: () {
                 Navigator.pop(ctx);
-                _replayCurrentTabTutorial();
+                _startOutgoingCall(isVideo: false);
               },
-              icon: Icons.menu_book_rounded,
-              label: '觀看本頁功能導覽',
+              icon: Icons.phone_rounded,
+              label: '打電話給家人',
             ),
             const SizedBox(height: 12),
             UbanButton(
               variant: UbanButtonVariant.ghost,
               onPressed: () {
                 Navigator.pop(ctx);
-                _onNavTap(1);
+                _replayCurrentTabTutorial();
               },
-              icon: Icons.phone_rounded,
-              label: '撥打電話給家人',
+              icon: Icons.menu_book_rounded,
+              label: '觀看本頁功能導覽',
             ),
           ],
         );

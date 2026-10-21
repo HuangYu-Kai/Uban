@@ -92,8 +92,8 @@ class _GlobalAssistantButtonState extends State<GlobalAssistantButton> {
   static const double _margin = 16; // 設計稿 .mic：left 16
   // 浮鈕底緣與導覽列頂緣的間距（設計稿 .mic bottom:112 ≈ 導覽列 98 + 14）。
   static const double _navGap = 14;
-  // 靠右時要讓開「怎麼用？」膠囊（右下、導覽列上方 14，高約 56）再加一點間距。
-  static const double _helpPillReserve = 56 + 12;
+  // 靠右時要讓開「怎麼用？」膠囊（右下、導覽列上方 14，高 ElderHelpPill.height）再加一點間距。
+  static const double _helpPillReserve = ElderHelpPill.height + 12;
   static const Duration _idleBeforeCollapse = Duration(seconds: 5);
 
   /// 0 = 靠左、1 = 靠右；垂直則是 0（頂）~1（底）的比例。

@@ -1,28 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/widgets/elder_floating_chrome.dart';
 
-/// 測試用外殼：模擬首頁的「點突起展開、4 秒自動縮回」邏輯。
-class _Host extends StatefulWidget {
+/// 測試用外殼：expanded 由外層決定（對應首頁的「捲到底」），點擊一律觸發 onTap。
+class _Host extends StatelessWidget {
   final VoidCallback? onHelp;
   final bool forceExpanded;
   const _Host({this.onHelp, this.forceExpanded = false});
-
-  @override
-  State<_Host> createState() => _HostState();
-}
-
-class _HostState extends State<_Host> {
-  bool manual = false;
-  Timer? timer;
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,15 +18,8 @@ class _HostState extends State<_Host> {
             right: 0,
             bottom: 100,
             child: ElderHelpPill(
-              expanded: manual || widget.forceExpanded,
-              onTap: widget.onHelp ?? () {},
-              onExpand: () {
-                setState(() => manual = true);
-                timer?.cancel();
-                timer = Timer(const Duration(seconds: 4), () {
-                  if (mounted) setState(() => manual = false);
-                });
-              },
+              expanded: forceExpanded,
+              onTap: onHelp ?? () {},
             ),
           ),
         ]),
@@ -63,33 +40,36 @@ void main() {
     expect(icon.left, greaterThan(w - 60));
   });
 
-  testWidgets('點突起展開、約 4 秒後自動縮回', (tester) async {
+  testWidgets('縮進突起為展開時的 1.5 倍（圖示 30、高 72、露出 45）', (tester) async {
+    tester.view.physicalSize = const Size(412, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const _Host());
     await tester.pumpAndSettle();
-    final w = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    final icon = tester.getRect(find.byIcon(Icons.help_outline_rounded));
+    expect(icon.width, closeTo(30, 0.5));
+    final bump = tester.getRect(find.descendant(
+        of: find.byType(ElderHelpPill), matching: find.byType(Container)).first);
+    expect(bump.height, closeTo(72, 0.5));
+    expect(412 - bump.left, closeTo(ElderHelpPill.bumpVisible, 0.5));
 
-    final icon = find.byIcon(Icons.help_outline_rounded);
-    await tester.tap(icon);
-    await tester.pumpAndSettle(const Duration(milliseconds: 100));
-    // 展開後標籤完整落在螢幕內
-    expect(tester.getRect(find.text('怎麼用？')).right, lessThanOrEqualTo(w));
-
-    await tester.pump(const Duration(seconds: 4));
+    // 展開後圖示回到原本 20
+    await tester.pumpWidget(const _Host(forceExpanded: true));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('怎麼用？')).dx, greaterThan(w - 1));
+    expect(tester.getRect(find.byIcon(Icons.help_outline_rounded)).width,
+        closeTo(20, 0.5));
   });
 
-  testWidgets('展開狀態點膠囊觸發 onTap；縮進時點突起不觸發', (tester) async {
+  testWidgets('縮進時點突起直接觸發 onTap（不用先展開）', (tester) async {
     var helps = 0;
     await tester.pumpWidget(_Host(onHelp: () => helps++));
     await tester.pumpAndSettle();
+    final w = tester.view.physicalSize.width / tester.view.devicePixelRatio;
     await tester.tap(find.byIcon(Icons.help_outline_rounded));
-    await tester.pumpAndSettle(const Duration(milliseconds: 100));
-    expect(helps, 0);
-    await tester.tap(find.text('怎麼用？'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(helps, 1);
-    await tester.pump(const Duration(seconds: 5));
+    expect(tester.getTopLeft(find.text('怎麼用？')).dx, greaterThan(w - 1));
   });
 
   testWidgets('展開時為原本大小：寬 < 220、左緣完整在螢幕內（412 寬）', (tester) async {

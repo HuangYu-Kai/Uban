@@ -68,37 +68,39 @@ class ElderBottomTracker {
   }
 }
 
-/// 「怎麼用？」膠囊：預設縮進右緣只露出半圓突起，點突起才展開。
+/// 「怎麼用？」膠囊：預設縮進右緣只露出半圓突起。
 ///
-/// [expanded] 由外層決定（點突起後的暫時展開，或捲到底的常駐展開）。
+/// 收合／展開只是外觀差異，點哪一種狀態都直接開啟說明面板；
+/// [expanded] 由外層決定（當前分頁捲到底時展開）。
 /// 收合 ↔ 展開以水平滑動 300ms easeOutCubic 過場，系統「移除動畫」時瞬切。
 /// [visible] 為 false（聊天分頁）時整顆淡出且不可點。
 class ElderHelpPill extends StatelessWidget {
   final bool expanded;
   final bool visible;
 
-  /// 展開狀態下點膠囊（開啟說明面板）。
+  /// 點膠囊或突起（開啟說明面板）。
   final VoidCallback onTap;
-
-  /// 收合狀態下點突起（請求展開）。
-  final VoidCallback onExpand;
 
   const ElderHelpPill({
     super.key,
     required this.expanded,
     required this.onTap,
-    required this.onExpand,
     this.visible = true,
   });
 
-  /// 縮進時露出的寬度（不含額外的透明點擊區）。
-  static const double bumpVisible = 30;
+  /// 縮進時突起相對展開膠囊的放大倍率（長輩反映突起太小、不知道能點）。
+  /// 展開後維持原本大小；中間隨展開程度內插。
+  static const double bumpScale = 1.5;
 
-  /// 縮進時往螢幕內側多給的透明點擊區，讓點擊目標 >= 48 寬。
-  static const double bumpHitExtra = 18;
+  /// 縮進時露出的寬度（不含額外的透明點擊區）：原 30 × [bumpScale]。
+  static const double bumpVisible = 30 * bumpScale;
 
-  /// 膠囊整體高度（含點擊區），與 elderNavClearanceWithPill 的 56 對應。
-  static const double height = 56;
+  /// 縮進時往螢幕內側多給的透明點擊區：原 18 × [bumpScale]。
+  static const double bumpHitExtra = 18 * bumpScale;
+
+  /// 膠囊整體高度（含點擊區）＝放大後突起的高度 48 × [bumpScale]，
+  /// 與 elderNavClearanceWithPill、語音鈕的 _helpPillReserve 對應。
+  static const double height = 48 * bumpScale;
 
   /// 展開時離右緣的距離。
   static const double expandedMargin = 16;
@@ -131,13 +133,15 @@ class ElderHelpPill extends StatelessWidget {
   Widget _buildBody(BuildContext context, double t) {
     final c = UbanColors.of(context);
     final radius = BorderRadius.circular(999);
+    // 縮進時 = bumpScale 倍，展開時 = 1 倍。
+    final s = bumpScale + (1 - bumpScale) * t;
     return Semantics(
       button: true,
-      label: expanded ? '怎麼用？' : '怎麼用？，點一下展開',
+      label: '怎麼用？',
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: expanded ? onTap : onExpand,
+        onTap: onTap,
         child: Padding(
           // 縮進時左側多一塊透明點擊區；展開時收掉。
           padding: EdgeInsets.only(left: bumpHitExtra * (1 - t)),
@@ -151,8 +155,8 @@ class ElderHelpPill extends StatelessWidget {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                 child: Container(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  padding: const EdgeInsets.fromLTRB(8, 10, 16, 10),
+                  constraints: BoxConstraints(minHeight: 48 * s),
+                  padding: EdgeInsets.fromLTRB(8 * s, 10 * s, 16, 10 * s),
                   decoration: BoxDecoration(
                     color: c.glass,
                     borderRadius: radius,
@@ -162,7 +166,7 @@ class ElderHelpPill extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.help_outline_rounded,
-                          size: 20, color: c.brandStrong),
+                          size: 20 * s, color: c.brandStrong),
                       // 標籤隨展開程度淡入；縮進時整段在螢幕外。
                       Opacity(
                         opacity: t,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/elder_floating_chrome.dart';
 import '../../widgets/ui/uban_glass_nav_bar.dart';
 
 /// 長輩端各分頁底部要讓出的距離：玻璃導覽列高度 + 系統安全區 + 16 呼吸空間。
@@ -9,10 +10,10 @@ import '../../widgets/ui/uban_glass_nav_bar.dart';
 double elderNavClearance(BuildContext context) =>
     UbanGlassNavBar.totalHeight + MediaQuery.paddingOf(context).bottom + 16;
 
-/// 「怎麼用？」膠囊（高約 56）浮在導覽列上方；會捲動的分頁底部要再多留這段，
+/// 「怎麼用？」膠囊（高 [ElderHelpPill.height]）浮在導覽列上方；會捲動的分頁底部要再多留這段，
 /// 最後一項才不會永遠被膠囊壓住。聊天分頁不顯示膠囊，仍用 [elderNavClearance]。
 double elderNavClearanceWithPill(BuildContext context) =>
-    elderNavClearance(context) + 56;
+    elderNavClearance(context) + ElderHelpPill.height;
 
 /// 長輩外殼底部導覽列的五個項目（依序：首頁／電話／小豬／聊天／我的）。
 ///
