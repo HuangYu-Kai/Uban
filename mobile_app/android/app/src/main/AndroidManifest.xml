@@ -125,6 +125,34 @@
                 android:resource="@xml/screen_helper_service" />
         </service>
 
+        <!-- 手機小幫手的快速設定磚：顯示／隱藏浮鈕 -->
+        <service
+            android:name=".screenhelper.ScreenHelperTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_screen_helper_tile"
+            android:label="@string/screen_helper_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
+        <!-- 手機小幫手的桌面 1×1 小工具：與快速設定磚共用開關 -->
+        <receiver
+            android:name=".screenhelper.ScreenHelperWidgetProvider"
+            android:exported="true"
+            android:label="@string/screen_helper_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/screen_helper_widget_info" />
+        </receiver>
+
         <!-- FCM 背景喚醒的預設 Channel 設定 -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

@@ -151,7 +151,7 @@ class _ScreenHelperSetupScreenState extends State<ScreenHelperSetupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('三個步驟',
+                    Text('開啟步驟',
                         style: ubanText(24, FontWeight.w900, c.text)),
                     const SizedBox(height: 14),
                     _step(c, '1', '按下面的「前往開啟」'),
@@ -159,6 +159,9 @@ class _ScreenHelperSetupScreenState extends State<ScreenHelperSetupScreen> {
                     _step(c, '2', '找到「已下載的應用程式」裡的「Uban 手機小幫手」'),
                     const SizedBox(height: 14),
                     _step(c, '3', '打開開關，並按「允許」'),
+                    const SizedBox(height: 14),
+                    _step(c, '4',
+                        '（可選）長按桌面空白處 →「小工具」→ 找到「Uban 手機小幫手」拖到桌面；或從螢幕頂端往下滑兩次 →「編輯」→ 把「手機小幫手」拖進快速設定。之後一按就能顯示或隱藏按鈕'),
                   ],
                 ),
               ),

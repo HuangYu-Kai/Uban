@@ -272,6 +272,7 @@ flowchart TD
 
 - **原生端**：Android 無障礙服務「Uban 手機小幫手」，程式在 `mobile_app/android/.../screenhelper/`（浮鈕、截圖、無障礙元件清單、對話框、語音播放）。按下時截圖＋走訪元件清單，送後端分析後以元件編號畫出閃爍框。
 - **入口與設定頁**：長輩端「我的」分頁的「手機小幫手」卡 → `lib/screens/screen_helper_setup_screen.dart`（三步驟帶長輩到系統無障礙設定；開關灰色時教「允許受限設定」並可開 App 資訊頁）。
+- **快速設定磚**：`ScreenHelperTileService`（下拉面板「手機小幫手」磚）可一鍵顯示／隱藏浮鈕（隱藏時會中止進行中的請求並收起浮層，選擇記在原生 SharedPreferences `screen_helper` 的 `ball_visible`）；無障礙服務未開啟時，點磚改為開啟系統無障礙設定（App 無法自行開啟無障礙服務）。另有桌面 1×1 小工具 `ScreenHelperWidgetProvider`（長按桌面 →「小工具」→「Uban 手機小幫手」），與磚共用同一個開關；狀態變動由 `ScreenHelperState.notifyChanged` 同步刷新兩者。
 - **後端端點**：`POST /api/screen_helper/analyze`（multipart：`image`、`nodes`、`package`、`question`；需 Bearer token）。以 Ollama 看圖回 `{speech, node_id, target_text, sensitive}`；付款、密碼等敏感畫面只建議請家人協助。
 - **SharedPreferences 鍵**：Flutter 設定頁寫入 `screen_helper_base_url`（伺服器根網址，不含 `/api`）；原生端另讀既有的 `access_token`（原生實際讀 `FlutterSharedPreferences` 的 `flutter.` 前綴鍵）。
 - **隱私**：只有長輩按下浮鈕時才截圖，影像只在記憶體中處理、後端不存檔，log 只記使用者、套件名與耗時。

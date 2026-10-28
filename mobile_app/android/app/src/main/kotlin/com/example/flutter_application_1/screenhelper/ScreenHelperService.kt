@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.animation.ValueAnimator
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -55,6 +56,13 @@ class ScreenHelperService : AccessibilityService() {
 
     companion object {
         private const val TAG = "ScreenHelper"
+
+        /** 服務連線中的實例；快速設定磚用它判斷服務是否開著、並切換浮鈕。 */
+        @Volatile
+        var instance: ScreenHelperService? = null
+
+        const val PREFS = "screen_helper"
+        const val KEY_BALL_VISIBLE = "ball_visible"
         private const val BUTTON_DP = 56
         private const val CORNER_DP = 14
         private const val MAX_NODES = 80
@@ -106,6 +114,45 @@ class ScreenHelperService : AccessibilityService() {
         panel = HelperPanel(this, wm, onAsk = { startVoiceQuestion() }, onDismiss = { dismissAll() })
         executor = Executors.newSingleThreadExecutor()
         addFloatingButton()
+        instance = this
+        applyBallVisibility(isBallVisible())
+        ScreenHelperState.notifyChanged(this)
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        instance = null
+        ScreenHelperState.notifyChanged(this)
+        return super.onUnbind(intent)
+    }
+
+    fun isBallVisible(): Boolean =
+        getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_BALL_VISIBLE, true)
+
+    /** 顯示／隱藏浮鈕並記住選擇；任何執行緒都可呼叫。 */
+    fun setBallVisible(visible: Boolean) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_BALL_VISIBLE, visible).apply()
+        ScreenHelperState.notifyChanged(this)
+        if (Looper.myLooper() == Looper.getMainLooper()) applyBallVisibility(visible)
+        else main.post { applyBallVisibility(visible) }
+    }
+
+    private fun applyBallVisibility(visible: Boolean) {
+        if (visible) {
+            button?.apply {
+                visibility = View.VISIBLE
+                alpha = ACTIVE_ALPHA
+            }
+            scheduleIdle()
+            return
+        }
+        // 隱藏：讓進行中的請求作廢，並收掉所有浮層與聲音。
+        requestId++
+        main.removeCallbacks(waitRunnable)
+        finish()
+        main.removeCallbacks(idleFade)
+        stopListening()
+        dismissAll()
+        button?.visibility = View.GONE
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -122,6 +169,8 @@ class ScreenHelperService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        instance = null
+        ScreenHelperState.notifyChanged(this)
         main.removeCallbacks(idleFade)
         main.removeCallbacks(waitRunnable)
         requestId++

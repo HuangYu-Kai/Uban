@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="4dp">
+
+    <FrameLayout
+        android:id="@+id/widget_circle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="@drawable/screen_helper_widget_bg_off">
+
+        <ImageView
+            android:id="@+id/widget_icon"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_screen_helper_tile" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/widget_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="小幫手"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:shadowColor="#80000000"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="3" />
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="未開啟"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:shadowColor="#80000000"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="3" />
+</LinearLayout>

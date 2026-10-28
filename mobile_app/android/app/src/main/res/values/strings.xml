@@ -2,4 +2,5 @@
 <resources>
     <string name="screen_helper_label">Uban 手機小幫手</string>
     <string name="screen_helper_description">開啟後，畫面旁會出現一顆「?」按鈕。不會用手機時按一下，小嘎會看看目前的畫面，用語音告訴您下一步要按哪裡。只有在您按下按鈕時才會讀取畫面，平常不會監看。</string>
+    <string name="screen_helper_widget_desc">一鍵顯示或隱藏手機小幫手的浮動按鈕</string>
 </resources>
