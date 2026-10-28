@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 手機小幫手（ScreenHelperService）：只在長輩按下浮動按鈕時讀取畫面與截圖，不監聽事件。 -->
+<!--
+  手機小幫手（ScreenHelperService）：只在長輩按下浮動按鈕、或小嘎正在帶步驟時才看畫面。
+  - typeWindowStateChanged／typeViewClicked／typeWindowContentChanged：只用來判斷「長輩做完這一步了嗎」，
+    服務只在帶步驟並等待下一步時才處理這些事件，只看事件來自哪個 App，不讀取內容、不記錄、不上傳。
+  - canTakeScreenshot：按下浮鈕時截一張圖給 AI 看。
+  - canPerformGestures：長輩按「幫我按」時，代為點擊畫面上的目標（節點點擊失敗時用手勢點座標）。
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/screen_helper_description"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewClicked"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"
+    android:canPerformGestures="true"
     android:notificationTimeout="100" />

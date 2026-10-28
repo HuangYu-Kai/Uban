@@ -182,5 +182,11 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- 手機小幫手「問家人」要把前景 App 的名稱（例如 LINE）告訴家人；
+             宣告「有桌面圖示的 App」可見，不需要 QUERY_ALL_PACKAGES。 -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 </manifest>

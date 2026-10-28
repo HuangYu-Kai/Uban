@@ -275,7 +275,12 @@ flowchart TD
 - **快速設定磚**：`ScreenHelperTileService`（下拉面板「手機小幫手」磚）可一鍵顯示／隱藏浮鈕（隱藏時會中止進行中的請求並收起浮層，選擇記在原生 SharedPreferences `screen_helper` 的 `ball_visible`）；無障礙服務未開啟時，點磚改為開啟系統無障礙設定（App 無法自行開啟無障礙服務）。另有桌面 1×1 小工具 `ScreenHelperWidgetProvider`（長按桌面 →「小工具」→「Uban 手機小幫手」），與磚共用同一個開關；狀態變動由 `ScreenHelperState.notifyChanged` 同步刷新兩者。
 - **後端端點**：`POST /api/screen_helper/analyze`（multipart：`image`、`nodes`、`package`、`question`；需 Bearer token）。以 Ollama 看圖回 `{speech, node_id, target_text, sensitive}`；付款、密碼等敏感畫面只建議請家人協助。
 - **SharedPreferences 鍵**：Flutter 設定頁寫入 `screen_helper_base_url`（伺服器根網址，不含 `/api`）；原生端另讀既有的 `access_token`（原生實際讀 `FlutterSharedPreferences` 的 `flutter.` 前綴鍵）。
-- **隱私**：只有長輩按下浮鈕時才截圖，影像只在記憶體中處理、後端不存檔，log 只記使用者、套件名與耗時。
+- **v2 浮鈕與預熱**：浮鈕改用 Uban 標誌；無障礙服務連上與裝置解鎖時會預熱 AI（`/api/screen_helper/warm`），縮短第一次回應的等待。
+- **多步驟帶著做**：語音提問即開始一個任務；長輩換頁後自動帶著 goal／history 再分析一次，後端回 `done` 即結束，最多 8 步。
+- **幫我按**：只有後端回 `can_tap` 時才顯示按鈕；原生端先試 `ACTION_CLICK`，失敗再改手勢點擊。敏感畫面、銀行／支付／撥號類 App，以及付款、刪除等字眼的目標，一律不提供「幫我按」。
+- **問家人**：`POST /api/screen_helper/ask_family` → 寫入既有的長輩提問收件匣（`reason='screen_helper'`）。非敏感畫面會附截圖（存於非公開目錄、保留 7 天，只有綁定的家屬可經 `GET /api/elder_question/{id}/screenshot` 讀取，需帶 `Authorization: Bearer <token>`）；家屬端收件匣（`elder_question_inbox.dart`）顯示「📱 從手機小幫手傳來」標籤與縮圖，點開可全螢幕縮放，過期則顯示「截圖已過期」。
+- **除錯廣播（僅 debug 版）**：`adb shell am broadcast -a com.example.flutter_application_1.SH_DEBUG --es q "字要怎麼調大"`；另有 `--ez press true`（幫我按）、`--ez tap true`、`--ez family true`（問家人）、`--ez dismiss true`（收起浮層）。
+- **隱私**：平常只有長輩按下浮鈕、或小嘎正在帶步驟時才截圖，影像看完即丟；後端除了長輩按「問家人」且畫面非敏感時的那一張截圖（7 天後清除、僅綁定家屬可讀）外一律不存檔，log 只記使用者、套件名與耗時。
 
 ---
 

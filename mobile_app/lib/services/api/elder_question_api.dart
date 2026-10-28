@@ -53,6 +53,11 @@ class ElderQuestionApi {
     }
   }
 
+  /// 家屬端：手機小幫手「問家人」附帶的畫面截圖網址。
+  /// 後端改以 Bearer token 驗證綁定家屬（`family_id` 參數會被忽略，僅保留相容），截圖只留 7 天，過期會回 404。呼叫端必須帶 Authorization header。
+  static String screenshotUrl(int questionId, int familyId) =>
+      '${ApiClient.serverRootUrl}/api/elder_question/$questionId/screenshot?family_id=$familyId';
+
   /// 長輩端：讀取已被子女回覆的提問，供小嘎主動轉達。
   static Future<List<Map<String, dynamic>>> listAnsweredForElder(
     String elderId, {

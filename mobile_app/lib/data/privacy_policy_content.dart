@@ -39,7 +39,7 @@ class PrivacyPolicyContent {
 
   static const String title = '隱私權政策';
 
-  static const String lastUpdated = '2026 年 9 月 30 日';
+  static const String lastUpdated = '2026 年 10 月 28 日';
 
   static const String introText =
       '為了讓您能安心使用「UBan」的各項服務，並保障您與長輩的權益，請詳閱以下本服務'
@@ -151,7 +151,18 @@ class PrivacyPolicyContent {
       ],
     ),
     PrivacyPolicySection(
-      title: '11. 推播通知與裝置識別',
+      title: '11. 手機小幫手（螢幕求助，僅 Android）',
+      icon: Icons.touch_app_outlined,
+      bulletPoints: [
+        '**什麼時候會看畫面**：只有長輩按下螢幕旁的浮動按鈕，或小嘎正在一步一步帶長輩操作時，才會讀取手機畫面；平常不會看。',
+        '**畫面送去哪裡**：畫面會送到 Uban 自己架設的 AI 伺服器分析，**不會送給第三方**；分析完就刪除，**不保存**。',
+        '**問家人**：只有長輩按下「問家人」並選擇「連畫面一起傳」時，該張截圖才會傳給已綁定的家屬；截圖存放在非公開空間，**最多 7 天後自動刪除**，只有已綁定的家屬登入後才能查看。',
+        '**重要畫面的保護**：付款、密碼等重要畫面**不會傳截圖**，小嘎也**不會代為點擊**。',
+        '**隨時可關閉**：可隨時在手機的系統「無障礙」設定，或下拉面板的快速設定磚中關閉。',
+      ],
+    ),
+    PrivacyPolicySection(
+      title: '12. 推播通知與裝置識別',
       icon: Icons.notifications_active_outlined,
       bulletPoints: [
         '**收集什麼**：裝置的 **FCM（Firebase Cloud Messaging）**推播權杖（token）、裝置名稱與識別碼。',
@@ -162,7 +173,7 @@ class PrivacyPolicyContent {
       ],
     ),
     PrivacyPolicySection(
-      title: '12. 與第三方共用個人資料之政策',
+      title: '13. 與第三方共用個人資料之政策',
       icon: Icons.share_outlined,
       bulletPoints: [
         '本服務**絕不會**任意出售、交換或出租任何您的個人資料給其他團體或個人。',
@@ -175,7 +186,7 @@ class PrivacyPolicyContent {
       ],
     ),
     PrivacyPolicySection(
-      title: '13. 資料安全與保護機制',
+      title: '14. 資料安全與保護機制',
       icon: Icons.lock_outline,
       bulletPoints: [
         '**傳輸加密**：App 與伺服器間之通訊全程採 SSL/TLS 加密。',
@@ -185,7 +196,7 @@ class PrivacyPolicyContent {
       ],
     ),
     PrivacyPolicySection(
-      title: '14. 您的權利',
+      title: '15. 您的權利',
       icon: Icons.admin_panel_settings_outlined,
       bulletPoints: [
         '您可隨時查詢、閱覽、補充或更正您與長輩的個人資料。',
@@ -195,7 +206,7 @@ class PrivacyPolicyContent {
       ],
     ),
     PrivacyPolicySection(
-      title: '15. 政策修改與最終解釋權',
+      title: '16. 政策修改與最終解釋權',
       icon: Icons.published_with_changes_outlined,
       bulletPoints: [
         '政策將因應法規與服務內容調整，修正後的條款將公告於 App 內並提示重新同意。',

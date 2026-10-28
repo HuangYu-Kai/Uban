@@ -22,7 +22,11 @@ class HighlightOverlay(private val ctx: Context, private val wm: WindowManager) 
     private val autoHide = Runnable { hide() }
     private var view: HighlightView? = null
 
-    fun show(rect: Rect) {
+    /**
+     * @param keepVisible 帶步驟、等長輩操作時為 true：框一直留著直到換頁或下一步，
+     * 否則 10 秒後消失，長輩還在找按鈕框就不見了。
+     */
+    fun show(rect: Rect, keepVisible: Boolean = false) {
         hide()
         val v = HighlightView(ctx, density, Rect(rect))
         val lp = WindowManager.LayoutParams(
@@ -38,7 +42,7 @@ class HighlightOverlay(private val ctx: Context, private val wm: WindowManager) 
         if (runCatching { wm.addView(v, lp) }.isFailure) return
         view = v
         v.startPulse()
-        main.postDelayed(autoHide, AUTO_HIDE_MS)
+        if (!keepVisible) main.postDelayed(autoHide, AUTO_HIDE_MS)
     }
 
     fun hide() {

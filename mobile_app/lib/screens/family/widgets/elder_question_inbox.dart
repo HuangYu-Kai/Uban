@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/api/elder_question_api.dart';
 import '../../../theme/app_theme.dart';
@@ -35,10 +36,29 @@ class _ElderQuestionInboxState extends State<ElderQuestionInbox> {
   bool _isLoading = true;
   final Set<int> _sending = {};
 
+  /// 家屬登入 JWT（SharedPreferences `access_token`）。截圖端點必須帶
+  /// Bearer，`Image.network` 不會自動帶，所以要先非同步讀出來。
+  String? _token;
+  bool _tokenLoaded = false;
+
   @override
   void initState() {
     super.initState();
+    _loadToken();
     _load();
+  }
+
+  Future<void> _loadToken() async {
+    String? token;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      token = prefs.getString('access_token');
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _token = (token != null && token.isNotEmpty) ? token : null;
+      _tokenLoaded = true;
+    });
   }
 
   @override
@@ -206,11 +226,138 @@ class _ElderQuestionInboxState extends State<ElderQuestionInbox> {
     );
   }
 
+  /// 截圖過期（後端保留 7 天）或載入失敗時的替代文字。
+  Widget _screenshotExpired(UbanColors c, {double height = 60}) {
+    return Container(
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text('截圖已過期', style: famText(c.text2, 12.5)),
+    );
+  }
+
+  /// 讀不到登入憑證時：截圖端點需要登入才能看。
+  Widget _screenshotNeedLogin(UbanColors c) {
+    return Container(
+      height: 60,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text('請重新登入才能看截圖',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: famText(c.text2, 12.5)),
+    );
+  }
+
+  Widget _screenshotLoading(UbanColors c, ImageChunkEvent? progress) {
+    return Container(
+      height: 120,
+      alignment: Alignment.center,
+      color: c.surface2,
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.5,
+          color: c.brand,
+          value: progress?.expectedTotalBytes != null
+              ? progress!.cumulativeBytesLoaded / progress.expectedTotalBytes!
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScreenshotThumb(UbanColors c, int qid) {
+    final url = ElderQuestionApi.screenshotUrl(qid, widget.familyId);
+    if (!_tokenLoaded) return _screenshotLoading(c, null);
+    if (_token == null) return _screenshotNeedLogin(c);
+    final headers = {'Authorization': 'Bearer $_token'};
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: () => _showScreenshot(url, headers),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180),
+            child: Image.network(
+              url,
+              headers: headers,
+              fit: BoxFit.cover,
+              loadingBuilder: (ctx, child, progress) =>
+                  progress == null ? child : _screenshotLoading(c, progress),
+              errorBuilder: (ctx, _, __) => _screenshotExpired(c),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 全螢幕檢視截圖（可雙指縮放）。
+  void _showScreenshot(String url, Map<String, String> headers) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        final c = UbanColors.of(ctx);
+        return Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.network(
+                      url,
+                      headers: headers,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (ctx, child, progress) => progress == null
+                          ? child
+                          : _screenshotLoading(c, progress),
+                      errorBuilder: (ctx, _, __) => _screenshotExpired(c),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: MediaQuery.of(ctx).padding.top + 8,
+                right: 8,
+                child: IconButton(
+                  tooltip: '關閉',
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close_rounded,
+                      color: Colors.white, size: 30),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black54,
+                    minimumSize: const Size(48, 48),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildQuestionCard(UbanColors c, Map<String, dynamic> q) {
     final qid = int.tryParse('${q['question_id']}') ?? -1;
     final isSending = _sending.contains(qid);
     final context_ = (q['screen_context'] ?? '').toString();
     final isBlockedTopic = (q['reason'] ?? '') == 'blocked_topic';
+    final isScreenHelper = (q['reason'] ?? '') == 'screen_helper';
+    final hasScreenshot = (q['screenshot_path'] ?? '').toString().isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -227,6 +374,22 @@ class _ElderQuestionInboxState extends State<ElderQuestionInbox> {
                   '涉及金錢或安全，小嘎沒有自行回答',
                   style: famText(c.danger, 13, weight: FontWeight.w700),
                   maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+        // 手機小幫手轉來的問題：中性色標籤，讓子女知道附帶的是長輩手機畫面。
+        if (isScreenHelper) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '📱 從手機小幫手傳來',
+                  style: famText(c.text2, 13, weight: FontWeight.w700),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -252,6 +415,11 @@ class _ElderQuestionInboxState extends State<ElderQuestionInbox> {
             '當時在：$context_',
             style: famText(c.text2, 12.5, height: 1.4),
           ),
+        ],
+        // 小幫手附的畫面截圖：縮圖，點開可放大檢視。
+        if (hasScreenshot) ...[
+          const SizedBox(height: 10),
+          _buildScreenshotThumb(c, qid),
         ],
         const SizedBox(height: 10),
         Align(

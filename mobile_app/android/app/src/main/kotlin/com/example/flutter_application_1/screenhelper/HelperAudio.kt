@@ -19,9 +19,10 @@ import java.util.Locale
 class HelperAudio(private val ctx: Context) {
     private companion object { const val TAG = "ScreenHelper" }
 
+    /** onStart：聲音「實際開始出聲」時呼叫（主執行緒），量測延遲用；只會呼叫一次，被 stopAll 打斷就不呼叫。 */
     private sealed class Item {
-        class Raw(val resId: Int) : Item()
-        class Speak(val text: String) : Item()
+        class Raw(val resId: Int, val onStart: (() -> Unit)?) : Item()
+        class Speak(val text: String, val onStart: (() -> Unit)?) : Item()
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -50,9 +51,9 @@ class HelperAudio(private val ctx: Context) {
         }
     }
 
-    fun playRaw(resId: Int) = enqueue(Item.Raw(resId))
+    fun playRaw(resId: Int, onStart: (() -> Unit)? = null) = enqueue(Item.Raw(resId, onStart))
 
-    fun speak(text: String) = enqueue(Item.Speak(text))
+    fun speak(text: String, onStart: (() -> Unit)? = null) = enqueue(Item.Speak(text, onStart))
 
     private fun enqueue(item: Item) {
         queue.addLast(item)
@@ -70,8 +71,8 @@ class HelperAudio(private val ctx: Context) {
         requestFocus()
         val gen = generation
         when (item) {
-            is Item.Raw -> playRawItem(item.resId, gen)
-            is Item.Speak -> playStream(item.text, gen)
+            is Item.Raw -> playRawItem(item.resId, gen, item.onStart)
+            is Item.Speak -> playStream(item.text, gen, item.onStart)
         }
     }
 
@@ -81,7 +82,7 @@ class HelperAudio(private val ctx: Context) {
         next()
     }
 
-    private fun playRawItem(resId: Int, gen: Int) {
+    private fun playRawItem(resId: Int, gen: Int, onStart: (() -> Unit)?) {
         try {
             val mp = MediaPlayer()
             player = mp
@@ -91,7 +92,10 @@ class HelperAudio(private val ctx: Context) {
             afd.close()
             mp.setOnCompletionListener { advance(gen) }
             mp.setOnErrorListener { _, _, _ -> advance(gen); true }
-            mp.setOnPreparedListener { it.start() }
+            mp.setOnPreparedListener {
+                it.start()
+                if (gen == generation) onStart?.invoke()
+            }
             mp.prepareAsync()
         } catch (e: Exception) {
             Log.w(TAG, "playRaw failed", e)
@@ -99,13 +103,21 @@ class HelperAudio(private val ctx: Context) {
         }
     }
 
-    private fun playStream(text: String, gen: Int) {
+    private fun playStream(text: String, gen: Int, onStart: (() -> Unit)?) {
+        // 串流已開播後才發現是空檔、改走 TTS 時，不能再算一次「開始出聲」。
+        var started = false
+        val notifyStart = {
+            if (!started && gen == generation) {
+                started = true
+                onStart?.invoke()
+            }
+        }
         var fellBack = false
         val fallback = {
             if (!fellBack && gen == generation) {
                 fellBack = true
                 releasePlayer()
-                speakWithTts(text, gen)
+                speakWithTts(text, gen, notifyStart)
             }
         }
         try {
@@ -119,6 +131,7 @@ class HelperAudio(private val ctx: Context) {
             mp.setOnPreparedListener {
                 startedAt = android.os.SystemClock.elapsedRealtime()
                 it.start()
+                notifyStart()
             }
             mp.setOnCompletionListener {
                 val playedMs = android.os.SystemClock.elapsedRealtime() - startedAt
@@ -132,7 +145,7 @@ class HelperAudio(private val ctx: Context) {
         }
     }
 
-    private fun speakWithTts(text: String, gen: Int) {
+    private fun speakWithTts(text: String, gen: Int, onStart: () -> Unit) {
         val t = tts
         if (t == null || !ttsReady) {
             Log.w(TAG, "TTS not ready, skip")
@@ -140,7 +153,7 @@ class HelperAudio(private val ctx: Context) {
             return
         }
         t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
+            override fun onStart(utteranceId: String?) { main.post { onStart() } }
             override fun onDone(utteranceId: String?) { main.post { advance(gen) } }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) { main.post { advance(gen) } }

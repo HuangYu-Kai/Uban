@@ -39,7 +39,11 @@ class PrivacyPolicyScreen extends StatefulWidget {
   ///
   /// 2026-09-30 由 `_v2` 升版為 `_v3`：第 9 節新增長輩端**背景持續** GPS 定位
   /// 與移動軌跡（且位置分享系統預設開啟），屬於新增資料蒐集項目的重大變更。
-  static const String prefsKey = 'privacy_policy_accepted_v3';
+  ///
+  /// 2026-10-28 由 `_v3` 升版為 `_v4`：新增第 11 節「手機小幫手」——長輩按「問家人」
+  /// 並選擇連畫面一起傳時，會蒐集並暫存手機畫面截圖（非公開空間、最多 7 天、
+  /// 僅綁定家屬登入後可看），屬於新增資料蒐集項目的重大變更，需所有使用者重新同意。
+  static const String prefsKey = 'privacy_policy_accepted_v4';
 
   @override
   State<PrivacyPolicyScreen> createState() => _PrivacyPolicyScreenState();

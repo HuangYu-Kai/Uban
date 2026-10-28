@@ -96,7 +96,17 @@ class _ScreenHelperSetupScreenState extends State<ScreenHelperSetupScreen> {
                   Text('這是什麼？', style: ubanText(24, FontWeight.w900, c.text)),
                   const SizedBox(height: 10),
                   Text(
-                    '不會用手機時，按一下螢幕旁的半透明按鈕，小嘎會看看畫面，用說的告訴您要按哪裡；也可以按麥克風直接問。',
+                    '不會用手機時，按一下螢幕旁的小嘎按鈕，說出您想做的事，小嘎會看著畫面，一步一步帶您做。',
+                    style: ubanText(20, FontWeight.w500, c.text),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '・想讓小嘎替您按，就按「幫我按」（付款、密碼等重要畫面不會幫您按）。',
+                    style: ubanText(20, FontWeight.w500, c.text),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '・還是不會時，按「問家人」，會先讓您看畫面，再決定要不要一起傳給家人（付款、密碼等重要畫面不會傳）。',
                     style: ubanText(20, FontWeight.w500, c.text),
                   ),
                   const SizedBox(height: 14),
@@ -108,7 +118,7 @@ class _ScreenHelperSetupScreenState extends State<ScreenHelperSetupScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          '只有您按下按鈕時才會看畫面，看完就丟掉，不會儲存。',
+                          '平常只有您按下按鈕，或小嘎正在帶您做步驟時，才會看畫面，看完就丟掉。',
                           style: ubanText(20, FontWeight.w700, c.brandStrong),
                         ),
                       ),
