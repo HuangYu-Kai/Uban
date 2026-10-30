@@ -90,6 +90,59 @@ String stripAutoCallMarkers(String text) => text
   return null;
 }
 
+/// 等 [stream] 的第一個事件，最多等 [timeout]；逾時、出錯、串流結束都視為完成，絕不丟例外。
+/// 可先建立（先訂閱）、播放開始後才呼叫 [wait] 起算逾時，避免漏接事件又不會把下載時間算進去。
+/// 注意：audioplayers 的 onPlayerComplete 宣告為 `Stream<void>`，但執行期實際是 `Stream<AudioEvent>`，
+/// 所以不能用 `.first.timeout(onTimeout: () {})`（onTimeout 回傳 Null 會型別錯誤），改用 Completer。
+@visibleForTesting
+class FirstEventWaiter {
+  FirstEventWaiter(Stream<void> stream) {
+    _sub = stream.listen(
+      (_) => _complete(),
+      onError: (Object _) => _complete(),
+      onDone: _complete,
+      cancelOnError: false,
+    );
+  }
+
+  final Completer<void> _completer = Completer<void>();
+  StreamSubscription<void>? _sub;
+
+  /// 事件是否已經到了（或串流已結束／出錯）
+  bool get fired => _completer.isCompleted;
+
+  void _complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  /// 從現在起算 [timeout]，等到事件或逾時；永遠正常返回。
+  Future<void> wait(Duration timeout) async {
+    try {
+      await _completer.future.timeout(timeout, onTimeout: () {});
+    } catch (_) {}
+  }
+
+  /// 取消訂閱（可重複呼叫）
+  Future<void> dispose() async {
+    final sub = _sub;
+    _sub = null;
+    try {
+      await sub?.cancel();
+    } catch (_) {}
+  }
+}
+
+/// 一次到位版：訂閱 → 等第一個事件或逾時 → 取消訂閱。絕不丟例外。
+@visibleForTesting
+Future<void> waitFirstEventOrTimeout(
+    Stream<void> stream, Duration timeout) async {
+  final waiter = FirstEventWaiter(stream);
+  try {
+    await waiter.wait(timeout);
+  } finally {
+    await waiter.dispose();
+  }
+}
 
 
 class _ChatMessage {
@@ -741,6 +794,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
     // 加入一個空白的 AI 訊息泡泡，稍後會在串流中逐字填入
     final aiMsg = _ChatMessage('', false, isStreaming: true);
+    // 撥號放在 try/catch 之外執行，撥號失敗不會被誤報成「小嘎連不上」
+    ({bool isVideo, String? friendElderId})? pendingCall;
 
     try {
       final stream = ApiService.aiChatStream(
@@ -803,10 +858,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           // 觸發 TTS 語音播放與本機快取
           _playOrReplayTts(aiMsg);
         } else {
-          await _speakThenAutoCall(aiMsg, autoCall);
+          pendingCall = autoCall;
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('❌ [ElderChat] _send 失敗: $e\n$st');
       if (!mounted) return;
       final errorText = '小嘎現在連不上，稍後再聊喔 🙏';
       setState(() {
@@ -819,6 +875,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         _isThinking = false;
       });
       _saveLocalChatHistory();
+    }
+    if (pendingCall != null && mounted) {
+      await _speakThenAutoCall(aiMsg, pendingCall);
     }
     _scrollToBottom();
   }
@@ -879,19 +938,18 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       _ChatMessage msg, ({bool isVideo, String? friendElderId}) call) async {
     if (_isAutoDialing) return;
     _isAutoDialing = true;
+    FirstEventWaiter? completed;
     try {
-      // 先訂閱完成事件再開始播放，避免短音檔播完才訂閱而漏接
-      final completed = _audioPlayer.onPlayerComplete.first
-          .timeout(const Duration(seconds: 15), onTimeout: () {});
+      // 先訂閱完成事件再開始播放，避免短音檔播完才訂閱而漏接；
+      // 逾時（15 秒）等播放真正開始後才起算，TTS 下載時間不算在內
+      completed = FirstEventWaiter(_audioPlayer.onPlayerComplete);
       await _playOrReplayTts(msg);
-      final started = msg.isPlayingAudio ||
-          (msg.ttsAudioPath != null && msg.ttsAudioPath!.isNotEmpty);
-      if (started) {
-        try {
-          await completed;
-        } catch (_) {}
+      if (completed.fired) {
+        // 短音檔在播放流程返回前就播完了
+      } else if (msg.isPlayingAudio) {
+        await completed.wait(const Duration(seconds: 15));
       } else {
-        unawaited(completed.catchError((_) {}));
+        // TTS 失敗或沒有聲音：稍等 1 秒再撥
         await Future.delayed(const Duration(seconds: 1));
       }
       if (!mounted) return;
@@ -924,7 +982,15 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           ),
         ),
       );
+    } catch (e, st) {
+      debugPrint('❌ [ElderChat] 自動撥號失敗: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('撥號失敗，請到電話分頁再試一次')),
+        );
+      }
     } finally {
+      await completed?.dispose();
       _isAutoDialing = false;
     }
   }
