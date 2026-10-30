@@ -60,6 +60,38 @@ class ElderChatScreen extends StatefulWidget {
   State<ElderChatScreen> createState() => _ElderChatScreenState();
 }
 
+/// 後端語音撥號動作標記（與 GoogleAssistantOverlay 相同格式）：
+/// `[AUTO_CALL:video|audio]` 打給家人、`[AUTO_CALL_FRIEND:video|audio:<elder_id>]` 打給好友。
+final RegExp _autoCallPattern = RegExp(r'\[AUTO_CALL:(video|audio)\]');
+final RegExp _autoCallFriendPattern =
+    RegExp(r'\[AUTO_CALL_FRIEND:(video|audio):([A-Za-z0-9]+)\]');
+// 串流途中尚未收完整的標記前綴（例如 `[AUTO_CA`），先藏起來避免閃現
+final RegExp _autoCallPartialTail = RegExp(r'\[AUTO_CALL[^\]]*$');
+
+/// 剝除撥號動作標記（含串流尾端未收完整的片段），避免顯示、存檔或被 TTS 唸出。
+@visibleForTesting
+String stripAutoCallMarkers(String text) => text
+    .replaceAll(_autoCallFriendPattern, '')
+    .replaceAll(_autoCallPattern, '')
+    .replaceAll(_autoCallPartialTail, '')
+    .trim();
+
+/// 解析撥號動作標記：好友優先、其次家人；沒有標記回 null。
+@visibleForTesting
+({bool isVideo, String? friendElderId})? parseAutoCallMarker(String text) {
+  final friend = _autoCallFriendPattern.firstMatch(text);
+  if (friend != null) {
+    return (isVideo: friend.group(1) == 'video', friendElderId: friend.group(2));
+  }
+  final family = _autoCallPattern.firstMatch(text);
+  if (family != null) {
+    return (isVideo: family.group(1) == 'video', friendElderId: null);
+  }
+  return null;
+}
+
+
+
 class _ChatMessage {
   final String id;
   String text;
@@ -261,7 +293,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         final List<dynamic> decoded = jsonDecode(cached);
         final List<_ChatMessage> localLoaded = decoded
             .map((item) => _ChatMessage(
-                  item['text'] ?? '',
+                  stripAutoCallMarkers((item['text'] ?? '').toString()),
                   item['isUser'] == true,
                   id: item['id']?.toString(),
                   ttsLanguage: item['ttsLanguage'],
@@ -308,7 +340,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
               ));
             } else {
               remoteLoaded.add(_ChatMessage(
-                h.text,
+                stripAutoCallMarkers(h.text),
                 h.isUser,
                 ttsLanguage: h.isUser ? null : 'mandarin',
                 ttsText: h.isUser ? null : _extractCleanTtsText(h.text),
@@ -719,6 +751,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         imageUrl: uploadedUrl, // ★ 2026-10-17 拍照問小嘎：純文字訊息為 null，行為不變
       );
       bool firstToken = true;
+      String rawText = ''; // 含撥號動作標記的完整原文；氣泡只顯示剝除標記後的內容
 
       await for (final token in stream) {
         if (!mounted) break;
@@ -744,14 +777,17 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
           });
         }
 
+        rawText += token;
         setState(() {
-          aiMsg.text += token;
+          aiMsg.text = stripAutoCallMarkers(rawText);
         });
         _scrollToBottom();
       }
 
       // 串流結束
       if (mounted) {
+        // 偵測撥號動作標記（好友優先、其次家人），與 GoogleAssistantOverlay 同一套規則
+        final autoCall = parseAutoCallMarker(rawText);
         final cleanText = _extractCleanTtsText(aiMsg.text);
         setState(() {
           aiMsg.isStreaming = false;
@@ -763,8 +799,12 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         
         _saveLocalChatHistory();
 
-        // 觸發 TTS 語音播放與本機快取
-        _playOrReplayTts(aiMsg);
+        if (autoCall == null) {
+          // 觸發 TTS 語音播放與本機快取
+          _playOrReplayTts(aiMsg);
+        } else {
+          await _speakThenAutoCall(aiMsg, autoCall);
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -832,9 +872,66 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
     await _send(photo: File(picked.path));
   }
 
+  bool _isAutoDialing = false; // 防止同一句話重複撥號
+
+  /// 念完確認語後才撥號：等 TTS 真正播完（上限 15 秒），TTS 失敗則稍等 1 秒。
+  Future<void> _speakThenAutoCall(
+      _ChatMessage msg, ({bool isVideo, String? friendElderId}) call) async {
+    if (_isAutoDialing) return;
+    _isAutoDialing = true;
+    try {
+      // 先訂閱完成事件再開始播放，避免短音檔播完才訂閱而漏接
+      final completed = _audioPlayer.onPlayerComplete.first
+          .timeout(const Duration(seconds: 15), onTimeout: () {});
+      await _playOrReplayTts(msg);
+      final started = msg.isPlayingAudio ||
+          (msg.ttsAudioPath != null && msg.ttsAudioPath!.isNotEmpty);
+      if (started) {
+        try {
+          await completed;
+        } catch (_) {}
+      } else {
+        unawaited(completed.catchError((_) {}));
+        await Future.delayed(const Duration(seconds: 1));
+      }
+      if (!mounted) return;
+
+      String? roomId;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        roomId = prefs.getString('elder_room_id')?.trim();
+      } catch (e) {
+        debugPrint('⚠️ [ElderChat] 讀取 elder_room_id 失敗: $e');
+      }
+      if (!mounted) return;
+      if (roomId == null || roomId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('找不到您的通話帳號資料，請重新登入後再試')),
+        );
+        return;
+      }
+      // 完全比照 elder_home_screen.dart::_startOutgoingCall：只建構 ElderScreen(autoCall:true)，
+      // 不直接呼叫 Signaling。
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ElderScreen(
+            roomId: roomId!,
+            friendCallTargetElderId: call.friendElderId,
+            deviceName: widget.userName,
+            autoCall: true,
+            isVideoCall: call.isVideo,
+          ),
+        ),
+      );
+    } finally {
+      _isAutoDialing = false;
+    }
+  }
+
   /// 提取純淨 TTS 朗讀文字：移除影片標籤、Markdown 語法與 Emoji
   static String _extractCleanTtsText(String text) {
-    return text
+    return stripAutoCallMarkers(text)
         .replaceAll(RegExp(r'\[VIDEO_ID:[^\]]+\]'), '')
         .replaceAll(RegExp(r'（[^）]*?）|\([^)]*?\)'), '') // 移除舞台指示或括號口吻（如 （溫和地）、(微笑) 等）
         .replaceAll(RegExp(r'\*\*|__|\*|_|#|>|`|\[|\]'), '')
