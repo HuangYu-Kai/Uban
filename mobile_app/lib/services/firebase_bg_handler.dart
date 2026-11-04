@@ -422,6 +422,21 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    // ★ 2026-11 代理人協調：小嘎替秘書問到了（僅建立交辦的家屬端）。同 daily-answer：
+    //    純 data、一般優先級、不碰來電狀態；角色守門（fail-closed）、開關與去重
+    //    在 `CheckinNotification.showAgentTaskDone` 內。
+    if (type == 'agent-task-done') {
+      debugPrint('🤝 [BG] 收到小嘎交辦結果，交由家屬端守門後顯示一般優先級通知');
+      try {
+        await CheckinNotification.showAgentTaskDoneFromData(
+          Map<String, dynamic>.from(message.data),
+        );
+      } catch (e) {
+        debugPrint('⚠️ [BG] 小嘎交辦通知失敗: $e');
+      }
+      return;
+    }
+
     // ★ 2026-10-07 小豬共養：長輩用我送的點心餵了小豬（僅送點心的家屬端）。同 daily-answer：
     //    純 data、一般優先級、不碰來電狀態；角色守門（fail-closed）、開關與 giftId 去重
     //    在 `CheckinNotification.showPetGiftFed` 內。

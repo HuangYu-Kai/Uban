@@ -1517,6 +1517,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         return;
       }
 
+      // ★ 2026-11 代理人協調：小嘎替秘書問到了（前景 FCM，僅建立交辦的家屬端）。
+      //   與 daily-answer 同形：獨立分支、不碰來電狀態；角色守門／開關／去重在
+      //   CheckinNotification.showAgentTaskDone 內（fail-closed）。
+      if (message.data['type'] == 'agent-task-done') {
+        try {
+          await CheckinNotification.showAgentTaskDoneFromData(message.data);
+        } catch (e) {
+          debugPrint("⚠️ [FCM-Fg] 小嘎交辦通知失敗: $e");
+        }
+        return;
+      }
+
       // ★ 2026-10-07 小豬共養：長輩用我送的點心餵了小豬（前景 FCM，僅送點心的家屬端）。
       //   與 daily-answer 同形：獨立分支、不碰來電狀態；角色守門／開關／giftId 去重
       //   在 CheckinNotification.showPetGiftFed 內（fail-closed）。

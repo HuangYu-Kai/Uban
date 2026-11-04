@@ -123,7 +123,9 @@ class CheckinNotification {
     try {
       final d = jsonDecode(payload);
       if (d is! Map) return null;
-      if (d['type']?.toString() != typeDailyAnswer) return null;
+      final t = d['type']?.toString();
+      // ★ 2026-11 代理人協調：agent-task-done 通知點擊同樣開啟 AI 照護秘書，共用此路徑。
+      if (t != typeDailyAnswer && t != 'agent-task-done') return null;
       final elderId = (d['elderId'] ?? '').toString().trim();
       if (elderId.isEmpty) return null;
       final name = (d['elderName'] ?? '').toString().trim();
@@ -254,6 +256,146 @@ class CheckinNotification {
       questionId: s('questionId'),
       question: s('question'),
       answerText: s('answerText'),
+    );
+  }
+
+  // ───────── ★ 2026-11 代理人協調：小嘎替秘書問到了（`agent-task-done`，只推給建立交辦的家屬） ─────────
+  // 沿用本類別的 plugin／守門。點擊通知沿用 [pendingDailyTap] 路徑（payload type=agent-task-done，
+  // [parseDailyTap] 一併認領）→ 家屬互動分頁開啟 AI 照護秘書；秘書開啟時會自行讀交辦清單轉告結果。
+
+  static const String typeAgentTaskDone = 'agent-task-done';
+  static const String agentTaskChannelId = 'agent_task_done';
+  static const String agentTaskChannelName = '小嘎交辦';
+  static const String agentTaskChannelDesc = '小嘎幫您問到長輩的回答時的通知';
+
+  /// 裝置偏好鍵：是否顯示小嘎交辦通知（預設 true；非 SessionManager session key，G58/G59）。
+  static const String agentTaskPrefKey = 'agent_task_notify_enabled';
+
+  static bool _agentTaskChannelCreated = false;
+
+  /// 收到 agent-task-done（Socket／前景 FCM／背景 FCM 於本機消費時）就 +1，
+  /// AI 照護秘書畫面監聽它來重讀交辦清單。只在家屬端守門通過後遞增。
+  static final ValueNotifier<int> agentTaskTick = ValueNotifier<int>(0);
+
+  static Future<bool> isAgentTaskEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      try {
+        await prefs.reload();
+      } catch (_) {}
+      return prefs.getBool(agentTaskPrefKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setAgentTaskEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(agentTaskPrefKey, value);
+  }
+
+  /// 顯示「小嘎問到了／小嘎還沒問到」。欄位對應後端 data：
+  /// taskId/elderId/question/resultText/status（answered／expired）。
+  /// 角色守門（fail-closed）、開關、依 taskId 去重（三條呼叫路徑共用）；
+  /// 強度一般，不蓋屏、不繞勿擾、不改音量（硬規則 13）。
+  static Future<void> showAgentTaskDone({
+    required String taskId,
+    required String elderId,
+    required String question,
+    required String resultText,
+    required String status,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      DartPluginRegistrant.ensureInitialized();
+
+      // 🔒 角色守門必須在任何初始化／顯示之前，fail-closed。
+      if (!await LocationAlertNotification.isFamilyDevice()) {
+        debugPrint('🔒 [CheckinNotification] 本機非確定的家屬端，略過小嘎交辦通知');
+        return;
+      }
+      // 通知被關閉或重複，秘書畫面仍要能刷新結果。
+      agentTaskTick.value++;
+      if (!await isAgentTaskEnabled()) {
+        debugPrint('🔕 [CheckinNotification] 使用者已關閉小嘎交辦通知');
+        return;
+      }
+
+      final dedupeKey = '$typeAgentTaskDone|$taskId|$status';
+      if (seenRecently(dedupeKey)) {
+        debugPrint('♻️ [CheckinNotification] 重複事件略過: $dedupeKey');
+        return;
+      }
+
+      await _ensureInit();
+      await _ensureAgentTaskChannel();
+
+      final heading = status == 'expired' ? '小嘎還沒問到' : '小嘎問到了';
+      final text = resultText.trim();
+      final fallback = question.trim();
+      final body = text.isNotEmpty
+          ? (text.length > 80 ? '${text.substring(0, 80)}…' : text)
+          : (fallback.isNotEmpty ? fallback : '點一下回 AI 照護秘書查看');
+
+      // 專屬 id 區段（1.1999e9～1.19995e9：不與小豬共養 1.1995e9～1.1999e9、安心提醒 1.2e9～ 重疊）。
+      final int notificationId =
+          1199900000 + (_stableHash(dedupeKey) % 50000);
+
+      final androidDetails = AndroidNotificationDetails(
+        agentTaskChannelId,
+        agentTaskChannelName,
+        channelDescription: agentTaskChannelDesc,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        styleInformation: BigTextStyleInformation(body, contentTitle: heading),
+        category: AndroidNotificationCategory.status,
+        // 🚫 不設 fullScreenIntent、不繞勿擾、不設鬧鐘音量。
+      );
+
+      await _plugin.show(
+        notificationId,
+        heading,
+        body,
+        NotificationDetails(android: androidDetails),
+        payload: jsonEncode(<String, String>{
+          'type': typeAgentTaskDone,
+          'elderId': elderId,
+          'elderName': '',
+          'taskId': taskId,
+        }),
+      );
+      debugPrint('✅ [CheckinNotification] 已顯示 agent-task-done taskId=$taskId');
+    } catch (e) {
+      debugPrint('⚠️ [CheckinNotification] 小嘎交辦通知顯示失敗: $e');
+    }
+  }
+
+  static Future<void> _ensureAgentTaskChannel() async {
+    if (_agentTaskChannelCreated) return;
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(const AndroidNotificationChannel(
+        agentTaskChannelId,
+        agentTaskChannelName,
+        description: agentTaskChannelDesc,
+        importance: Importance.defaultImportance,
+        playSound: true,
+        enableVibration: true,
+      ));
+    }
+    _agentTaskChannelCreated = true;
+  }
+
+  /// 從 Socket／FCM 的 data map 顯示小嘎交辦通知（camelCase 欄位兩邊相同）。
+  static Future<void> showAgentTaskDoneFromData(Map data) {
+    String s(String k) => (data[k] ?? '').toString();
+    return showAgentTaskDone(
+      taskId: s('taskId'),
+      elderId: s('elderId'),
+      question: s('question'),
+      resultText: s('resultText'),
+      status: s('status'),
     );
   }
 
