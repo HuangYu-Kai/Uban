@@ -399,6 +399,18 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 >   ⚠️ 只有 `location_at` 被格式化成結尾 `Z`，同列的 `detected_at` 等欄位維持既有的 naive isoformat（無 `Z`）。
 > - 不合法座標（非數值、`NaN`、緯度超出 ±90、經度超出 ±180）一律視同沒有位置，**不會讓整次派送失敗**。
 
+> 🤖 **跌倒事件應變代理後端契約（2026-11-04，`services/fall_response_agent.py`）**：
+> - **觸發條件**：`dispatch_yolo_alert` 只在 `alert_type='fall'`、非 `push_suppressed`、且 `_insert_alert()` 回傳 `is_new=True`
+>   （真正新建、不是併入 30 分鐘合併窗口的重複偵測）時，才同步組摘要（≤1 秒預算、例外一律吞掉）→ 寫 `emergency_alerts.agent_summary`
+>   → 隨 `_broadcast_alert` 帶出 → 派送後以背景任務請小嘎問長輩。**任何代理失敗都不影響警報派送。**
+> - **鍵名（已與前端約定，不可更改）**：Socket `agent_summary`、FCM `agentSummary`（字串）；**有值才帶鍵**，沒值完全不帶（比照位置欄位）。
+>   priority／ttl／純 data／家屬端限制一律不變。
+> - **重推**：`alert_watchdog` 與開發者「聯絡家屬」都從 DB 列取**最新** `agent_summary`（經 `agent_summary_from_row()`）傳入
+>   `resend_alert_notification(..., agent_summary=)`；長輩回覆「需要協助」時代理也走同一條重推（`is_reminder=true` 文案）。
+> - **落地**：migration `033_fall_agent.sql` 新增 `agent_summary`／`agent_asked_at`／`elder_response`（`ok`／`need_help`）／
+>   `elder_response_text`／`elder_responded_at`（SQLite 備援已鏡像）。長輩回覆由 `routers/ai.py` `/chat`、`/chat_stream` 在呼叫模型前
+>   以**關鍵字**判斷（求助詞優先；15 分鐘窗口），判斷不出才走一般對話。
+
 > 🚫 **`alertId` 單獨不可作為去重鍵**：`_insert_alert()` 對「同 elder + 同 device + 同 alert_type
 > 且 `status='active'`」的既有列是 **UPDATE `detected_at` 並沿用原本的 `alert_id`**。
 > 只用 `alertId` 去重，第二次以後的同類警報會**完全靜默**
