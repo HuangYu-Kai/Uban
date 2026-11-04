@@ -500,6 +500,13 @@ void initPedometer() {
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
 
+### 2026-11-04 🤝 代理人協調：秘書交辦小嘎去問長輩，問到再回報（`feat/agent-coordination` 分支）
+
+- 家屬對 AI 照護秘書說「幫我問媽週六回診要上午還是下午方便」，後端回 `intent: ARRANGE_WITH_ELDER`＋`task_draft {question, purpose, followup}`，秘書顯示「交給小嘎去問」卡（`family/family_task_draft.dart`），按「交給小嘎」才呼叫 `POST /api/agent_task/create`（`services/api/agent_task_api.dart`）。回憶型問題仍走每日一問。
+- 小嘎在長輩上線時開口問、解析回答（後端 `services/agent_coordinator.py`），結果只通知建立任務的家屬：Socket／FCM `agent-task-done` `{type, taskId, elderId, question, resultText, status}`，normal 優先級、純 data，通知頻道 `agent_task_done`（開關 `agent_task_notify_enabled`，預設開），角色守門同 `daily-answer`，點擊開該長輩的秘書。
+- 秘書開啟、回前景、收到事件時讀 `GET /api/agent_task/list`，近 7 天、本機未看過（`copilot_seen_agent_tasks_<elderId>`）的 answered／expired 任務以秘書訊息轉告；有 `schedule_drafts` 就用既有排程草稿卡讓家屬確認才建立提醒。長輩端不用改（問話走既有 `heartbeat-message`）。
+- 測試：`test/screens/family/family_task_draft_test.dart`。
+
 ### 2026-11-04 📝 跌倒警報多一段「情境摘要」與長輩回覆標籤（`feat/fall-agent-summary` 分支）
 
 - **後端新增的選填欄位**：Socket `cctv-alert` 為 `agent_summary`、FCM data（`type == 'cctv-alert'`）為 `agentSummary`；家屬讀警報的 REST（`GET /api/alerts/{elder_id}`）每筆另有 `agent_summary`、`elder_response`（`ok`／`need_help`／null）、`elder_response_text`、`elder_responded_at`（UTC 結尾 Z）。沒有值時鍵完全不存在，前端缺鍵一律當「沒有」。
