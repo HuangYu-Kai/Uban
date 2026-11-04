@@ -164,6 +164,10 @@ class Signaling {
   /// 註冊者 dispose 時以 `identical()` 歸還（G102）。
   Function(dynamic data)? onDailyAnswer;
 
+  /// ★ 2026-11 代理人協調：家屬端收到小嘎替秘書問到的結果（`agent-task-done`）。純回呼欄位，
+  /// 註冊者 dispose 時以 `identical()` 歸還（G102）。
+  Function(dynamic data)? onAgentTaskDone;
+
   /// ★ 2026-10-07 小豬共養：長輩端收到家人送的點心（`pet-gift`）。註冊點為
   /// `elder_home_screen.dart`，dispose 時以 `identical()` 歸還（G102）。
   Function(dynamic data)? onPetGift;
@@ -915,6 +919,12 @@ class Signaling {
     socket!.on('daily-answer', (data) {
       debugPrint("★ [Signaling] 收到長輩每日一問回答: $data");
       if (onDailyAnswer != null) onDailyAnswer!(data);
+    });
+
+    // ★ 2026-11 代理人協調：小嘎問到了 → 建立交辦的家屬端
+    socket!.on('agent-task-done', (data) {
+      debugPrint("★ [Signaling] 收到小嘎交辦結果: $data");
+      if (onAgentTaskDone != null) onAgentTaskDone!(data);
     });
 
     // ★ 2026-10-07 小豬共養：家人送了點心 → 長輩端

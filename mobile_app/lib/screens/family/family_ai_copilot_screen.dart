@@ -13,12 +13,15 @@ import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/family_theme.dart';
 import '../../utils/error_handler.dart';
+import '../../services/api/agent_task_api.dart';
 import '../../services/api/daily_question_api.dart';
+import '../../services/checkin_notification.dart';
 import 'daily_question_screen.dart'
     show DailyAsker, DailyAudioButton, DailyHistoryLoader, resolveFamilyId;
 import 'family_copilot_history.dart';
 import 'family_question_draft.dart';
 import 'family_share_draft.dart';
+import 'family_task_draft.dart';
 import 'widgets/fam_interaction_ui.dart';
 import 'widgets/fam_ui.dart';
 
@@ -52,7 +55,8 @@ class FamilyAiCopilotScreen extends StatefulWidget {
   State<FamilyAiCopilotScreen> createState() => _FamilyAiCopilotScreenState();
 }
 
-class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
+class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -93,6 +97,9 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
       );
     }
     _chatMessages.add(_buildWelcomeMessage());
+    // ★ 2026-11 代理人協調：App 回前景、或收到 agent-task-done（Socket／前景 FCM）時重讀交辦結果。
+    WidgetsBinding.instance.addObserver(this);
+    CheckinNotification.agentTaskTick.addListener(_onAgentTaskTick);
     // ★ 2026-10-15 對話紀錄：先讀本機歷史、再轉告長輩回答（轉告才會接在歷史後面）。
     _initChat();
   }
@@ -116,6 +123,65 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     if (!mounted) return;
     // ★ 2026-10-07 交接 A2：長輩回答由秘書轉告。
     await _loadAnswerRelays();
+    // ★ 2026-11 代理人協調：小嘎替秘書問到的結果。
+    await _loadTaskResults();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _onAgentTaskTick();
+  }
+
+  void _onAgentTaskTick() {
+    if (!mounted || !_historyLoaded) return;
+    unawaited(_loadTaskResults());
+  }
+
+  bool _taskResultsLoading = false;
+
+  /// ★ 2026-11 代理人協調：讀交辦清單，把 answered／expired 且本機沒看過的任務以秘書訊息轉告；
+  /// 有 schedule_drafts 就沿用既有排程草稿確認卡。顯示後才記入已看過清單。
+  /// 失敗一律靜默略過；以旗標避免同時多次呼叫重複插入。
+  Future<void> _loadTaskResults() async {
+    if (_taskResultsLoading) return;
+    final elderId =
+        widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
+    if (elderId == null) return;
+    _taskResultsLoading = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final fid = prefs.getInt('caregiver_id');
+      if (fid == null) return;
+      final tasks = await AgentTaskApi.list(familyUserId: fid, elderId: elderId);
+      if (tasks == null || !mounted) return;
+      final seen = await loadSeenTaskIds(elderId);
+      final fresh = selectUnseenTasks(tasks, seen);
+      if (fresh.isEmpty || !mounted) return;
+      final elderName = widget.currentElder?.displayName ?? '長輩';
+      setState(() {
+        for (final t in fresh) {
+          final drafts = t['schedule_drafts'];
+          final list = drafts is List
+              ? [for (final d in drafts) if (d is Map) Map<String, dynamic>.from(d)]
+              : <Map<String, dynamic>>[];
+          _chatMessages.add({
+            'isUser': false,
+            'ts': DateTime.now().toIso8601String(),
+            'text': taskResultText(elderName, t),
+            'statusSummary': null,
+            'scheduleDrafts': list.isEmpty ? null : list,
+          });
+        }
+      });
+      unawaited(_saveHistory());
+      _scrollToBottom();
+      await saveSeenTaskIds(
+          elderId, {...seen, ...fresh.map((t) => (t['task_id']).toString())});
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 轉告交辦結果失敗：$e');
+    } finally {
+      _taskResultsLoading = false;
+    }
   }
 
   /// ★ 2026-10-15 對話紀錄：讀本機歷史。有歷史就取代歡迎詞（保留讀取期間家屬已送出的新訊息）。
@@ -268,6 +334,8 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     // ★ 2026-10-15 對話紀錄：必須在銷毀控制器之前呼叫——_saveHistory 會同步讀完輸入框文字，
     // 之後才非同步寫檔。
     unawaited(_saveHistory());
+    WidgetsBinding.instance.removeObserver(this);
+    CheckinNotification.agentTaskTick.removeListener(_onAgentTaskTick);
     _speechToText.stop();
     _messageController.dispose();
     for (final m in _chatMessages) {
@@ -649,6 +717,71 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     _scrollToBottom();
   }
 
+  /// ★ 2026-11 代理人協調：確認交辦 → `POST /api/agent_task/create`。
+  /// 送出前先同步改 phase 為 sending（防連點）；失敗卡片保留並顯示原因，可重試。
+  Future<void> _confirmTask(int messageIndex) async {
+    final msg = _chatMessages[messageIndex];
+    final phase = msg['taskPhase'];
+    if (phase == TaskCardPhase.sending || phase == TaskCardPhase.sent) return;
+    final draft = msg['taskDraft'];
+    if (draft is! TaskDraft) return;
+    if (!canSendTask(question: draft.question, sending: false)) return;
+
+    setState(() {
+      msg['taskPhase'] = TaskCardPhase.sending;
+      msg['taskError'] = null;
+    });
+
+    String? error;
+    String? sentText;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final fid = prefs.getInt('caregiver_id');
+      final elderId =
+          widget.currentElder?.elderId ?? widget.currentElder?.id.toString();
+      if (fid == null || elderId == null) {
+        error = '無法確認家屬身分，請重新登入後再試';
+      } else {
+        final r = await AgentTaskApi.create(
+          familyUserId: fid,
+          elderId: elderId,
+          question: draft.question,
+          purpose: draft.purpose,
+          followup: draft.followup,
+        );
+        if (r.ok) {
+          sentText = r.message;
+        } else {
+          error = r.message;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FamilyCopilot] 交辦送出失敗：$e');
+      error = '送出失敗，請稍後再試';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      if (error == null) {
+        msg['taskPhase'] = TaskCardPhase.sent;
+        msg['taskError'] = null;
+        // 秘書回覆（reply_text；缺席時為預設文字）接在對話後面。
+        _chatMessages.add({
+          'isUser': false,
+          'ts': DateTime.now().toIso8601String(),
+          'text': sentText ?? AgentTaskApi.defaultSentMessage,
+          'statusSummary': null,
+          'scheduleDrafts': null,
+        });
+      } else {
+        msg['taskPhase'] = TaskCardPhase.draft;
+        msg['taskError'] = error;
+      }
+    });
+    unawaited(_saveHistory());
+    _scrollToBottom();
+  }
+
   Future<void> _confirmBatchSchedule(List<dynamic> drafts, int messageIndex) async {
     // ★ 2026-10-15 對話紀錄：下面有 await，期間歷史可能被插到清單最前面使索引位移，
     // 所以在第一個 await 之前就抓住這則訊息本身，之後都改用這個參照。
@@ -846,7 +979,16 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
     final question = data['intent'] == 'ASK_DAILY_QUESTION' || data['question_draft'] != null
         ? QuestionDraft.tryParse(data['question_draft'])
         : null;
+    // ★ 2026-11 代理人協調：task_draft 可能缺席（舊版後端）或為 null。
+    final task = data['intent'] == 'ARRANGE_WITH_ELDER' || data['task_draft'] != null
+        ? TaskDraft.tryParse(data['task_draft'])
+        : null;
     _chatMessages.add({
+      if (task != null) ...{
+        'taskDraft': task,
+        'taskPhase': TaskCardPhase.draft,
+        'taskError': null,
+      },
       if (question != null) ...{
         'questionController': TextEditingController(text: question.text),
         'questionPhase': QuestionCardPhase.draft,
@@ -947,6 +1089,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                   final localImage = msg['localImage'];
                   final sharePhase = msg['sharePhase'] as ShareCardPhase?;
                   final questionPhase = msg['questionPhase'] as QuestionCardPhase?;
+                  final taskPhase = msg['taskPhase'] as TaskCardPhase?;
                   final relayAudioUrl = msg['relayAudioUrl'] as String?;
                   // ★ 2026-10-15 對話紀錄：還原訊息專用欄位。
                   final restoredImageUrl = msg['imageUrl'] as String?;
@@ -1014,6 +1157,18 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen> {
                             onCancel: () {
                               setState(
                                   () => msg['questionPhase'] = QuestionCardPhase.cancelled);
+                              unawaited(_saveHistory());
+                            },
+                          ),
+                        // ★ 2026-11 代理人協調：交給小嘎去問的交辦卡
+                        if (!isUser && taskPhase != null && msg['taskDraft'] is TaskDraft)
+                          TaskDraftCard(
+                            draft: msg['taskDraft'] as TaskDraft,
+                            phase: taskPhase,
+                            errorText: msg['taskError'] as String?,
+                            onSend: () => _confirmTask(index),
+                            onCancel: () {
+                              setState(() => msg['taskPhase'] = TaskCardPhase.cancelled);
                               unawaited(_saveHistory());
                             },
                           ),

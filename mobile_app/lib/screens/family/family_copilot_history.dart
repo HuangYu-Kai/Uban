@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import 'family_question_draft.dart';
 import 'family_share_draft.dart';
+import 'family_task_draft.dart';
 
 // ★ 2026-10-15 對話紀錄：AI 照護秘書的對話紀錄只存在這台手機（SharedPreferences），
 // 不送後端、不影響 AI 回答。本檔是「畫面訊息 <-> 可存檔 JSON」的純函式，方便單元測試。
@@ -122,6 +123,17 @@ Map<String, dynamic>? serializeCopilotMessage(
       archived.add('✓ 已出題給$elderName：$text');
     } else {
       archived.add('未送出的出題草稿：$text');
+    }
+  }
+
+  // ★ 2026-11 代理人協調：交辦卡。已送出存結果；未送出變純文字（不留按鈕）。
+  final taskPhase = msg['taskPhase'];
+  final taskDraft = msg['taskDraft'];
+  if (taskPhase is TaskCardPhase && taskDraft is TaskDraft) {
+    if (taskPhase == TaskCardPhase.sent) {
+      archived.add('✓ 已交給小嘎去問：${taskDraft.question}');
+    } else if (taskPhase != TaskCardPhase.cancelled) {
+      archived.add('未送出的交辦草稿：${taskDraft.question}');
     }
   }
 

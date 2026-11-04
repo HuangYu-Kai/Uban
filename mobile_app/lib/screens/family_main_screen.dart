@@ -127,6 +127,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   int _checkinRefreshToken = 0;
   // ★ 2026-10-07 每日一問：長輩回答事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
   Function(dynamic)? _ownDailyAnswer;
+  Function(dynamic)? _ownAgentTaskDone;
   // ★ 2026-10-07 小豬共養：長輩餵了我送的點心事件回呼「自己那一份」，dispose 時以 identical() 歸還（G102）。
   Function(dynamic)? _ownPetGiftFed;
   /// 遞增 token 推給互動分頁的小豬卡片重讀。
@@ -712,6 +713,13 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       if (data is Map) CheckinNotification.showDailyAnswerFromData(data);
     };
     _signaling.onDailyAnswer = _ownDailyAnswer;
+
+    // ★ 2026-11 代理人協調：小嘎替秘書問到了。補一則一般優先級本機通知（角色守門／開關／去重
+    //    在 CheckinNotification.showAgentTaskDone 內）；通知內會遞增 agentTaskTick 讓開著的秘書刷新。
+    _ownAgentTaskDone = (data) {
+      if (data is Map) CheckinNotification.showAgentTaskDoneFromData(data);
+    };
+    _signaling.onAgentTaskDone = _ownAgentTaskDone;
 
     // ★ 2026-10-07 小豬共養：長輩用我送的點心餵了小豬。補一則一般優先級本機通知
     //    （角色守門／開關／giftId 去重都在 CheckinNotification.showPetGiftFed 內），並讓小豬卡片重讀。
@@ -2470,6 +2478,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
     if (identical(_signaling.onDailyAnswer, _ownDailyAnswer)) {
       _signaling.onDailyAnswer = null;
+    }
+    if (identical(_signaling.onAgentTaskDone, _ownAgentTaskDone)) {
+      _signaling.onAgentTaskDone = null;
     }
     if (identical(_signaling.onPetGiftFed, _ownPetGiftFed)) {
       _signaling.onPetGiftFed = null;
