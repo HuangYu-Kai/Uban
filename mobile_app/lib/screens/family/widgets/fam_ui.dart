@@ -447,6 +447,9 @@ class FamAlarmSheet extends StatelessWidget {
   final String? whenText;
   final String description;
   final List<String> detailLines;
+
+  /// ★ 2026-11：後端選填的情境摘要（較小字、可換行）；`null` 或空白不顯示。
+  final String? summaryText;
   final List<FamAlarmAction> primary;
   final FamAlarmAction dismiss;
 
@@ -456,6 +459,7 @@ class FamAlarmSheet extends StatelessWidget {
     this.whenText,
     required this.description,
     this.detailLines = const [],
+    this.summaryText,
     this.primary = const [],
     required this.dismiss,
   });
@@ -542,6 +546,12 @@ class FamAlarmSheet extends StatelessWidget {
                           ],
                         ),
                       ),
+                    ],
+                    if (summaryText != null && summaryText!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      // 情境摘要可能很長：Column 內的 Text 會自動換行，外層已是可捲動區。
+                      Text(summaryText!.trim(),
+                          style: famText(c.text2, 12.5, height: 1.5)),
                     ],
                     const SizedBox(height: 14),
                     for (var i = 0; i < primary.length; i++) ...[

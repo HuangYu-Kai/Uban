@@ -117,6 +117,7 @@ flowchart TD
 #### 1. 雙軌 AI 引擎與語音合成 (TTS/ASR)
 
 - **Ollama（主要）**：使用 `gemma4:e4b-it-q4_K_M` 模型，支援 Tool Calling
+  - ★ 2026-10-28 對話提速：主對話關閉 Gemma 的「思考」（`think=False`，p50 約 7.6 秒降到 1.1 秒）；系統提示固定、近期動態／家人分享／記憶檢索改放本輪使用者訊息，以吃到 Ollama 前綴快取；工具描述精簡；「打電話給X」與身體不適（先問「要不要通知家人」再通知）改由程式判斷；記憶檢索瘦身（短句不查 Pinecone、逾時 1.5 秒、只取長輩自己說過的話）。細節見 `Uban-api/readme.md` 2026-10-28 條目
 - **Gemini（備用）**：Google Gemini 2.5 Flash / 3.5 Flash API
 - **TTS 語音合成引擎**：支援 `auto` (自動)、`edge` (Edge-TTS)、`piper` (離線模型)、`cosyvoice` (Zero-Shot 音色複製) 及 **`yating` (雅婷台語 TTS 轉發及自動備援)** ⭐ 新增
 - **ASR 語音辨識**：App 的語音輸入一律使用手機內建語音辨識（`speech_to_text`），不再上傳伺服器 Whisper；國語／台語切換只影響小嘎的朗讀（台語＝雅婷 TTS）。後端 `/api/voice/transcribe`（Faster-Whisper）僅供其網頁示範使用
@@ -498,6 +499,14 @@ void initPedometer() {
 > 第一批補於 2026-08-06，第二批補於 2026-08-13（08-06～08-12 落在 `main` 上、
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
+
+### 2026-11-04 📝 跌倒警報多一段「情境摘要」與長輩回覆標籤（`feat/fall-agent-summary` 分支）
+
+- **後端新增的選填欄位**：Socket `cctv-alert` 為 `agent_summary`、FCM data（`type == 'cctv-alert'`）為 `agentSummary`；家屬讀警報的 REST（`GET /api/alerts/{elder_id}`）每筆另有 `agent_summary`、`elder_response`（`ok`／`need_help`／null）、`elder_response_text`、`elder_responded_at`（UTC 結尾 Z）。沒有值時鍵完全不存在，前端缺鍵一律當「沒有」。
+- **系統通知**（`cctv_alert_notification.dart::show()`）：有摘要才改用 BigText 把摘要接在原內文下方；沒有摘要時通知與改版前完全相同。channel、優先級、`fullScreenIntent`、鎖屏可見性、音量、去重都沒動。
+- **前景警報彈窗**（`family_main_screen.dart::_presentCctvAlert`）：`FamAlarmSheet` 新增選用 `summaryText`，以較小字顯示、可換行；**不加進朗讀（TTS）**。
+- **警示中心**（`alert_center_screen.dart`，即時與歷史卡片）：新增 `widgets/alert_agent_summary.dart`，顯示摘要，並在有 `elder_response` 時顯示小標籤「長輩回覆：沒事」或「長輩回覆：需要協助」，附長輩原話。解析集中在 `AlertDisplay.parseAgentSummary`／`parseElderResponse`（容錯，未知值不顯示）。首頁「最新警示」預覽卡本輪未顯示摘要。
+- 測試：`test/utils/alert_agent_summary_test.dart`。
 
 ### 2026-10-09 🔑 忘記密碼與註冊 Email 驗證碼（`ui` 分支）
 
