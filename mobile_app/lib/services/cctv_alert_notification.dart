@@ -323,6 +323,16 @@ class CctvAlertNotification {
       //   🚨 **強制開啟只允許用於長輩端**（例如 `main.dart` 中 `role == 'elder'`
       //   分支下、緊急通話用的 `AndroidIntent` 喚醒）——家屬端從今以後一律不得
       //   比照辦理，本檔（家屬端警報通知（跌倒／爬行／語音求救等））之後也不可再加回 `fullScreenIntent`。
+      // ★ 2026-11：後端選填的情境摘要（FCM data 為 `agentSummary`，Socket 路徑由
+      //   family_main_screen 轉成同名鍵）。有值才用 BigTextStyle 把摘要接在原內文下方；
+      //   沒有值時 styleInformation 為 null，通知與改版前完全相同。
+      //   只動內容文字，不碰 channel／importance／fullScreenIntent／visibility／音量。
+      final String agentSummary = (data['agentSummary'] ?? '').toString().trim();
+      final StyleInformation? styleInfo =
+          (agentSummary.isEmpty || agentSummary == 'null')
+              ? null
+              : BigTextStyleInformation('$body\n$agentSummary',
+                  contentTitle: title, summaryText: null);
       final androidDetails = AndroidNotificationDetails(
         _channelId,
         _channelName,
@@ -342,6 +352,7 @@ class CctvAlertNotification {
         audioAttributesUsage: AudioAttributesUsage.alarm,
         enableVibration: true,
         color: const Color(0xFFB91C1C),
+        styleInformation: styleInfo,
       );
       await _plugin.show(
         alertNotificationId,

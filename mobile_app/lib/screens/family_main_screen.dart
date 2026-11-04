@@ -1423,6 +1423,9 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
         'elderName': (alert['elder_name'] ?? alert['elderName'])?.toString(),
         'alertId': (alert['alert_id'] ?? alert['alertId'] ?? '').toString(),
         'alertType': alertType,
+        // ★ 2026-11：後端選填的情境摘要，只放進通知內容（BigText）；沒有值就不放這個鍵。
+        if (AlertDisplay.parseAgentSummary(alert) != null)
+          'agentSummary': AlertDisplay.parseAgentSummary(alert),
         // ★ 第四十九輪 item 12：告訴 CctvAlertNotification.show() 這是
         //   逾時未處理的重複提醒還是第一次偵測，切換通知標題／內文文案。
         'isReminder': isReminder.toString(),
@@ -1542,6 +1545,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
                 : (alertType == 'sos_voice'
                     ? '長輩剛透過語音助理開口求救，這次沒有監視畫面可查看，請盡快主動聯繫或致電長輩確認狀況；如情況危急請直接撥打 119。'
                     : '請立即查看監視畫面確認長輩狀況。'),
+            // ★ 2026-11：情境摘要（較小字）。刻意不加進上面的 TTS 朗讀。
+            summaryText: AlertDisplay.parseAgentSummary(alert),
             detailLines: [
               // ★ 2026-09-16：'sos_voice' 的 device_id 是哨兵值 0，_monitorDevices
               //   查不到對應設備，deviceName 會退回寫死的「監視機」字面值——

@@ -376,7 +376,12 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | **`timestamp`** | `str(int(utcnow().timestamp()))` | ⚠️ **去重的關鍵欄位** |
 | **`latitude`** / **`longitude`**（**選填**） | `str(float)`，WGS84 度 | **2026-10-02 新增**。**只有 `alertType='sos_voice'`、長輩開啟位置分享、且 `elder_location_ping` 有夠新的定位時才帶**（分享開關與新鮮度由呼叫端 `tools_service.notify_family_SOS` 判斷，`yolo_alert_dispatcher` 只負責落地與帶出）；其餘情況這兩個鍵**根本不存在**（不是空字串、不是 `"null"`）——消費端必須處理缺漏 |
 | **`locationAt`**（**選填**，與上兩欄同進同退） | ISO8601 UTC、結尾 `Z`（例 `2026-10-02T03:04:05Z`） | 該座標**被回報的時間**（`elder_location_ping.recorded_at`，naive UTC 加 `Z`），**不是**警報偵測時間；家屬端用它算「N 分鐘前的位置」 |
+| **`agentSummary`**（**選填**） | 字串，例「最後打卡 08:12 吃降血壓藥｜位置：家（5 分鐘前）｜…」 | **2026-11 新增**。後端情境摘要；沒有值時**鍵不存在**。Socket 版是 snake_case `agent_summary`。前端只把它放進通知 BigText／前景彈窗小字／警示中心卡片，**不朗讀**、不參與去重（`CctvAlertNotification.show`、`_presentCctvAlert`、`AlertDisplay.parseAgentSummary`） |
 | priority | `android=AndroidConfig(priority='high')`、APNS `content_available` | 無 `notification` 區塊（同 G33） |
+
+> 📝 **情境摘要與長輩回覆契約（2026-11）**：REST `GET /api/alerts/{elder_id}` 每筆警報另有選填
+> `agent_summary`、`elder_response`（`ok`／`need_help`／null）、`elder_response_text`、`elder_responded_at`
+> （UTC ISO 結尾 Z）。缺鍵＝沒有。前端 `AlertDisplay.parseElderResponse` 只認 `ok`／`need_help`，未知值不顯示標籤。
 
 > 📍 **位置欄位的跨通路契約（2026-10-02）**：
 > - **Socket `cctv-alert`**（`_build_push_payload()`）同樣只在有位置時多帶 `latitude`／`longitude`（**float**）與

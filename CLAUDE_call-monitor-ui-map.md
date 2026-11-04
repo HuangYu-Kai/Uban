@@ -385,6 +385,10 @@ Navigator.push(context, MaterialPageRoute(
 - **新增選用參數**：`HomeAlertPreviewCard.userId`（int?）、`AlertCenterScreen.userId`（int?），皆預設 null，
   既有呼叫端與測試不受影響。
 - **系統通知**：SOS 附位置時內文加註「（已附上最後位置）」，只改文字，channel／音效／id 不變（G107／G108）。
+- **情境摘要與長輩回覆（2026-11，選填）**：前景彈窗 `FamAlarmSheet(summaryText:)` 以小字顯示 `agent_summary`（**不進 TTS**）；
+  系統通知有摘要時改用 BigText 接在內文下方（`agentSummary` 鍵，沒有就與舊行為相同）；警示中心即時／歷史卡片用
+  `widgets/alert_agent_summary.dart` 顯示摘要與「長輩回覆：沒事／需要協助」標籤（鐵律 #14：摘要可換行、標籤在 `Wrap`）。
+  解析一律走 `AlertDisplay.parseAgentSummary`／`parseElderResponse`。
 - **版面（鐵律 #14）**：位置列的文字 `Expanded` ＋ ellipsis，按鈕固定尺寸。
 - 回歸測試：`test/screens/family/sos_alert_display_test.dart`。
 

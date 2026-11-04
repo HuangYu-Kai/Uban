@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'server_time.dart';
+
 /// 家屬端「警報卡片」的顯示文案與位置欄位解析（首頁「最新警示」＋警示中心共用）。
 ///
 /// ★ 2026-10-02：原本 `home_alert_preview_card.dart` 與 `alert_center_screen.dart`
@@ -115,4 +117,47 @@ class AlertDisplay {
     if (diff.inHours < 24) return '最後位置：${diff.inHours} 小時前';
     return '最後位置：${diff.inDays} 天前';
   }
+
+  /// ★ 2026-11：後端跌倒警報附帶的「情境摘要」（選填）。
+  ///
+  /// Socket `cctv-alert` 與 REST 為 `agent_summary`，FCM data 為 `agentSummary`；
+  /// 欄位沒有值時鍵完全不存在。缺漏、非字串內容、空白或字面 `null` 一律回傳 `null`，
+  /// 呼叫端據此「完全不顯示」這一段，不補假文字。
+  static String? parseAgentSummary(Map? m) {
+    if (m == null) return null;
+    final raw = m['agent_summary'] ?? m['agentSummary'];
+    if (raw == null) return null;
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == 'null') return null;
+    return s;
+  }
+
+  /// ★ 2026-11：長輩對「您還好嗎？」關懷訊息的回覆（REST 才會有；選填）。
+  ///
+  /// `elder_response` 只認 `ok`／`need_help`，其他值（含 `null`、未知字串）一律回傳
+  /// `null`＝不顯示標籤。[ElderResponseInfo.text] 為 `elder_response_text`
+  /// （長輩原話，可為 `null`）。
+  static ElderResponseInfo? parseElderResponse(Map? m) {
+    if (m == null) return null;
+    final code = (m['elder_response'] ?? m['elderResponse'])?.toString().trim();
+    if (code != 'ok' && code != 'need_help') return null;
+    final t = (m['elder_response_text'] ?? m['elderResponseText'])?.toString().trim();
+    return ElderResponseInfo(
+      needHelp: code == 'need_help',
+      text: (t == null || t.isEmpty || t == 'null') ? null : t,
+      respondedAt: ServerTime.parse(
+          (m['elder_responded_at'] ?? m['elderRespondedAt'])?.toString() ?? ''),
+    );
+  }
+}
+
+/// 長輩對關懷訊息的回覆（見 [AlertDisplay.parseElderResponse]）。
+class ElderResponseInfo {
+  final bool needHelp;
+  final String? text;
+  final DateTime? respondedAt;
+  const ElderResponseInfo({required this.needHelp, this.text, this.respondedAt});
+
+  /// 小標籤文字：`ok` → 「長輩回覆：沒事」、`need_help` → 「長輩回覆：需要協助」。
+  String get label => needHelp ? '長輩回覆：需要協助' : '長輩回覆：沒事';
 }

@@ -8,6 +8,7 @@ import '../../utils/server_time.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/family_theme.dart';
 import '../../widgets/ui/uban_dialog.dart';
+import 'widgets/alert_agent_summary.dart';
 import 'widgets/fam_ui.dart';
 import 'elder_location_map_screen.dart';
 
@@ -395,6 +396,9 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
         //   系統自動結案）不可顯示成家屬已處理。空字串（尚未結案，或後端
         //   未提供此欄位的舊快取）落入該函式的「其他」分支。
         'resolution_source': (row['resolution_source'] ?? '').toString(),
+        // ★ 2026-11：後端選填的情境摘要與長輩回覆（缺鍵＝null＝不顯示）。
+        'agentSummary': AlertDisplay.parseAgentSummary(row),
+        'elderResponse': AlertDisplay.parseElderResponse(row),
       };
     });
 
@@ -989,6 +993,11 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
                   item['desc'] as String? ?? '',
                   style: famText(c.text2, 12.5, height: 1.4),
                 ),
+                // ★ 2026-11：情境摘要＋長輩回覆標籤（皆選填，沒有就不佔版面）。
+                AlertAgentSummary(
+                  summary: item['agentSummary'] as String?,
+                  response: item['elderResponse'] as ElderResponseInfo?,
+                ),
                 // ★ 2026-10-02：語音求救附有最後位置時，顯示「最後位置：N 分鐘前」＋「查看位置」。
                 //   沒有位置（hasLocation != true）就什麼位置 UI 都不加（G196）。
                 if (item['hasLocation'] == true)
@@ -1173,6 +1182,11 @@ class _AlertCenterScreenState extends State<AlertCenterScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(desc, style: famText(c.text2, 13.5, height: 1.45)),
+                // ★ 2026-11：情境摘要＋長輩回覆標籤（皆選填，沒有就不佔版面）。
+                AlertAgentSummary(
+                  summary: AlertDisplay.parseAgentSummary(a),
+                  response: AlertDisplay.parseElderResponse(a),
+                ),
                 // ★ 2026-10-02：語音求救附有最後位置時才顯示（沒有位置就什麼都不加）。
                 if (hasLocation)
                   _buildLocationRow(
