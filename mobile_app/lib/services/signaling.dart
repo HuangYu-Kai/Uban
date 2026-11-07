@@ -13,6 +13,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../globals.dart';
 import 'api_service.dart';
 import 'call_channel_guard.dart';
+import 'call_session_rules.dart';
 import 'cancelled_call_store.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
@@ -231,6 +232,17 @@ class Signaling {
   bool _isAppForeground = true;
   final List<RTCIceCandidate> _candidateQueue = [];
   final List<String> _pendingRooms = [];
+  /// ★ 2026-11-07 殭屍連線（Z1）：[joinRoom] 額外加入的房間（家屬儀表板同時關注多位長輩）。
+  ///   原本只有「尚未連線時」的 [_pendingRooms]，已加入的不留紀錄；失效重建 socket 後這些房間
+  ///   會遺失，所以在這裡記一份，重建時塞回 [_pendingRooms]，由 onConnect 既有的 flush 補回。
+  final Set<String> _extraRooms = <String>{};
+  /// ★ Z1：ensureLive 的 in-flight Future（同時只跑一個）、上次「失效重建」時間、
+  ///   重建世代（重建開始與結束各 +1，供「先 emit、背景驗證」判斷是否需重送）、前景定期檢查 Timer。
+  ///   皆為純資料／計時器，不是顯示狀態旗標（CLAUDE.md 3.2）。
+  Future<bool>? _ensureLiveInFlight;
+  DateTime? _lastZombieRebuildAt;
+  int _socketRebuildGeneration = 0;
+  Timer? _liveCheckTimer;
   final Set<String> _invalidCallIds = <String>{};
   /// ★ 2026-08-05 第十七輪：`onTrack` 只代表 SDP 談成，ICE 是否連通、有沒有位元組
   /// 在流動完全無關。這裡在收到遠端 track 後 12 秒檢查一次 inbound-rtp 的
@@ -375,6 +387,7 @@ class Signaling {
     if (socket != null && socket!.connected) {
       debugPrint("♻️ Reusing existing socket connection. Joining room $roomId...");
       _asyncJoin(roomId, role, deviceName, deviceMode, fcmToken: fcmToken);
+      _startLiveCheckTimer();
       return;
     }
 
@@ -400,6 +413,7 @@ class Signaling {
     _registerSocketListeners(roomId, role, deviceName, deviceMode, fcmToken);
     socket!.connect();
     _setupTokenMonitor();
+    _startLiveCheckTimer();
   }
 
   void reconnect() {
@@ -410,6 +424,178 @@ class Signaling {
     } else {
       // 如果已經連著，也要重新 emit join 確保伺服器狀態正確
       _asyncJoin(_currentRoomId!, _role ?? 'family', _deviceName ?? 'Reconnected_Device', _deviceMode ?? 'comm'); 
+      // ★ 2026-11-07 殭屍連線（Z1）：connected==true 不代表後端還認得這條連線。保留上面既有的
+      //   重送 join（風險最低、行為不變），再背景驗證；失效時 ensureLive 會重建並重新 join。
+      unawaited(ensureLive());
+    }
+  }
+
+  // ==========================================================================
+  // ★ 2026-11-07 殭屍連線（Z1）：連線健康檢查
+  // ==========================================================================
+
+  /// 前景定期檢查：在 [connect] 建立、[_disposeSocket] 取消；每次啟動前先取消舊的，
+  /// 因此重建 socket 時不會留下多個 Timer。
+  void _startLiveCheckTimer() {
+    _liveCheckTimer?.cancel();
+    _liveCheckTimer = Timer.periodic(kConnCheckPeriodicInterval, (_) {
+      if (!shouldRunPeriodicConnCheck(
+        isForeground: _isAppForeground,
+        inCall: peerConnection != null || isInCall,
+        socketConnected: socket?.connected == true,
+      )) {
+        return;
+      }
+      unawaited(ensureLive());
+    });
+  }
+
+  /// 確認目前這條 socket 後端真的認得（在房內）；必要時修復。回傳 true＝連線可用。
+  ///
+  /// - socket 為 null／未連線：回 false，交給既有重連。
+  /// - `conn-check` 有回應且 joined==false：重送 join，回 true。
+  /// - 無回應（2.5 秒）：通話中（peerConnection != null）只寫 log、回 false；否則拆掉舊
+  ///   socket、用當前欄位重建並等連上（最多 5 秒）。60 秒內最多重建一次。
+  /// 同時只跑一個（共用 in-flight Future）。永不拋例外。
+  Future<bool> ensureLive() {
+    final Future<bool>? running = _ensureLiveInFlight;
+    if (running != null) return running;
+    final Future<bool> f = _ensureLiveImpl().catchError((Object e) {
+      debugPrint('🩺 [CallDiag] conn-check 例外（忽略）: $e');
+      return false;
+    }).whenComplete(() {
+      _ensureLiveInFlight = null;
+    });
+    _ensureLiveInFlight = f;
+    return f;
+  }
+
+  Future<bool> _ensureLiveImpl() async {
+    final io.Socket? s = socket;
+    if (s == null || !s.connected) {
+      debugPrint('🩺 [CallDiag] conn-check skip: socket ${s == null ? "null" : "未連線"}，交給既有重連');
+      return false;
+    }
+    final String? room = _currentRoomId;
+    final Completer<dynamic> done = Completer<dynamic>();
+    final Timer timeout = Timer(kConnCheckAckTimeout, () {
+      if (!done.isCompleted) done.complete(null);
+    });
+    try {
+      // ack 可能 0／1／多個參數（Function.apply），全部用選擇性參數接。
+      s.emitWithAck('conn-check', {'room': room}, ack: ([dynamic a, dynamic b]) {
+        if (!done.isCompleted) done.complete(a ?? <String, dynamic>{});
+      });
+    } catch (e) {
+      debugPrint('🩺 [CallDiag] conn-check emit 失敗: $e');
+      if (!done.isCompleted) done.complete(null);
+    }
+    final dynamic raw = await done.future;
+    timeout.cancel();
+
+    // 等待期間 socket 被換掉或拆掉（登出、forceDisconnect、別處 connect）→ 不再動作。
+    if (!identical(socket, s)) {
+      debugPrint('🩺 [CallDiag] conn-check 作廢：等待期間 socket 已被替換');
+      return socket?.connected == true;
+    }
+
+    final ConnCheckVerdict verdict = parseConnCheckAck(raw);
+    final bool inCall = peerConnection != null;
+    final DateTime? last = _lastZombieRebuildAt;
+    final ConnCheckAction action = decideConnCheckAction(
+      verdict: verdict,
+      inCall: inCall,
+      secondsSinceLastRebuild: last == null ? null : DateTime.now().difference(last).inSeconds,
+    );
+    debugPrint('🩺 [CallDiag] conn-check room=$room sid=${s.id} verdict=${verdict.name} '
+        'inCall=$inCall action=${action.name} appState=${_isAppForeground ? 'fg' : 'bg'}');
+
+    switch (action) {
+      case ConnCheckAction.none:
+        return true;
+      case ConnCheckAction.rejoin:
+        _rejoinAllRooms();
+        return true;
+      case ConnCheckAction.logOnlyInCall:
+        debugPrint('🩺 [CallDiag] conn-check 通話中無回應：不重建，交給既有 15 秒寬限邏輯');
+        return false;
+      case ConnCheckAction.skipRebuildCooldown:
+        debugPrint('🩺 [CallDiag] conn-check 無回應但 60 秒內已重建過：不重複重建（舊後端無 conn-check？）');
+        return false;
+      case ConnCheckAction.rebuild:
+        return _rebuildZombieSocket();
+    }
+  }
+
+  /// 在現有連線上重送 join（主房間＋儀表板額外房間）。
+  void _rejoinAllRooms() {
+    final String? room = _currentRoomId;
+    if (room != null && socket != null) {
+      _asyncJoin(room, _role ?? 'family', _deviceName ?? 'Reconnected_Device', _deviceMode ?? 'comm');
+    }
+    for (final String r in _extraRooms) {
+      if (r != room) _asyncJoin(r, 'family', 'Dashboard_Listener', 'listener');
+    }
+  }
+
+  /// 拆掉失效的 socket 並用當前欄位重建，等連上（最多 5 秒）。
+  /// 回呼欄位（onCallRequest 等）是 instance 欄位，不受影響；listener 由 connect() 重新註冊；
+  /// join 由新 socket 的 onConnect 送出；儀表板額外房間先塞回 [_pendingRooms] 由同一處 flush。
+  Future<bool> _rebuildZombieSocket() async {
+    final String? room = _currentRoomId;
+    if (room == null) {
+      debugPrint('🩺 [CallDiag] conn-check 要重建但 _currentRoomId 為 null：略過');
+      return false;
+    }
+    _lastZombieRebuildAt = DateTime.now();
+    _socketRebuildGeneration++; // 開始
+    debugPrint('🩺 [CallDiag] conn-check 判定殭屍連線 → 重建 socket room=$room extraRooms=${_extraRooms.length}');
+    for (final String r in _extraRooms) {
+      if (r != room && !_pendingRooms.contains(r)) _pendingRooms.add(r);
+    }
+    _disposeSocket('ensureLive 判定殭屍連線，重建');
+    connect(room, _role ?? 'family',
+        userId: _userId,
+        deviceName: _deviceName ?? 'Unknown',
+        deviceMode: _deviceMode ?? 'comm');
+    int retries = (kConnCheckRebuildWait.inMilliseconds / 100).ceil();
+    while (socket?.connected != true && socket != null && retries > 0) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      retries--;
+    }
+    _socketRebuildGeneration++; // 結束
+    final bool ok = socket?.connected == true;
+    debugPrint('🩺 [CallDiag] conn-check 重建結果 connected=$ok sid=${socket?.id}');
+    return ok;
+  }
+
+  /// 「先照常 emit（不擋 UI）、背景驗證、曾重建才用同一份 payload 重送一次」。
+  /// busy／cancel／end-call／emergency-call 共用。socket 為 null（重建空窗）時 emit 為 no-op，
+  /// 仍會等重建完成後重送。
+  void _emitThenVerify(String event, Map<String, dynamic> payload) {
+    final int gen = _socketRebuildGeneration;
+    try {
+      socket?.emit(event, payload);
+    } catch (e) {
+      debugPrint('⚠️ [Signaling] $event emit 失敗（交給背景驗證）: $e');
+    }
+    unawaited(_verifyAndResend(event, payload, gen));
+  }
+
+  Future<void> _verifyAndResend(String event, Map<String, dynamic> payload, int genAtEmit) async {
+    await ensureLive();
+    if (!shouldResendAfterRebuild(
+      generationAtEmit: genAtEmit,
+      generationNow: _socketRebuildGeneration,
+      socketConnected: socket?.connected == true,
+    )) {
+      return;
+    }
+    debugPrint('🩺 [CallDiag] $event 原 emit 落在失效連線，重建後用同一份 payload 重送一次');
+    try {
+      socket?.emit(event, payload);
+    } catch (e) {
+      debugPrint('⚠️ [Signaling] $event 重送失敗: $e');
     }
   }
 
@@ -1152,6 +1338,7 @@ class Signaling {
   }
 
   void joinRoom(String roomId, {dynamic userId}) {
+    _extraRooms.add(roomId); // ★ Z1：重建 socket 時要補回
     if (socket != null && socket!.connected) {
       _emitJoin(roomId, 'family', 'Dashboard_Listener', 'listener', userId: userId ?? _userId);
     } else {
@@ -1170,6 +1357,7 @@ class Signaling {
   /// 做成「加入新房間就自動離開其他房間」，會直接打斷該功能。呼叫端必須
   /// 自己明確點名要離開哪個房間（見 `family_main_screen.dart::_switchElder`）。
   void leaveRoom(String roomId) {
+    _extraRooms.remove(roomId); // ★ Z1：不再補回
     if (roomId.isEmpty || socket == null || socket!.connected != true) {
       // socket 已斷線時，伺服器端本來就已經把它移出所有房間，這裡安全地
       // 什麼都不做（no-op）。
@@ -1194,6 +1382,7 @@ class Signaling {
   /// [_pendingRooms] 既有的加入/清空邏輯。
   void cancelPendingRoom(String roomId) {
     _pendingRooms.remove(roomId);
+    _extraRooms.remove(roomId); // ★ Z1
   }
 
   void updateAppForeground(bool isForeground) {
@@ -1243,6 +1432,14 @@ class Signaling {
 
     if (!socket!.connected) {
       debugPrint('❌ [CallRequest] 等待 socket 連線逾時（5 秒），撥打請求未送出');
+      return false;
+    }
+
+    // ★ 2026-11-07 殭屍連線（Z1）：connected 不代表後端認得；送出前驗證，失效則重建。
+    //   重建後必須確認新 socket 已連上，否則視同未送出（回 false，與等連線逾時同語意）。
+    await ensureLive();
+    if (socket == null || !socket!.connected) {
+      debugPrint('❌ [CallRequest] conn-check 後 socket 不可用，撥打請求未送出');
       return false;
     }
 
@@ -1312,13 +1509,23 @@ class Signaling {
   }) async {
     if (socket == null) return false;
 
+    final Stopwatch acceptWatch = Stopwatch()..start();
     int retries = (maxWait.inMilliseconds / 100).ceil();
     while (!socket!.connected && retries > 0) {
       await Future.delayed(const Duration(milliseconds: 100));
       retries--;
     }
 
-    if (socket!.connected) {
+    // ★ 2026-11-07 殭屍連線（Z1）：送出前驗證，但總時間不得超過 maxWait；
+    //   逾時時底層檢查仍在背景繼續，這裡照現況（連上就送）處理。
+    if (socket != null && socket!.connected) {
+      final Duration budget = remainingBudget(total: maxWait, elapsed: acceptWatch.elapsed);
+      if (budget > Duration.zero) {
+        await ensureLive().timeout(budget, onTimeout: () => false);
+      }
+    }
+
+    if (socket != null && socket!.connected) {
       debugPrint("✅ [Accept] Sending call-accept to $targetSocketId (CallId: $callId)");
       socket!.emit('call-accept', {'targetId': targetSocketId, 'callId': callId});
       return true;
@@ -1352,12 +1559,16 @@ class Signaling {
     bool emitted = false;
     if (socket != null && socket!.connected) {
       try {
-        socket!.emit('call-busy', {
+        final Map<String, dynamic> busyPayload = {
           'targetId': targetSocketId,
           'callId': effectiveCallId,
           'reason': effectiveReason,
-        });
+        };
+        final int busyGen = _socketRebuildGeneration;
+        socket!.emit('call-busy', busyPayload);
         emitted = true;
+        // ★ Z1：先照常送（不擋 UI），背景驗證；曾重建才用同一份 payload 重送一次。
+        unawaited(_verifyAndResend('call-busy', busyPayload, busyGen));
       } catch (e) {
         // ★ 2026-11-07：emit 例外不得往外丟（呼叫端是「先送拒接再關 dialog」，丟出來 dialog 就關不掉）。
         debugPrint('⚠️ [Signaling] sendCallBusy emit 失敗，改走 HTTP: $e');
@@ -1378,7 +1589,9 @@ class Signaling {
   }
 
   void sendCancelCall(String room, {String role = 'family'}) {
-    socket!.emit('cancel-call', {'room': room, 'role': role, 'callId': _currentCallId});
+    // ★ Z1：payload 先存起來（下面會清掉 _currentCallId）；先照常 emit，背景驗證後視情況重送。
+    //   socket 為 null（重建空窗）時 _emitThenVerify 的 emit 是 no-op，不再 NPE。
+    _emitThenVerify('cancel-call', {'room': room, 'role': role, 'callId': _currentCallId});
     if (_currentCallId != null && _currentCallId!.isNotEmpty) {
       _markCallInvalid(_currentCallId!);
     }
@@ -1398,7 +1611,8 @@ class Signaling {
     _outgoingCallEmergencyForCallId = effectiveCallId;
     _outgoingCallIsEmergency = true;
     final int issuedAt = DateTime.now().millisecondsSinceEpoch;
-    socket!.emit('emergency-call', {
+    // ★ Z1：不可延遲——照常先 emit，背景驗證；曾重建才用同 callId 重送一次（issuedAt／expiresAt 不變）。
+    _emitThenVerify('emergency-call', {
       'room': room,
       'role': role,
       'callId': effectiveCallId,
@@ -1951,9 +2165,12 @@ class Signaling {
     //   後端 `on_end_call` 對 `room=None` 是安全的：它會改用 call_registry 的
     //   caller_sid / target_sids / accepter_sid 湊出對端（room 只是額外的 fallback），
     //   所以只要還有 `targetId` 或 `callId` 其中之一就值得送。
-    if (socket != null &&
+    if ((socket != null || _ensureLiveInFlight != null) &&
         (_currentRoomId != null || _peerSocketId != null || _currentCallId != null)) {
-      socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
+      // ★ Z1：payload 先存（下面會清 _currentCallId／_closePeerConnection 會清 _peerSocketId），
+      //   room 與原 emit 相同；先照常 emit，背景驗證後曾重建才用同一份重送一次。
+      //   `_ensureLiveInFlight != null` 涵蓋「重建空窗 socket 暫為 null」的情形。
+      _emitThenVerify('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
     if (_currentCallId != null && _currentCallId!.isNotEmpty) {
       _markCallInvalid(_currentCallId!);
@@ -2041,6 +2258,8 @@ class Signaling {
   ///
   /// **不要**把它改成只呼叫 `disconnect()`——那是修改前的行為，會留下孤兒 socket。
   void _disposeSocket(String reason) {
+    _liveCheckTimer?.cancel(); // ★ Z1：前景定期檢查 Timer 隨 socket 一起結束（connect() 會重啟）
+    _liveCheckTimer = null;
     final old = socket;
     socket = null; // 先斷開參考，避免拆除過程中有人又拿去 emit
     if (old == null) return;
@@ -2072,6 +2291,7 @@ class Signaling {
     // hangUp() 對著早已不存在的房間／對端 emit end-call。
     _currentRoomId = null;
     _peerSocketId = null;
+    _extraRooms.clear(); // ★ Z1：房間隨連線失效，不可在之後的重建被補回
   }
 
   bool _isExpiredCallPayload(dynamic payload) {
