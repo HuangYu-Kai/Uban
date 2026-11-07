@@ -94,6 +94,10 @@ dependencies:
   app_links: ^7.0.0
   record: ^6.2.1
 
+dependency_overrides:
+  flutter_callkit_incoming:
+    path: third_party/flutter_callkit_incoming
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
