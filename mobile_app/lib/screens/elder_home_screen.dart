@@ -22,6 +22,7 @@ import '../services/api/elder_pet_gift_api.dart';
 import '../services/api/family_updates_api.dart';
 import '../services/api/step_challenge_api.dart';
 import '../services/today_tasks_loader.dart';
+import '../services/call_surface_dismiss.dart';
 import '../services/signaling.dart';
 import '../services/elder_location_service.dart';
 import 'dart:async';
@@ -32,8 +33,6 @@ import '../widgets/google_assistant_overlay.dart';
 import '../widgets/global_assistant_button.dart';
 import '../widgets/elder_floating_chrome.dart';
 import '../widgets/incoming_call_view.dart';
-// ★ 第四十輪（item 4）：onCancelCall 現在也要關備援本機通知，見下方說明。
-import '../services/local_call_notification.dart';
 // ★ 第四十一輪（item 2）：步驟式高光新手指引元件。
 import '../widgets/spotlight_tutorial.dart';
 import '../widgets/ui/ui.dart';
@@ -45,19 +44,8 @@ import 'package:intl/intl.dart';
 import '../services/care_message_store.dart';
 import '../services/checkin_cheer_service.dart';
 
-/// ★ 第四十輪（item 4）：取消來電時清除待處理通話 prefs 的共用邏輯。
-/// 與 `main.dart::_clearPendingCallPrefsOnCancel` 同一邏輯（該函式對本檔
-/// library-private，無法跨檔重用，故在此複製一份，比照專案既有的「同一段
-/// 三鍵清除邏輯在多處各自複製一份」慣例，見 `CLAUDE_call-monitor.md` §3.4）。
-/// 不論 callId 是否吻合都無條件清除——裝置同一時間只會有一通待處理來電。
-Future<void> _clearPendingCallPrefsOnCancel() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('pendingAcceptedCall');
-    await prefs.remove('pendingRingCallData');
-    await prefs.remove('pendingRingCall');
-  } catch (_) {}
-}
+// ★ 2026-11-07：取消來電時的三面清除（CallKit／備援通知／pending prefs）與已取消登記，
+//   統一由 `CallSurfaceDismisser.dismissAll` 處理（舊的本地複製版 _clearPendingCallPrefsOnCancel 已移除）。
 
 class ElderHomeScreen extends StatefulWidget {
   final int userId;
@@ -292,6 +280,8 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   @override
   void initState() {
     super.initState();
+    // ★ 2026-11-07：註冊本畫面來電 dialog 的關閉回呼，FCM 取消／其他覆寫版 onCancelCall 也能關掉它。
+    CallSurfaceDismisser.registerDialogCloser(_closeOwnIncomingDialog);
     WidgetsBinding.instance.addObserver(this);
     isAppReady = true;
     _requestPermissions();
@@ -823,19 +813,12 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
     //   CallKit／備援通知。endAllCalls() 沿用 main.dart 既有 try/catch 慣例
     //   （MIUI 會拋 content-is-null）。
     _ownCancelCall = (roomId, senderId, callId, [senderName]) {
-      if (!mounted) return;
       debugPrint('🔕 [ElderHomeScreen] 家屬取消來電，關閉彈窗');
-      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
-        Navigator.of(context).pop();
-        _isIncomingCallDialogOpen = false;
-      }
-      try {
-        FlutterCallkitIncoming.endAllCalls();
-      } catch (e) {
-        debugPrint('⚠️ [ElderHomeScreen] endAllCalls 失敗（不影響）: $e');
-      }
-      unawaited(LocalCallNotification.cancel());
-      unawaited(_clearPendingCallPrefsOnCancel());
+      // ★ 2026-11-07：不論本畫面是否仍 mounted 都要走完三面清除；並關閉「所有」已註冊的來電 dialog
+      //   （含 main.dart 全域版——本覆寫會蓋掉全域 onCancelCall，原本全域那份 dialog 不會被關）。
+      //   `dismissAll` 內含 CallKit（接住非同步例外）、備援通知、四個 pending 鍵、已取消清單。
+      _closeOwnIncomingDialog();
+      unawaited(CallSurfaceDismisser.dismissAll(callId: callId?.toString()));
     };
     Signaling().onCancelCall = _ownCancelCall;
 
@@ -1009,6 +992,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   bool _isIncomingCallDialogOpen = false;
 
+  /// ★ 2026-11-07：本畫面來電 dialog 自己的 context。取消／拒絕時只彈這個 dialog route，
+  ///   不再用 `Navigator.of(context).pop()` 彈「最上層任意 route」（dialog 已被別路徑關掉、
+  ///   使用者已進通話房時會誤殺無辜畫面）。
+  BuildContext? _incomingDialogContext;
+
+  /// 本地優先關閉本畫面的來電 dialog；可重複呼叫、永不丟例外。
+  void _closeOwnIncomingDialog() {
+    final BuildContext? ctx = _incomingDialogContext;
+    _incomingDialogContext = null;
+    _isIncomingCallDialogOpen = false;
+    CallSurfaceDismisser.popDialogSafely(ctx);
+  }
+
   Future<void> _connectSocket(String roomToJoin) async {
     String? fcmToken;
     try {
@@ -1029,6 +1025,11 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
   void _showIncomingCallDialog(String roomId, String senderId, String? callId,
       [String? callerName]) {
     if (_isIncomingCallDialogOpen) return;
+    // ★ 2026-11-07：已取消／已拒接的來電（callId 在失效清單，含跨 isolate 登記者）不彈畫面。
+    if (callId != null && callId.isNotEmpty && Signaling().isCallInvalidated(callId)) {
+      debugPrint('🔕 [ElderHomeScreen] 來電 $callId 已被取消／拒接，不顯示 dialog');
+      return;
+    }
     _isIncomingCallDialogOpen = true;
     // ★ 2026-10-07 來電顯示名稱：取不到名稱才退回「家人」（不再一律顯示「家屬」）。
     final String trimmedName = (callerName ?? '').trim();
@@ -1038,6 +1039,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        _incomingDialogContext = dialogContext;
         // ★ 第五十一輪（長5）：來電響鈴畫面上，全域語音助理浮動鈕必須讓位，
         //   不可以擋到接聽／拒接鍵。
         return AssistantHiddenZone(
@@ -1048,10 +1050,19 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
             callerName: displayName,
             subtitle: '$displayName 正在呼叫您！',
               onDecline: () {
-                Signaling()
-                    .sendCallBusy(senderId, callId: callId, room: roomId);
-                Navigator.of(dialogContext).pop();
-                _isIncomingCallDialogOpen = false;
+                // ★ 2026-11-07：拒絕＝本地優先＋冪等。舊順序是「先 sendCallBusy 再 pop」，
+                //   sendCallBusy 一丟例外 dialog 就關不掉（＝使用者回報的「按拒絕沒反應」）。
+                //   現在先關畫面；發起端若已取消，sendCallBusy 內部直接略過；任何例外都不外洩。
+                _closeOwnIncomingDialog();
+                try {
+                  Signaling()
+                      .sendCallBusy(senderId, callId: callId, room: roomId);
+                } catch (e) {
+                  debugPrint('⚠️ [ElderHomeScreen] 拒絕：sendCallBusy 失敗（畫面已關，忽略）: $e');
+                }
+                // 同步結束可能還在響的 CallKit、關備援通知、清 pending、登記已結束。
+                unawaited(CallSurfaceDismisser.dismissAll(
+                    callId: callId, closeDialogs: false));
               },
               onAccept: () {
                 Navigator.of(dialogContext).pop();
@@ -1104,7 +1115,10 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
           ),
         );
       },
-    ).then((_) => _isIncomingCallDialogOpen = false);
+    ).then((_) {
+      _isIncomingCallDialogOpen = false;
+      _incomingDialogContext = null;
+    });
   }
 
   final FlutterTts _flutterTts = FlutterTts();
@@ -1299,6 +1313,7 @@ class _ElderHomeScreenState extends State<ElderHomeScreen> with WidgetsBindingOb
 
   @override
   void dispose() {
+    CallSurfaceDismisser.unregisterDialogCloser(_closeOwnIncomingDialog);
     _helpPillTuckTimer?.cancel();
     scheduleMicrotask(() {
       elderFloatingChromeHidden.value = false;

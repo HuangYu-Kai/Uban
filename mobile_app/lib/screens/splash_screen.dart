@@ -10,6 +10,7 @@ import 'family_onboarding_screen.dart';
 import 'elder_home_screen.dart';
 import 'family_main_screen.dart';
 import '../globals.dart'; // ★ 新增
+import '../services/cancelled_call_store.dart'; // ★ 2026-11-07：冷啟動最終防線排除已取消來電
 import 'elder_screen.dart'; // ★ 新增
 import 'video_call_screen.dart'; // ★ 2026-07-19：家屬冷啟動待接聽來電直接進視訊房
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // ★ 2026-07-23：splash activeCalls 輪詢
@@ -354,6 +355,14 @@ class _SplashScreenState extends State<SplashScreen> {
                     }
                   } catch (_) {}
                 }
+              }
+              // ★ 2026-11-07：最終防線重建出來的 pending 若屬於「發起端已取消」的來電就作廢——
+              //   不要在冷啟動動畫之後把使用者導進一通早已結束的通話房。
+              final String? rebuiltCallId = pendingAcceptedCall.value?['callId'];
+              if (rebuiltCallId != null &&
+                  await CancelledCallStore.isCancelled(rebuiltCallId)) {
+                debugPrint('🗑️ [Splash] 最後防線重建的來電已被取消，作廢 (callId=$rebuiltCallId)');
+                pendingAcceptedCall.value = null;
               }
               // 清除以避免下次冷啟動誤判
               await prefs.remove('pendingAcceptedCall');

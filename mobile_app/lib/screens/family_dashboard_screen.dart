@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'identification_screen.dart'; // ★ 將原本的 role_selection_screen.dart 改為新的系統入口
 import '../main.dart'; // import callKitDeclineStream
+import '../services/call_surface_dismiss.dart';
 import '../services/signaling.dart';
 import '../services/session_manager.dart';
 import 'device_selection_screen.dart';
@@ -212,11 +213,15 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
             // ★ 同樣先寫進 _ownCancelCall 欄位，dispose() 才能用 identical() 安全歸還。
             _ownCancelCall = (cancelRoomId, cancelSenderId, cancelCallId, [cancelSenderName]) {
                 if (roomId == cancelRoomId && isDialogOpen && mounted) {
-                    Navigator.of(dialogContext).pop();
+                    // ★ 2026-11-07：只彈本 dialog 的 route（見 CallSurfaceDismisser.popDialogSafely）。
+                    CallSurfaceDismisser.popDialogSafely(dialogContext);
                     isDialogOpen = false;
                     _currentDialogRoomId = null;
                     _dialogContext = null;
                 }
+                // ★ 2026-11-07（G144）：本覆寫會蓋掉全域 onCancelCall，CallKit／備援通知／pending prefs
+                //   一律在此補齊（不論房號是否吻合——裝置同時只會有一通待處理來電）。
+                unawaited(CallSurfaceDismisser.dismissAll(callId: cancelCallId?.toString()));
             };
             _signaling.onCancelCall = _ownCancelCall;
 
@@ -369,8 +374,15 @@ class _FamilyDashboardScreenState extends State<FamilyDashboardScreen> with Widg
                                   isDialogOpen = false;
                                   _currentDialogRoomId = null;
                                   _dialogContext = null;
-                                  _signaling.sendCallBusy(senderId, callId: callId);
-                                  Navigator.pop(dialogContext);
+                                  // ★ 2026-11-07：本地優先——先關畫面，sendCallBusy 例外不得擋住關閉。
+                                  CallSurfaceDismisser.popDialogSafely(dialogContext);
+                                  try {
+                                    _signaling.sendCallBusy(senderId, callId: callId);
+                                  } catch (e) {
+                                    debugPrint('⚠️ [FamilyDashboard] 忽略：sendCallBusy 失敗（畫面已關）: $e');
+                                  }
+                                  unawaited(CallSurfaceDismisser.dismissAll(
+                                      callId: callId, closeDialogs: false));
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.grey.shade300,

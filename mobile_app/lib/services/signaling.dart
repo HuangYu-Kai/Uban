@@ -12,6 +12,8 @@ import 'package:uuid/uuid.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../globals.dart';
 import 'api_service.dart';
+import 'call_channel_guard.dart';
+import 'cancelled_call_store.dart';
 
 typedef StreamStateCallback = void Function(MediaStream stream);
 typedef IncomingCallCallback = Future<bool> Function(String callerId, String callType);
@@ -101,6 +103,10 @@ class Signaling {
   ///   `SessionManager.releaseSession()` 完整釋放 session（需求 5），
   ///   否則這台裝置之後再也綁不回去。
   Function(Map<String, dynamic>)? onMonitorRemoved;
+  /// ★ 2026-11-07：家屬端遠端要求監視機切換前／後鏡頭。
+  ///   payload: {room, elderId, deviceName, senderId}（deviceName 為後端登記值）。
+  ///   只由 CCTV 模式的 elder_screen.dart 註冊；dispose 時須以 identical() 守衛歸還（G102）。
+  Function(Map<String, dynamic>)? onMonitorSwitchCamera;
   /// ★ 2026-08-18 IPS prototype：後端判定長輩所在樓層區域（zone）發生穩定
   ///   切換時觸發。payload 見 `services/indoor_position.py::_build_zone_payload`：
   ///   `{elder_id, device_id, from_zone, to_zone, entered_at,
@@ -281,9 +287,25 @@ class Signaling {
 
   void invalidateCallId(String? callId) {
     if (callId != null && callId.isNotEmpty) {
-      _invalidCallIds.add(callId);
+      _markCallInvalid(callId);
       debugPrint('⛔ [Signaling] callId 已標記失效: $callId');
     }
+  }
+
+  /// ★ 2026-11-07：標記 callId 失效——記憶體 Set（本 isolate 同步查詢）＋ SharedPreferences
+  /// 持久清單（[CancelledCallStore]，跨 isolate／冷啟動查詢）。取消／掛斷／拒接／過期一律走這裡。
+  void _markCallInvalid(String callId) {
+    if (callId.isEmpty) return;
+    _invalidCallIds.add(callId);
+    unawaited(CancelledCallStore.mark(callId));
+  }
+
+  /// ★ 2026-11-07：把持久清單灌進記憶體 Set（App 啟動、回到前景時呼叫）。
+  /// 背景 isolate／上一個程序已記錄的取消，本 isolate 才認得，延遲抵達的 Socket call-request 才會被擋。
+  Future<void> syncInvalidCallIdsFromStore() async {
+    try {
+      _invalidCallIds.addAll(await CancelledCallStore.allCancelled());
+    } catch (_) {}
   }
 
   final Map<String, dynamic> _configuration = {
@@ -324,6 +346,17 @@ class Signaling {
         });
       }
     });
+  }
+
+  /// ★ 2026-11-07：本機（長輩端）是否該因「通道不符」忽略這通來電。
+  ///   只在 `_role == 'elder'` 時套用（家屬端、好友通話發起端不受影響）；
+  ///   `_deviceMode == 'monitor'` 的監控機只處理 monitor_elder_ 房，通訊機不處理 monitor_elder_ 房。
+  bool _isChannelMismatch(dynamic room) {
+    if (_role != 'elder') return false;
+    return shouldIgnoreCallForDeviceChannel(
+      isMonitorDevice: _deviceMode == 'monitor',
+      roomId: room?.toString(),
+    );
   }
 
   void connect(String roomId, String role, {dynamic userId, String deviceName = 'Unknown', String deviceMode = 'comm', String? fcmToken}) {
@@ -492,6 +525,11 @@ class Signaling {
         debugPrint('🩺 [CallDiag] CALL-IN dropped: same-role（兩端都是 $senderRole，相同角色互打會被忽略）');
         return;
       }
+      // ★ 2026-11-07：通道守門——監控機只收 monitor_elder_ 房的通話，通訊機不收 monitor_elder_ 房的通話。
+      if (_isChannelMismatch(data['room'])) {
+        debugPrint('🚧 [Signaling] 通道不符，忽略 call-request (room=${data['room']}, deviceMode=$_deviceMode)');
+        return;
+      }
       
       // ★ 問題4修復：檢查是否已在短時間內處理過此 callId（防止重複）
       final String callId = data['callId'] ?? '';
@@ -503,7 +541,7 @@ class Signaling {
         debugPrint('⏰ [Signaling] Ignore expired call-request (callId=$callId)');
         debugPrint("🩺 [CallDiag] CALL-IN dropped: expired（issuedAt=${data['issuedAt']} expiresAt=${data['expiresAt']} now=${DateTime.now().millisecondsSinceEpoch}；兩端時鐘差太多也會誤判過期）");
         if (callId.isNotEmpty) {
-          _invalidCallIds.add(callId);
+          _markCallInvalid(callId);
         }
         return;
       }
@@ -553,10 +591,14 @@ class Signaling {
       debugPrint('🔕 [Signaling] 收到 cancel-call: $data');
       final String callId = (data['callId'] ?? '').toString();
       if (callId.isNotEmpty) {
-        _invalidCallIds.add(callId);
+        _markCallInvalid(callId);
       }
       if (!kIsWeb) {
-        FlutterCallkitIncoming.endAllCalls();
+        // ★ 2026-11-07：MIUI 的 endAllCalls 會非同步拋 PlatformException(content is null)，
+        //   原本未接住，變成未處理的非同步例外；一併讓「取消」不依賴它成功。
+        FlutterCallkitIncoming.endAllCalls().catchError((Object e) {
+          debugPrint('⚠️ [Signaling] cancel-call endAllCalls 失敗（不影響）: $e');
+        });
       }
       if (onCancelCall != null) onCancelCall!(data['room'], data['senderId'], data['callId']);
     });
@@ -571,6 +613,12 @@ class Signaling {
       final String? senderRole = data['role']?.toString();
       if (senderRole != null && _role == senderRole) {
         debugPrint('🚨 [Signaling] 忽略相同角色發出的 emergency-call (SenderRole: $senderRole)');
+        return;
+      }
+      // ★ 2026-11-07：通道守門（同 call-request）。家屬「監看」走 monitor_elder_ 房，只會抵達監控機；
+      //   其他房的緊急通話不得被監控機自動接聽，monitor 房的也不得拉起通訊機。
+      if (_isChannelMismatch(data['room'])) {
+        debugPrint('🚧 [Signaling] 通道不符，忽略 emergency-call (room=${data['room']}, deviceMode=$_deviceMode)');
         return;
       }
 
@@ -688,7 +736,7 @@ class Signaling {
       _currentCallId = null;
       final String callId = (data['callId'] ?? '').toString();
       if (callId.isNotEmpty) {
-        _invalidCallIds.add(callId);
+        _markCallInvalid(callId);
       }
       if (!kIsWeb) {
         FlutterCallkitIncoming.endAllCalls();
@@ -736,6 +784,14 @@ class Signaling {
       debugPrint("🗑️ [Signaling] Received monitor-removed: $data");
       if (onMonitorRemoved != null) {
         onMonitorRemoved!(data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
+      }
+    });
+
+    // ★ 2026-11-07：家屬遠端切換監視機鏡頭。payload 非 Map 就退回空 Map，不在 handler 內拋例外。
+    socket!.on('monitor-switch-camera', (data) {
+      debugPrint("🔄 [Signaling] Received monitor-switch-camera: $data");
+      if (onMonitorSwitchCamera != null) {
+        onMonitorSwitchCamera!(data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{});
       }
     });
 
@@ -864,10 +920,16 @@ class Signaling {
       debugPrint("📴 收到掛斷訊號");
       final String callId = (data is Map ? (data['callId'] ?? '') : '').toString();
       if (callId.isNotEmpty) {
-        _invalidCallIds.add(callId);
+        _markCallInvalid(callId);
       }
       if (!kIsWeb) {
-        await FlutterCallkitIncoming.endAllCalls();
+        // ★ 2026-11-07：endAllCalls 在 MIUI 會拋例外；原本 await 無 try/catch，一拋就跳過
+        //   下面的 _closePeerConnection 與 onCallEnded（對端掛斷後本機畫面不收尾）。
+        try {
+          await FlutterCallkitIncoming.endAllCalls();
+        } catch (e) {
+          debugPrint('⚠️ [Signaling] end-call endAllCalls 失敗（不影響收尾）: $e');
+        }
       }
       await _closePeerConnection();
       if (onCallEnded != null) onCallEnded!();
@@ -1206,6 +1268,25 @@ class Signaling {
     return true;
   }
 
+  /// ★ 2026-11-07：家屬端要求指定監視機切換前／後鏡頭。
+  ///   [targetSocketId] 為該監視機的 socket id；後端會驗證發送者為該長輩的家屬、
+  ///   目標為該長輩房內的監視機，不符則靜默丟棄（不回任何事件）。
+  void sendMonitorSwitchCamera({
+    required String room,
+    required String targetSocketId,
+    required String elderId,
+    String? deviceName,
+  }) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('monitor-switch-camera', {
+        'room': room,
+        'targetId': targetSocketId,
+        'elderId': elderId,
+        'deviceName': deviceName ?? '',
+      });
+    }
+  }
+
   // ★ Feature 13: 請求更新長輩設備列表
   void sendGetElderDevices(String roomId) {
     if (socket != null && socket!.connected) {
@@ -1255,17 +1336,34 @@ class Signaling {
     //   這只影響對方看到的**文案**，不會擋掉任何來電。
     final String effectiveReason =
         reason ?? (peerConnection != null ? 'busy' : 'declined');
+    // ★ 2026-11-07：拒接必須「冪等＋本地優先」。發起端已取消／掛斷（callId 已在失效清單內：
+    //   cancel-call／end-call／上一次拒接都會登記）時，這通根本不需要再通知任何人——直接返回，
+    //   讓呼叫端照常關閉自己的畫面，不送出必然被後端忽略的 call-busy，更不能丟例外或卡住 UI。
+    if (effectiveCallId != null &&
+        effectiveCallId.isNotEmpty &&
+        _invalidCallIds.contains(effectiveCallId)) {
+      debugPrint('ℹ️ [Signaling] sendCallBusy: callId=$effectiveCallId 已取消／已拒接，略過重送（本地照常關閉）');
+      return;
+    }
     // ★ 拒接的 callId 立即失效，避免延遲到達的同一通 call-request 又響起。
     if (effectiveCallId != null && effectiveCallId.isNotEmpty) {
-      _invalidCallIds.add(effectiveCallId);
+      _markCallInvalid(effectiveCallId);
     }
+    bool emitted = false;
     if (socket != null && socket!.connected) {
-      socket!.emit('call-busy', {
-        'targetId': targetSocketId,
-        'callId': effectiveCallId,
-        'reason': effectiveReason,
-      });
-    } else {
+      try {
+        socket!.emit('call-busy', {
+          'targetId': targetSocketId,
+          'callId': effectiveCallId,
+          'reason': effectiveReason,
+        });
+        emitted = true;
+      } catch (e) {
+        // ★ 2026-11-07：emit 例外不得往外丟（呼叫端是「先送拒接再關 dialog」，丟出來 dialog 就關不掉）。
+        debugPrint('⚠️ [Signaling] sendCallBusy emit 失敗，改走 HTTP: $e');
+      }
+    }
+    if (!emitted) {
       // ★ 2026-07-18：Socket 未連線（背景/剛斷線）時走 HTTP 備援，
       //   確保發起方仍能收到拒接、雙端同步關閉來電 UI。
       debugPrint('⚠️ [Signaling] sendCallBusy: Socket 未連線，改走 HTTP declineCall');
@@ -1282,7 +1380,7 @@ class Signaling {
   void sendCancelCall(String room, {String role = 'family'}) {
     socket!.emit('cancel-call', {'room': room, 'role': role, 'callId': _currentCallId});
     if (_currentCallId != null && _currentCallId!.isNotEmpty) {
-      _invalidCallIds.add(_currentCallId!);
+      _markCallInvalid(_currentCallId!);
     }
     _currentCallId = null;
   }
@@ -1775,7 +1873,9 @@ class Signaling {
     });
   }
 
-  Future<void> openUserMedia(RTCVideoRenderer localVideo, {bool videoEnabled = true}) async {
+  /// ★ 2026-11-07：新增選填 [facingMode]（'user' 前鏡頭／'environment' 後鏡頭），
+  ///   預設 'user'＝與舊行為完全相同；目前只有 CCTV 監視機會帶入使用者記住的選擇。
+  Future<void> openUserMedia(RTCVideoRenderer localVideo, {bool videoEnabled = true, String facingMode = 'user'}) async {
     // ★ Task 3：提高畫質與幀率 constraint
     // ★ 2026-08-11 第二十二輪（需求 7）：ideal 由 1280x720@30 提高到 **1920x1080@60**。
     //   **min 值刻意維持 640x480@24 不變**——`mandatory` 的 min 在 Android 是硬性條件，
@@ -1793,7 +1893,7 @@ class Signaling {
                 'minFrameRate': '24',
                 'idealFrameRate': '60',
               },
-              'facingMode': 'user',
+              'facingMode': facingMode,
               'optional': [],
             },
             'audio': true,
@@ -1856,7 +1956,7 @@ class Signaling {
       socket!.emit('end-call', {'room': _currentRoomId, 'targetId': _peerSocketId, 'callId': _currentCallId});
     }
     if (_currentCallId != null && _currentCallId!.isNotEmpty) {
-      _invalidCallIds.add(_currentCallId!);
+      _markCallInvalid(_currentCallId!);
     }
     _currentCallId = null;
     _isCreatingOffer = false; // ⭐ 重置 createOffer flag
