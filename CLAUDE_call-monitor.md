@@ -1316,6 +1316,23 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > `CLAUDE_call-monitor-history.md`；**N ≥ 43** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
 
+### 2026-11-07 — 家屬端「監看」監視機卻把長輩通訊機拉進緊急通話（後端；未編號）
+
+**症狀**：家屬端在監視機清單按「監看」，長輩的**通訊機**也被觸發緊急通話（無條件自動接聽、強制開鏡頭）。
+
+**根因**：「監看」本來就是以 `emergency-call`（room＝`monitor_elder_<id>`、`targetId`＝該監視機 socket）喚醒監視機
+（`family_interaction_tab.dart`，`isEmergency: true, monitorViewOnly: true`），這是刻意設計。問題在後端
+`on_emergency_call` 的 FCM 第三層來源 `_get_all_known_fcm_tokens()`：記憶體迴圈有 `_matches_target` 過濾，
+**兩支 DB 迴圈（elder／family）卻沒有**——elder 分支以 `room_id IN (comm, monitor) OR user_id`（G32）撈出該長輩
+**全部**裝置 token，再依 G31 偏好 comm，於是通訊機收到 `type: 'emergency-call'` 的 FCM 並自動接聽。
+`on_call_request` 共用同一支函式，有指定 `targetId` 的一般來電同樣會多發。
+
+**修復**：`socket_app.py::_get_all_known_fcm_tokens` 兩支 DB 迴圈補上
+`if target_id and not _matches_target(target_id, token=token): continue`（DB 列沒有 socket id，只比對 token
+與 `offline_<token 末 8 碼>`）。`target_id` 為 `None`（整戶一起響）時行為不變；被指定裝置自身的 token 仍由
+Socket 層與 Layer B（在線 socket 自帶的 `fcmToken`）送達。G29／G31／G32 均不受影響。前端未改。
+**驗證**：`tests/test_call_signaling.py` 等後端測試。**未新增護欄、未同步 graphify**（連接／跳轉語意未變）。
+
 ### 2026-10-02 — 語音求救附帶長輩最後位置（後端部分；未編號，併入下一輪彙整）
 
 **需求**：長輩對小嘎開口求救（`sos_voice`）時，家屬最急著知道「他在哪」，但警報 payload 完全沒有位置。
