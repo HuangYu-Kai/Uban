@@ -149,6 +149,9 @@ class ApiService {
     String? callId,
   }) => CallApi.declineCall(roomId: roomId, senderId: senderId, callId: callId);
 
+  /// ★ 2026-11-07：伺服器端這通來電是否已被取消／掛斷（true／false／null=查不到，見 CallApi）。
+  static Future<bool?> isCallCancelled(String callId) => CallApi.isCallCancelled(callId);
+
   static Future<Map<String, dynamic>> getCallHistory(String roomId) => CallApi.getCallHistory(roomId);
 
   // --- AI Chat, Voice, Persona, Daily Suggestions ---

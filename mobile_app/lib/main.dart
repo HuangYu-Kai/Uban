@@ -49,6 +49,9 @@ import 'services/checkin_notification.dart';
 import 'screens/family/elder_location_map_screen.dart';
 // ★ 2026-08-12 第二十三輪：緊急通話提示音的全域單一擁有者（救護車雙音）
 import 'services/emergency_tone.dart';
+import 'services/call_channel_guard.dart';
+import 'services/cancelled_call_store.dart';
+import 'services/call_surface_dismiss.dart';
 // ⏰ 排程提醒本機通知與全域管理器
 import 'services/local_reminder_notification.dart';
 import 'services/elder_reminder_manager.dart';
@@ -66,7 +69,6 @@ bool _supportsCallKit() => supportsCallKit();
 bool _isExpiredCallPayload(Map<String, dynamic> data) => isExpiredCallPayload(data);
 String? _deriveMyRoleFromCall(dynamic senderRoleRaw, String? localRole) =>
     deriveMyRoleFromCall(senderRoleRaw, localRole);
-Future<void> _clearPendingCallPrefsOnCancel() => clearPendingCallPrefsOnCancel();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -170,6 +172,11 @@ Future<void> _bootstrap() async {
           debugPrint("🗑️ [Main] Discarding stale pendingAcceptedCall "
               "(ts=$ts, age: ${ageMs}ms)");
           await prefs.remove('pendingAcceptedCall');
+        } else if (await CancelledCallStore.isCancelled(decoded['callId']?.toString())) {
+          // ★ 2026-11-07：發起端在這通寫入 prefs 之後已取消／掛斷（背景 isolate 或主 isolate 已登記），
+          //   冷啟動不得再導向這通已結束的通話（會卡在「等待對方」的假畫面）。
+          debugPrint("🗑️ [Main] pendingAcceptedCall 的來電已被取消，丟棄 (callId=${decoded['callId']})");
+          await CallSurfaceDismisser.clearPendingCallPrefs(cancelledCallId: decoded['callId']?.toString());
         } else {
           pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
           debugPrint("🚨 [Main] Loaded pendingAcceptedCall from SharedPreferences: $pendingCallStr");
@@ -205,6 +212,10 @@ Future<void> _bootstrap() async {
           if (ts == null || ageMs > kCallValidityMs) {
             debugPrint("🗑️ [Main] Discarding stale pendingRingCallData "
                 "(ts=$ts, age: ${ageMs}ms)");
+            await prefs.remove('pendingRingCallData');
+          } else if (await CancelledCallStore.isCancelled(decoded['callId']?.toString())) {
+            // ★ 2026-11-07：同上——已取消的來電，不重建 pendingAcceptedCall、也不留著給 splash 備援。
+            debugPrint("🗑️ [Main] pendingRingCallData 的來電已被取消，丟棄 (callId=${decoded['callId']})");
             await prefs.remove('pendingRingCallData');
           } else if (isAccepted) {
             pendingAcceptedCall.value = decoded.map((key, value) => MapEntry(key, value?.toString()));
@@ -303,6 +314,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     _setupSignalingListener();
     sig.Signaling().updateAppForeground(true);
+    // ★ 2026-11-07：把跨 isolate 持久的「已取消 callId」灌進 Signaling 記憶體 Set，
+    //   之後延遲抵達的 Socket／FCM call-request 才會被擋（背景 isolate 的取消主 isolate 原本看不到）。
+    unawaited(sig.Signaling().syncInvalidCallIdsFromStore());
+    // 全域 App 內來電 dialog 的關閉回呼：任何取消路徑（Socket／FCM／覆寫版 onCancelCall）都能關掉它。
+    CallSurfaceDismisser.registerDialogCloser(_closeGlobalIncomingDialog);
     // ★ 2026-09-21 第五十一輪：備援通知「待接聽」鍵的冷啟動消費。見
     //   _scheduleLocalRingCallFallback 的函式註解。
     if (!kIsWeb) {
@@ -997,6 +1013,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _checkPendingCallFromSharedPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      try {
+        await prefs.reload(); // ★ 2026-11-07：背景 isolate 的寫入／清除要先同步進本 isolate 快取
+      } catch (_) {}
       final pendingCallStr = prefs.getString('pendingAcceptedCall');
       if (pendingCallStr != null) {
         final Map<String, dynamic> decoded = jsonDecode(pendingCallStr);
@@ -1021,6 +1040,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         final String? lastId = sig.Signaling().lastProcessedCallId;
         if (callId != null && callId == lastId) {
           debugPrint("🗑️ [Main] Discarding duplicate pendingAcceptedCall (callId=$callId)");
+          return;
+        }
+        // ★ 2026-11-07：發起端已取消／掛斷的來電不得在回前景時又被導進通話房。
+        if (await CancelledCallStore.isCancelled(callId)) {
+          debugPrint("🗑️ [Main] Discarding pendingAcceptedCall：來電已被取消 (callId=$callId)");
+          await CallSurfaceDismisser.clearPendingCallPrefs(cancelledCallId: callId);
           return;
         }
 
@@ -1101,6 +1126,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (callId != null && callId == sig.Signaling().lastProcessedCallId) {
         debugPrint('🗑️ [Main] pendingLocalRingCall 已由其他通路處理，略過 '
             '(callId=$callId)');
+        return;
+      }
+      // ★ 2026-11-07：發起端已取消／掛斷——不要為一通早已結束的來電再彈接聽／拒接畫面
+      //   （使用者按下去只會得到「無反應」或進到空房間）。
+      if (await CancelledCallStore.isCancelled(callId) ||
+          (callId != null && sig.Signaling().isCallInvalidated(callId))) {
+        debugPrint('🗑️ [Main] pendingLocalRingCall 的來電已被取消，略過 (callId=$callId)');
+        unawaited(LocalCallNotification.cancel());
         return;
       }
       // 已經有一通「已明確接聽」的通話在等待導航，不要疊加一個舊的接聽/拒接彈窗。
@@ -1222,6 +1255,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           "☀️ [Main] App Resumed. Triggering self-healing reconnection...");
       sig.Signaling().updateAppForeground(true);
       sig.Signaling().reconnect();
+      unawaited(sig.Signaling().syncInvalidCallIdsFromStore());
       _checkPendingCallFromSharedPreferences();
       // ★ 2026-09-21 第五十一輪：回前景時也要檢查備援通知的「待接聽」鍵——
       //   BG isolate 的 notificationBackgroundTapHandler 可能在 App 只是被
@@ -1282,6 +1316,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           final String? issuedAt = extra['issuedAt']?.toString();
           final String? expiresAt = extra['expiresAt']?.toString();
           if (roomId.isEmpty || senderId.isEmpty) continue;
+
+          // ★ 2026-11-07：發起端已取消的來電（即使 CallKit 殘留 isAccepted）不補設 pending。
+          if (await CancelledCallStore.isCancelled(callId)) {
+            debugPrint("🗑️ [Main] _checkInitialCall: 來電已被取消 (callId=$callId)，不補設 pending");
+            unawaited(CallSurfaceDismisser.dismissAll(callId: callId, closeDialogs: false));
+            continue;
+          }
 
           // 過期驗證（與 actionCallAccept 相同標準）
           final int now = DateTime.now().millisecondsSinceEpoch;
@@ -1371,6 +1412,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           final String senderId = (extra['senderId'] ?? '').toString();
           final String? callId = extra['callId']?.toString();
           if (roomId.isEmpty || senderId.isEmpty) continue;
+          // ★ 2026-11-07：同 _checkInitialCall，已取消的來電不捕捉。
+          if (await CancelledCallStore.isCancelled(callId)) {
+            unawaited(CallSurfaceDismisser.dismissAll(callId: callId, closeDialogs: false));
+            continue;
+          }
 
           final int now = DateTime.now().millisecondsSinceEpoch;
           final String? expStr = extra['expiresAt']?.toString();
@@ -1565,11 +1611,25 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           debugPrint("⏰ [FCM-Backup] 忽略過期來電 (callId=${message.data['callId']})");
           return;
         }
+        // ★ 2026-11-07：發起端已取消／掛斷（含背景 isolate 登記的）——延遲抵達的來電 FCM 不得再響。
+        {
+          final String earlyCallId = (message.data['callId'] ?? '').toString();
+          if (earlyCallId.isNotEmpty &&
+              (sig.Signaling().isCallInvalidated(earlyCallId) ||
+                  await CancelledCallStore.isCancelled(earlyCallId))) {
+            debugPrint("🔕 [FCM-Backup] 忽略已取消的來電 (callId=$earlyCallId)");
+            return;
+          }
+        }
         final roomId = message.data['roomId'];
         final senderId = message.data['senderId'];
         final callId = message.data['callId'];
-        final senderRole = message.data['role'];
         final isEmergency = message.data['type'] == 'emergency-call';
+        // ★ 2026-11-07：emergency-call 缺 role 時視為 family（只有家屬端會發緊急通話）。
+        //   舊版後端的緊急通話 FCM 沒有 role，會退回 prefs 角色（會漂移）→ 長輩機被判成非 elder →
+        //   跳出一般「家人來電」接聽／拒絕 UI。
+        final dynamic senderRole = resolveCallSenderRole(
+            type: message.data['type']?.toString(), roleRaw: message.data['role']);
 
         // ★ 2026-08-05 第十六輪：原本用 `appRole == senderRole` 判角色反轉，
         //   但 appRole 來自可能過期的 prefs（user_role/saved_role 由不同畫面寫入、
@@ -1591,6 +1651,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           if (myId != null && callerUserId != null && myId == callerUserId) {
             debugPrint("🙅 [FCM-Backup] 略過自己發起的來電 (callerUserId=$callerUserId == me=$myId)");
             return;
+          }
+          // ★ 2026-11-07：通道守門——通訊機與監控機互相隔離（長輩端才套用）。
+          //   監控機只處理 monitor_elder_ 房的通話；通訊機忽略 monitor_elder_ 房的通話。
+          if (myRole == 'elder') {
+            final bool isMonitorDevice = prefs.getBool('saved_is_cctv') ?? false;
+            if (shouldIgnoreCallForDeviceChannel(
+                isMonitorDevice: isMonitorDevice, roomId: roomId?.toString())) {
+              debugPrint("🚧 [FCM-Backup] 通道不符，忽略 ${message.data['type']}"
+                  "（room=$roomId, 本機為${isMonitorDevice ? '監控機' : '通訊機'}）");
+              return;
+            }
           }
         } catch (_) {}
 
@@ -1692,19 +1763,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         //   call-request（Socket 或 FCM）再次彈窗 → 避免「取消後又響」與角色反轉。
         final canceledCallId = (message.data['callId'] ?? '').toString();
         sig.Signaling().invalidateCallId(canceledCallId);
-        if (_activeCallDialogContext != null) {
-          if (Navigator.canPop(_activeCallDialogContext!)) {
-            Navigator.pop(_activeCallDialogContext!);
-          }
-          _activeCallDialogContext = null;
-        }
-        // Also end any active CallKit（★ 第十一輪：try-catch 防 content-is-null 崩潰）
-        try {
-          FlutterCallkitIncoming.endAllCalls();
-        } catch (e) {
-          debugPrint('⚠️ [FCM-Fg] endAllCalls 失敗（不影響）: $e');
-        }
-        await LocalCallNotification.cancel(); // ★ 第十一輪：關備援通知
+        // ★ 2026-11-07（G144 三面清除）：統一交給 CallSurfaceDismisser——關所有 App 內來電 dialog
+        //   （含 ElderHome／FamilyMain 自己的）、結束 CallKit（含非同步例外）、關備援通知、
+        //   清四個 pending prefs 鍵並登記跨 isolate 的已取消清單。原本這裡只關全域 dialog，
+        //   不清 prefs，ElderHome／FamilyMain 的 dialog 也不會關。
+        _closeGlobalIncomingDialog();
+        await CallSurfaceDismisser.dismissAll(callId: canceledCallId);
         // ★ 2026-08-12 第二十三輪：來電被對方取消時必須停掉緊急提示音，
         //   否則長輩端會出現「通話早就沒了、救護車聲還在響」（護欄 G77 可停止性）。
         unawaited(EmergencyTone.instance.stop());
@@ -1817,7 +1881,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // ★ 2026-08-12 第二十三輪：`CallRequestCallback` 塞不下 role/issuedAt/expiresAt，
       //   由 signaling.dart 在觸發本回呼前寫入 lastEmergencyMeta（純資料欄位，非狀態旗標）。
       final Map<String, String> meta = s.lastEmergencyMeta;
-      final String? senderRole = meta['role'];
+      // ★ 2026-11-07：緊急通話只由家屬端發起，payload 缺 role 時視為 family。
+      final String? senderRole =
+          resolveCallSenderRole(type: 'emergency-call', roleRaw: meta['role']);
       // ★ 2026-08-05 第十六輪：不用可能殘留錯誤的 appRole 判角色——payload 的
       //   發起方角色才是權威（通話只可能 elder↔family），appRole 只作退路。
       //   長輩機殘留 user_role='family' 時，舊的 `appRole == 'elder'` 永遠不成立，
@@ -1854,11 +1920,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (_activeCallDialogContext != null) {
         debugPrint(
             "🔕 [Main] Remote canceled call. Dismissing global dialog...");
-        if (Navigator.canPop(_activeCallDialogContext!)) {
-          Navigator.pop(_activeCallDialogContext!);
-        }
-        _activeCallDialogContext = null;
       }
+      _closeGlobalIncomingDialog();
       // ★ 第四十輪（item 4「撥打端逾時後，收話端的來電通知沒被關掉」）：
       //   舊版本函式只關 App 內對話框，沒關 CallKit 來電畫面／備援本機通知。
       //   `signaling.dart` 收到 socket `cancel-call` 時已經把 callId 記進
@@ -1867,13 +1930,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       //   `type == 'cancel-call'` 分支）：endAllCalls() 沿用既有 try/catch
       //   慣例（MIUI 會拋 content-is-null），並一併清掉可能殘留的待處理
       //   來電 prefs（見 _clearPendingCallPrefsOnCancel 註解）。
-      try {
-        FlutterCallkitIncoming.endAllCalls();
-      } catch (e) {
-        debugPrint('⚠️ [Main-Socket] endAllCalls 失敗（不影響）: $e');
-      }
-      unawaited(LocalCallNotification.cancel());
-      unawaited(_clearPendingCallPrefsOnCancel());
+      // ★ 2026-11-07：改走 CallSurfaceDismisser（CallKit／備援通知／四個 pending 鍵／已取消清單一次處理，
+      //   且 endAllCalls 的非同步例外也接得住）。
+      unawaited(CallSurfaceDismisser.dismissAll(callId: callId?.toString()));
     };
 
     // ★ 2026-08-25（第三十三輪）：WebRTC Offer 的全域預設處理。
@@ -2065,6 +2124,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         pendingCallData.map((key, value) => MapEntry(key, value?.toString()));
   }
 
+  /// ★ 2026-11-07：安全關閉全域來電 dialog。
+  ///   原本各處是 `if (Navigator.canPop(ctx)) Navigator.pop(ctx)`：`pop(context)` 會彈掉「該 context
+  ///   所屬 Navigator 的最上層 route」——dialog 已被別的路徑關掉、使用者又進了別的畫面時，
+  ///   會誤彈掉無辜的畫面（例如剛接聽的通話房）。這裡改成只有 dialog 的 route 仍是目前最上層
+  ///   （`ModalRoute.isCurrent`）才 pop；context 已失效（deactivated）也不丟例外。
+  void _closeGlobalIncomingDialog() {
+    final BuildContext? ctx = _activeCallDialogContext;
+    _activeCallDialogContext = null;
+    CallSurfaceDismisser.popDialogSafely(ctx);
+  }
+
   void _showIncomingCallDialog(String roomId, String senderId,
       {String? callId,
       bool isEmergency = false,
@@ -2075,7 +2145,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     //   就一律轉為無條件自動接聽，**永遠不顯示接聽／拒絕按鈕**。
     //   放在最前面（早於 _activeCallDialogContext 檢查）是刻意的：
     //   即使畫面上已經有一般來電的 dialog，緊急通話仍要壓過去。
-    if (isEmergency && _deriveMyRoleFromCall(senderRole, appRole) == 'elder') {
+    //   ★ 2026-11-07：isEmergency 的來電一律來自 emergency-call（只有家屬會發），
+    //   senderRole 缺漏時視為 family，避免退回 prefs 角色而漏掉這道最終防線。
+    if (isEmergency &&
+        _deriveMyRoleFromCall(
+                resolveCallSenderRole(type: 'emergency-call', roleRaw: senderRole),
+                appRole) ==
+            'elder') {
       unawaited(_autoAcceptEmergencyCall(
         roomId: roomId,
         senderId: senderId,
@@ -2083,6 +2159,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         senderRole: senderRole,
         source: '-Dialog',
       ));
+      return;
+    }
+
+    // ★ 2026-11-07：這通來電若已被取消／掛斷／拒接（callId 在失效清單內）就不要再彈畫面——
+    //   否則使用者看到一個「早就結束」的接聽／拒絕畫面，按下去什麼都不會發生。
+    if (callId != null && callId.isNotEmpty && sig.Signaling().isCallInvalidated(callId)) {
+      debugPrint("🔕 [Main] 來電已被取消／拒接，不顯示 dialog (callId=$callId)");
       return;
     }
 
@@ -2123,9 +2206,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             subtitle: '$callerLabel 正在呼叫您！',
             isEmergency: isEmergency,
               onDecline: () {
-                _activeCallDialogContext = null;
-                Navigator.pop(c);
-                sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
+                // ★ 2026-11-07：拒絕＝本地優先＋冪等。先關畫面（context 失效也不丟例外），
+                //   再盡力通知對方；發起端若已取消，sendCallBusy 內部會直接略過，任何例外都不外洩。
+                //   同時關備援通知、清 pending，避免殘留的同一通來電又被別的表面叫出來。
+                _closeGlobalIncomingDialog();
+                try {
+                  sig.Signaling().sendCallBusy(senderId, callId: callId, room: roomId);
+                } catch (e) {
+                  debugPrint('⚠️ [Main] dialog 拒絕：sendCallBusy 失敗（畫面已關，忽略）: $e');
+                }
+                // 一併結束可能還在響的 CallKit、關備援通知、清 pending 並登記已結束（closeDialogs:false：畫面已關）。
+                unawaited(CallSurfaceDismisser.dismissAll(callId: callId, closeDialogs: false));
               },
               onAccept: () {
                 _activeCallDialogContext = null;
@@ -2233,12 +2324,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         callKitDeclineStream.add(roomId);
 
         // 僅關閉來電彈窗，不清空整個導航堆疊
-        if (_activeCallDialogContext != null) {
-          if (Navigator.canPop(_activeCallDialogContext!)) {
-            Navigator.pop(_activeCallDialogContext!);
-          }
-          _activeCallDialogContext = null;
-        }
+        // ★ 2026-11-07：關所有 App 內來電 dialog（含 ElderHome／FamilyMain 自己的），並關備援通知。
+        _closeGlobalIncomingDialog();
+        CallSurfaceDismisser.closeInAppDialogs();
+        unawaited(LocalCallNotification.cancel());
         // ★ 2026-07-18：拒接統一走 _sendDeclineEvent（先 socket 後 HTTP 保底），
         //   確保背景/被殺死狀態下 Socket 未連線時仍能通知發起方停止等待。
         _sendDeclineEvent(roomId, senderId, callId: callId);
@@ -2246,12 +2335,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // ★ 2026-07-18：CallKit 響鈴逾時（無人接聽）等同拒接，需通知發起方停止等待，
         //   否則發起方只能苦等自身逾時。同樣走 _sendDeclineEvent 的 socket→HTTP 保底。
         debugPrint("⏰ [CallKit] 響鈴逾時未接聽 → 通知發起方 (callId=$callId)");
-        if (_activeCallDialogContext != null) {
-          if (Navigator.canPop(_activeCallDialogContext!)) {
-            Navigator.pop(_activeCallDialogContext!);
-          }
-          _activeCallDialogContext = null;
-        }
+        _closeGlobalIncomingDialog();
+        CallSurfaceDismisser.closeInAppDialogs();
+        unawaited(LocalCallNotification.cancel());
         _sendDeclineEvent(roomId, senderId, callId: callId);
       }
     });
@@ -2289,12 +2375,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     debugPrint(
         "❌ Call Declined from CallKit, sending call-busy to $senderId (callId: $callId)...");
 
-    final prefs = await SharedPreferences.getInstance();
-    // ★ 2026-07-22 修復：拒接時同步清除所有相關狀態，避免下次冷啟動誤導向這通已被拒絕的通話。
-    await prefs.remove('pendingAcceptedCall');
-    await prefs.remove('pendingRingCallData');
-    await prefs.remove('pendingRingCall');
+    // ★ 2026-11-07：拒接＝本地優先＋冪等。prefs 清理失敗不得擋住「通知發起方」，
+    //   發起端已取消（callId 在失效／已取消清單）時直接結束，不送必然無效的請求。
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // ★ 2026-07-22 修復：拒接時同步清除所有相關狀態，避免下次冷啟動誤導向這通已被拒絕的通話。
+      await prefs.remove('pendingAcceptedCall');
+      await prefs.remove('pendingRingCallData');
+      await prefs.remove('pendingRingCall');
+      await prefs.remove('pendingLocalRingCall');
+    } catch (e) {
+      debugPrint('⚠️ [Decline] 清除 pending prefs 失敗（不影響拒接）: $e');
+    }
     pendingAcceptedCall.value = null;
+    final bool alreadyEnded = (callId != null && callId.isNotEmpty) &&
+        (sig.Signaling().isCallInvalidated(callId) ||
+            await CancelledCallStore.isCancelled(callId));
+    unawaited(CancelledCallStore.mark(callId));
+    if (!shouldSendDeclineToServer(alreadyEnded: alreadyEnded)) {
+      debugPrint('ℹ️ [Decline] 發起端已取消／掛斷 (callId=$callId)，略過送出拒接');
+      return;
+    }
 
     // ★ 2026-07-22 修復（第八輪 Issue 1）：原本 Socket 和 HTTP 兩路都發，
     //   後端的 on_call_busy 和 api_decline_call 各自廣播 call-busy + cancel-call，

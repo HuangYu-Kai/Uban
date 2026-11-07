@@ -89,6 +89,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   /// 只自動切一次，之後尊重使用者手動的選擇，不再覆蓋。
   bool _speakerAutoSwitched = false;
   bool _isFrontCamera = true;
+  bool _monitorSwitchCooldown = false; // ★ 2026-11-07：遠端切換監視機鏡頭的連點節流
   bool _mediaInitialized = false;  // ★ 追蹤媒體是否已初始化
   bool _callConnecting = true;   // ★ 追蹤通話是否正在連線中
   bool _callConnected = false;   // ★ 追蹤通話是否已成功連線
@@ -750,13 +751,47 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   // ★ 前後鏡頭切換 — 必須先初始化媒體
-  void _switchCamera() {
+  // ★ 2026-11-07：改為 await 實際切換完成才翻轉 _isFrontCamera（鏡像旗標），
+  //   失敗（單鏡頭機型等）時不翻轉，避免預覽鏡像與實際鏡頭相反。
+  Future<void> _switchCamera() async {
     if (!_mediaInitialized || _signaling.localStream == null) return;
     final videoTracks = _signaling.localStream!.getVideoTracks();
     if (videoTracks.isEmpty) return;
-    Helper.switchCamera(videoTracks[0]);
+    try {
+      await Helper.switchCamera(videoTracks[0]);
+    } catch (e) {
+      debugPrint("⚠️ Camera switch failed: $e");
+      return;
+    }
+    if (!mounted) return;
     setState(() => _isFrontCamera = !_isFrontCamera);
     debugPrint("🔄 Camera switched to ${_isFrontCamera ? 'Front' : 'Back'}");
+  }
+
+  /// ★ 2026-11-07：家屬遠端要求「正在觀看的監視機」切換前／後鏡頭（僅 monitorViewOnly）。
+  ///   目標 socket 即本畫面撥入的 [VideoCallScreen.targetSocketId]；後端會再驗證
+  ///   發送者為該長輩家屬、目標為監視機，不符則靜默丟棄。
+  void _requestMonitorSwitchCamera() {
+    final String? target = widget.targetSocketId;
+    if (!widget.monitorViewOnly || target == null || target.isEmpty || _monitorSwitchCooldown) {
+      return;
+    }
+    final String elderId = widget.roomId.startsWith('monitor_elder_')
+        ? widget.roomId.substring('monitor_elder_'.length)
+        : widget.roomId;
+    _signaling.sendMonitorSwitchCamera(
+      room: widget.roomId,
+      targetSocketId: target,
+      elderId: elderId,
+      deviceName: widget.monitorDeviceName,
+    );
+    setState(() => _monitorSwitchCooldown = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已送出切換鏡頭指令'), duration: Duration(seconds: 2)),
+    );
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _monitorSwitchCooldown = false);
+    });
   }
 
   // ★ 揚聲器切換
@@ -868,6 +903,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   // ★ issue 3 fix: 安全掛斷並導航，防止冷啟動進入時 pop 後黑屏
   void _safeHangUp() {
+    // ★ 2026-11-07：家屬撥出、對方尚未接聽時手動掛斷，必須比照逾時路徑送 cancel-call
+    //   （帶 callId，後端據此對「實際收過來電的全部裝置」補發取消）。原本只靠 hangUp 的 end-call，
+    //   對方還沒接聽的 CallKit／備援通知／App 內 dialog 要依賴 end-call 的 room 補齊才關得掉。
+    //   已接聽（_remoteAccepted）或本機是被叫方（isIncomingCall）不可送，否則會砍掉已接通的通話。
+    if (!widget.isIncomingCall && !_remoteAccepted) {
+      try {
+        _signaling.sendCancelCall(widget.roomId, role: 'family');
+      } catch (e) {
+        debugPrint('⚠️ [VideoCall] 手動掛斷 sendCancelCall 失敗（仍會送 end-call）: $e');
+      }
+    }
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     _stopCallTimer();
     if (mounted) {
@@ -1257,6 +1303,49 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.cameraswitch, color: Colors.white, size: 16),
+              ),
+            ),
+
+          // ★ 2026-11-07：單向監控檢視專用「切換監視器鏡頭」鈕（監視機通常無人看管）。
+          //   位於底部控制列正上方；文字以 Flexible＋ellipsis 防溢位（G63／G159）。
+          if (widget.monitorViewOnly)
+            Positioned(
+              bottom: 136,
+              left: 20,
+              right: 20,
+              child: Center(
+                child: GestureDetector(
+                  onTap: _monitorSwitchCooldown ? null : _requestMonitorSwitchCamera,
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color.fromRGBO(20, 28, 25, 0.72),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color.fromRGBO(255, 255, 255, 0.18)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cameraswitch,
+                            color: _monitorSwitchCooldown ? Colors.white38 : Colors.white, size: 22),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            '切換監視器鏡頭',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _monitorSwitchCooldown ? Colors.white38 : Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
 

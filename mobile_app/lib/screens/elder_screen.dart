@@ -21,6 +21,7 @@ import 'identification_screen.dart';
 import 'elder_home_screen.dart';
 import '../globals.dart';
 import '../services/care_message_store.dart';
+import '../services/call_channel_guard.dart';
 import '../widgets/global_assistant_button.dart';
 import '../widgets/incoming_call_view.dart';
 
@@ -88,6 +89,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   bool _isCameraOff = false; // 視訊房間預設開啟鏡頭
   bool _isMuted = false;
   bool _isFrontCamera = true; // ★ issue 12：前/後鏡頭狀態
+  bool _isSwitchingCamera = false; // ★ 2026-11-07：切換鏡頭進行中防重入（本機按鈕與家屬遠端指令共用）
   late bool _isSpeakerOn; // ★ 2026-08-10 第二十輪（D4）：擴音(true)／聽筒(false)，依通話類型於 initState 決定初始值
   bool _speakerAutoSwitched = false; // ★ 2026-08-10 第二十輪（D4）：語音通話中途開鏡頭時只自動切一次擴音，不覆蓋使用者手動切回聽筒的選擇
   bool _mediaInitialized = false;
@@ -198,6 +200,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   Function(String message)? _ownHeartbeatMessage;
   Function(Map<String, dynamic>)? _ownMonitorRenamed;
   Function(Map<String, dynamic>)? _ownMonitorRemoved;
+  Function(Map<String, dynamic>)? _ownMonitorSwitchCamera; // ★ 2026-11-07：家屬遠端切換鏡頭（G102 歸還用）
 
   int? _userId; // ★ issue 3/10：用於安全導航回主畫面時建構 ElderHomeScreen
   String? _prefsUserName; // ★ Issue 1 硬化：真實 caregiver_name，供 _buildFallbackHome 使用
@@ -642,6 +645,16 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       final rawEmergency = args['isEmergency'];
       final isEmergency = rawEmergency?.toString() == 'true';
 
+      // ★ 2026-11-07：通道守門——監控機（isCCTVMode）只接 monitor_elder_ 房的通話，
+      //   通訊機不接 monitor_elder_ 房的通話。pending 可能由 BG／CallKit／備援通知等任一路徑寫入，
+      //   這是最後一道防線（G55／G56 的監控自動接聽仍照常：monitor 房的 pending 不受影響）。
+      if (shouldIgnoreCallForDeviceChannel(
+          isMonitorDevice: widget.isCCTVMode, roomId: roomId)) {
+        debugPrint("🚧 [ElderScreen] 通道不符，丟棄 pendingAcceptedCall "
+            "(room=$roomId, 本機為${widget.isCCTVMode ? '監控機' : '通訊機'})");
+        return;
+      }
+
       debugPrint("📞 Detected Accepted Call from $senderId (Room: $roomId, CallId: $callId, Emergency: $isEmergency). Bridging...");
 
       // ★ issue 5：CallKit 接聽與背景 FCM 路徑可能對「同一通」來電各自寫入一次
@@ -977,6 +990,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
 
     _ownCallAcceptedByRemote = (accepterId, callId) {
       debugPrint("✅ 家屬($accepterId) 已接聽 (CallId: $callId)，開始定向發送 Offer...");
+      _outgoingCallPending = false;
       if (mounted) setState(() { _status = "連線建立中..."; _isInCall = true; });
       _signaling.createOffer(targetId: accepterId, isEmergency: false);
     };
@@ -1081,6 +1095,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     }
 
     _ownCallEnded = () {
+      _outgoingCallPending = false;
       _callTimer?.cancel();
       _activeCallId = null;
       if (mounted) {
@@ -1103,6 +1118,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     _signaling.onCallEnded = _ownCallEnded;
 
     _ownCallBusy = (targetId, callId) {
+      _outgoingCallPending = false;
       if (mounted) {
         _showElderCallFailToast(callBusyMessageFor(_signaling.lastCallBusyReason));
         // ★ issue 15：對方拒接/忙線時，呼叫端結束「等待連線」狀態並安全返回
@@ -1356,6 +1372,20 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
         );
       };
       _signaling.onMonitorRemoved = _ownMonitorRemoved;
+
+      // ★ 2026-11-07：家屬端遠端切換本監視機鏡頭。後端已驗證發送者為該長輩家屬、
+      //   且只轉發給目標 socket；這裡仍以 elderId／deviceName 過濾（同 monitor-renamed），
+      //   並與本機按鈕共用 _switchCamera。
+      _ownMonitorSwitchCamera = (data) {
+        final String eventElderId = (data['elderId'] ?? '').toString();
+        final String deviceName = (data['deviceName'] ?? '').toString();
+        if (eventElderId.isNotEmpty && eventElderId != _rawElderId) return;
+        if (deviceName.isNotEmpty && deviceName != _currentDeviceName) return;
+        if (_isExiting || _monitorRemoved) return;
+        debugPrint('🔄 [ElderScreen] 收到家屬遠端切換鏡頭指令');
+        _switchCamera();
+      };
+      _signaling.onMonitorSwitchCamera = _ownMonitorSwitchCamera;
     }
 
   }
@@ -1458,7 +1488,18 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       //   又因為 ElderScreen 只會在真正撥打／接聽通話或進入 CCTV 監控模式時才會被
       //   導航進入（非通話情境不會建立這個畫面），鏡頭與麥克風實質上只在通話／監控
       //   進行中才會被要求，並非在長輩主畫面背景常駐存取硬體。
-      await _signaling.openUserMedia(_localRenderer);
+      // ★ 2026-11-07：只有監視機（CCTV）會套用使用者記住的前／後鏡頭
+      //   （SharedPreferences `cctv_camera_facing`: 'user'|'environment'）；
+      //   一般通話維持預設 'user'，行為不變。
+      String facing = 'user';
+      if (widget.isCCTVMode) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          if (prefs.getString('cctv_camera_facing') == 'environment') facing = 'environment';
+        } catch (_) {}
+        _isFrontCamera = facing == 'user';
+      }
+      await _signaling.openUserMedia(_localRenderer, facingMode: facing);
       if (_signaling.localStream != null) {
         final videoTracks = _signaling.localStream!.getVideoTracks();
         for (var track in videoTracks) {
@@ -1536,12 +1577,34 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   }
 
   // ★ issue 12：切換前後鏡頭
+  //   ★ 2026-11-07：對 localStream 現役視訊軌就地切換（同一條 track，PeerConnection
+  //   的 sender 與 CCTV 影格迴圈的 captureFrame 都不受影響），並加防重入。
+  //   監視機額外把結果寫進 `cctv_camera_facing`，下次開機沿用。
   Future<void> _switchCamera() async {
+    if (_isSwitchingCamera || !_mediaInitialized) return;
     final videoTracks = _signaling.localStream?.getVideoTracks();
     if (videoTracks == null || videoTracks.isEmpty) return;
-    await Helper.switchCamera(videoTracks.first);
-    if (mounted) {
-      setState(() => _isFrontCamera = !_isFrontCamera);
+    _isSwitchingCamera = true;
+    if (mounted) setState(() {});
+    try {
+      await Helper.switchCamera(videoTracks.first);
+      final bool nowFront = !_isFrontCamera;
+      if (widget.isCCTVMode) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('cctv_camera_facing', nowFront ? 'user' : 'environment');
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() => _isFrontCamera = nowFront);
+      } else {
+        _isFrontCamera = nowFront;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [ElderScreen] 切換鏡頭失敗: $e');
+    } finally {
+      _isSwitchingCamera = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -1617,8 +1680,17 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// ★ 2026-11-07：本機撥出、對方尚未接聽。`_makeCall` 設為 true；接聽／撥出失敗／逾時／
+  /// 對方拒接或掛斷／本機掛斷時清除。是「掛斷時要不要送 cancel-call」與「撥打逾時要不要觸發」的唯一依據。
+  bool _outgoingCallPending = false;
+
   // 主動呼叫 (先響鈴)
   Future<void> _makeCall() async {
+    // ★ 2026-11-07：以明確旗標記錄「本機撥出、對方尚未接聽」，取代原本到處用 `_status == "正在呼叫家人..."`
+    //   字串比對（脆弱：狀態字被別的路徑改掉、好友／語音通話文案不同就漏送 cancel-call，
+    //   被叫端的來電通知就留在畫面上）。旗標在 [_ownCallAcceptedByRemote]、撥出失敗、逾時、
+    //   對方拒接／掛斷、本機掛斷時清除。
+    _outgoingCallPending = true;
     setState(() { _status = "正在呼叫家人..."; _isInCall = true; });
     // ★ 2026-08-10 第二十輪（D1-d）：sendCallRequest 現在會回傳是否成功送出
     //   （內部會等待 socket 連線，逾時視為失敗）。過去無論是否送出成功都直接
@@ -1635,6 +1707,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     ); // ★ 使用格式化的房間ID
     if (!mounted) return;
     if (!sent) {
+      _outgoingCallPending = false;
       setState(() {
         _status = "連線中斷，無法撥出";
         _isInCall = false;
@@ -1684,7 +1757,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       // ★ 2026-08-24 稽核：這一行恰好也是「已接聽」的隱性守門——見上方
       //   本方法的稽核記錄，_status 一旦被 onCallAcceptedByRemote 改掉就不會
       //   再等於這個字串，本逾時就此失效，不會誤送 cancel-call。
-      if (_status != "正在呼叫家人...") return;
+      // ★ 2026-11-07：改用明確旗標（見 [_outgoingCallPending]）；接聽／掛斷／拒接後旗標為 false。
+      if (!_outgoingCallPending) return;
       _handleCallTimeout();
     });
   }
@@ -1696,6 +1770,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 改為與家屬端共用的 [showCallRetryDialog]：離開通話，或重新撥打。
   Future<void> _handleCallTimeout() async {
     debugPrint("⏰ [ElderScreen] 撥打逾時，自動取消通話");
+    _outgoingCallPending = false;
     // ★ 第四十二輪：同 _makeCall 的 sendCallRequest，role 必須跟著撥打時一致，
     //   否則後端算出的 target_role 會反過來查錯房間成員（見該處註解）。
     _signaling.sendCancelCall(
@@ -1737,8 +1812,15 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     // If we are hanging up while the status is "正在呼叫家人..." (Calling Family),
     // it means the family hasn't answered yet. We should send a cancel-call so 
     // the family's CallKit dismisses.
-    if (_status == "正在呼叫家人...") {
-      _signaling.sendCancelCall(_formattedRoomId);  // ★ 使用格式化的房間ID
+    // ★ 2026-11-07：改用 [_outgoingCallPending] 旗標（不再比對 `_status` 字串），涵蓋家人／好友、
+    //   視訊／語音所有撥出；並補上 role——原本漏帶，預設成 'family'，後端會把 target_role 算反
+    //   （只靠 registry 的補齊才勉強送到）。好友通話必須是 'friend'（見 _handleCallTimeout）。
+    if (_outgoingCallPending) {
+      _outgoingCallPending = false;
+      _signaling.sendCancelCall(
+        _formattedRoomId,
+        role: widget.friendCallTargetElderId != null ? 'friend' : 'elder',
+      );  // ★ 使用格式化的房間ID
     }
     _signaling.hangUp(disconnectSocket: false, disposeLocalStream: false);
     setState(() {
@@ -2008,6 +2090,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     if (identical(_signaling.onMonitorRemoved, _ownMonitorRemoved)) {
       _signaling.onMonitorRemoved = null;
     }
+    if (identical(_signaling.onMonitorSwitchCamera, _ownMonitorSwitchCamera)) {
+      _signaling.onMonitorSwitchCamera = null;
+    }
 
     // ★ 第四十二輪：好友通話結束時，必須離開對方的房間並重新以 'elder' 身分
     //   加入「自己」的房間。`Signaling` 是單例，`_currentRoomId`/`_role` 此刻
@@ -2101,7 +2186,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                     child: widget.isCCTVMode
                         ? RTCVideoView(
                             _localRenderer,
-                            mirror: true,
+                            mirror: _isFrontCamera, // ★ 2026-11-07：前鏡頭鏡像、後鏡頭不鏡像
                             objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                           )
                         : _remoteRenderer.srcObject != null
@@ -2179,7 +2264,7 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                        child: RTCVideoView(_localRenderer, mirror: _isFrontCamera, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                       ),
                     ),
                   ),
@@ -2219,6 +2304,64 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // ★ 2026-11-07：監視機本機切換前／後鏡頭（大按鈕、好點按）。
+                  //   左上角，與右上「退出監視機」對稱；文字用 Flexible＋ellipsis 並限制
+                  //   最大寬度為半個螢幕，避免與右側膠囊重疊或 RenderFlex 溢位（G159／G63）。
+                  //   切換進行中（_isSwitchingCamera）或相機尚未就緒時停用。
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 10,
+                    left: 16,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.5 - 24,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: GestureDetector(
+                            onTap: (_mediaInitialized && !_isSwitchingCamera) ? _switchCamera : null,
+                            child: Container(
+                              constraints: const BoxConstraints(minHeight: 56),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _glassFill,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(color: _glassLine),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.cameraswitch,
+                                    color: (_mediaInitialized && !_isSwitchingCamera)
+                                        ? Colors.white
+                                        : Colors.white38,
+                                    size: 28,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      _isFrontCamera ? '切換後鏡頭' : '切換前鏡頭',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: (_mediaInitialized && !_isSwitchingCamera)
+                                            ? Colors.white
+                                            : Colors.white38,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),

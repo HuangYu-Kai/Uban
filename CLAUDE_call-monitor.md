@@ -260,6 +260,7 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 | `join-failed` | S→C | `message` | — | `signaling.dart` `on('join-failed')` |
 | `update-fcm-token` | C→S | `room`、`token` | `on_update_fcm_token`:1152 | `signaling.dart`:625 |
 | `client-state` | C→S | `appState` | `on_client_state`:1195 | `signaling.dart::updateAppForeground`:646 |
+| `monitor-switch-camera` | C→S→監控機 | C→S `{room:'monitor_elder_<id>', targetId, elderId, deviceName}`；S→監控機 `{room, elderId, deviceName(伺服器登記值), senderId}`。★ 2026-11-07：家屬遠端切換監控機前／後鏡頭。授權三關，任何一關不過**靜默丟棄**（只寫 log，G45）：① `room` 須為 `monitor_elder_<id>` 格式；② 發送者須在該長輩房內且角色屬家屬類，並通過 `is_user_linked_to_elder`；③ `targetId` 須是 monitor 房內 `deviceMode=='monitor'` 的 socket | `on_monitor_switch_camera`（`socket_app.py`） | `Signaling.sendMonitorSwitchCamera` 送出；`Signaling.onMonitorSwitchCamera` 接收（G102 identical 歸還），監控機比對 `deviceName` 後切鏡頭，見 §6.7 |
 | **`call-request`** | C→S | `room`、`role`、`callId`、`issuedAt`、`expiresAt`、`targetId`(選)、`callerUserId`、`senderName`(選)、**`isVideoCall`（字串）** | `on_call_request`:1372 | `signaling.dart::sendCallRequest`:661 |
 | **`call-request`** | S→C | `senderId`、`room`、`role`、`callId`、`issuedAt`(str)、`expiresAt`(str)、`senderName`、`callerName`(相容)、**`isVideoCall`（原值透傳）** | 送出於 :1496 | `signaling.dart` `on('call-request')`:240 |
 | `call-accept` | C→S→C | C→S: `targetId`、`callId`；S→C: `accepterId`、`callId` | `on_call_accept`:1833（emit :1863） | `sendCallAccept`:693 |
@@ -329,6 +330,11 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 > ⚠️ **通話類 FCM 一律是 data-only**（**不可**含 `notification` 區塊）。
 > 含 `notification` 的訊息在 Android 背景／被殺死時會被系統匣直接接管，
 > Flutter 的 `_firebaseMessagingBackgroundHandler` **不會被觸發** → CallKit 不會響鈴。
+
+> ★ 2026-11-07：**`emergency-call` FCM data 新增 `role`**（發起方角色；家屬端緊急通話即 `family`），與 `call-request` 的 `role` 同義。
+> 前端 `call_channel_guard.dart::resolveCallSenderRole` 在 emergency-call 缺 `role`（舊版後端）時視為 `'family'`，**不再退回 prefs
+> `user_role`／`saved_role`**（見 §4.7）。**取消類 FCM（`cancel-call`）的 ttl 由 10s 改為 60s**（Doze 裝置才收得到；
+> 過期的取消沒有意義，所以不用預設 4 週）。`api_decline_call` 補發的取消 FCM 同為 ttl 60s。
 
 #### `call-request`（`socket_app.py`:1532-1563）
 
@@ -489,6 +495,13 @@ AI 對話、Pinecone 長期記憶、新聞爬蟲、遊戲、寵物、TTS/STT、`
 |----|------|
 | `wake_word_enabled` | `globals.dart`:32 的 `kWakeWordEnabledKey`，**預設 `false`**。長輩端「🎙️ 語音喚醒（免持呼叫 AI）」開關，記憶體鏡像是 `wakeWordEnabledNotifier`（:29）。**刻意不列入 `_sessionKeys`**——它是這台機器的偏好，不是誰登入的狀態。見護欄 **G59** |
 
+#### 通話取消／鏡頭偏好鍵（★ 2026-11-07）
+
+| 鍵 | 說明 |
+|----|------|
+| `cancelledCallIds` | `cancelled_call_store.dart`：已被發起端取消／掛斷的 callId 清單（含時間戳），**TTL 5 分鐘、上限 50 筆**。存 prefs 以便 BG isolate 與主 isolate 共用（跨 isolate 讀前須 `reload()`）。來電 UI 顯示前與保活期間都查它 |
+| `cctv_camera_facing` | 監控機（CCTV）使用的鏡頭方向，`'user'`（前）｜`'environment'`（後）。監控機左上切換鈕與家屬遠端 `monitor-switch-camera` 都會寫入；`openUserMedia(facingMode:)` 讀它。裝置偏好，登出不清除 |
+
 ### 3.4 `pendingAcceptedCall` 欄位契約
 
 型別 `Map<String, String?>`（**注意**：從 prefs 讀出的 `Map<String, dynamic>` 必須轉型，否則執行期爆型別錯誤）。
@@ -584,6 +597,12 @@ bool parseIsVideoCall(dynamic raw) {
 
 🚫 **`user_id` 缺漏（`None`）也必須回 404**，不可退化成「不帶參數就跳過驗證」。
 迴歸鎖：`test_delete_and_rename_monitor_device_reject_unlinked_caller`。
+
+#### 通話狀態查詢（★ 2026-11-07，`main.py`）
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| `GET` | `/api/call/status?callId=` | 回 `{cancelled, active}`（純記憶體查詢，`socket_app.get_call_status`）。被叫端在 BG 保活（等待按接聽／拒接）期間每 3 秒輪詢，讓「發起端已取消」不必排在序列的 FCM 後面才知道。`cancelled`＝已被 cancel-call／end-call 記錄；`active`＝call_registry 仍有這通。另回 `callId`；未知或空 callId 兩者皆 `false` |
 
 ---
 
@@ -759,7 +778,24 @@ prefs.remove('pendingRingCall');
 `pushAndRemoveUntil((route) => false)`，會當場移除 route 讓 SnackBar 消失，
 使用者看到的是「瞬間、無提示跳回主畫面」，故障也無從診斷。
 
+#### ★ 2026-11-07：未接通前發起端掛斷 → 被叫端三面清除與拒絕冪等
+
+- **registry 記錄實際收到來電 FCM 的完整 token 集合**（含 Layer B／C 補送的 token）；`on_cancel_call` **先標記取消**再廣播，
+  來電派送迴圈每輪檢查 `_is_call_cancelled`，已取消就停止再送。`on_call_busy`／`api_decline_call` 對已取消通話**冪等**
+  （不再回補 `call-busy` 給已離開的發起端、不覆寫 call_record）。
+- **前端統一出口 `CallSurfaceDismisser.dismissAll`**（`call_surface_dismiss.dart`）：標記取消（`cancelledCallIds`）→ 關閉所有已註冊 dialog
+  → `endAllCalls` → 關備援通知 → 清四個 pending 鍵。main／elder_home／family_main／family_dashboard 的各 `onCancelCall` 覆寫全走它。
+  `popDialogSafely` 只在 dialog route 仍是最上層時才 pop（被蓋住改 `removeRoute`、context 失效則不動作），避免誤 pop 掉無辜畫面。
+- **BG isolate**：`_activeBgHolds` 讓 `cancel-call` FCM 在保活期放行；保活期 `cancelWatch` 每秒讀已取消清單、每 3 秒問 `GET /api/call/status`。
+- **拒絕一律本地優先**：先在本地關 UI、標記已取消，再通知後端 `declineCall`。
+- 發起端：`elder_screen` 以 `_outgoingCallPending` 旗標取代 `_status == "正在呼叫家人..."` 字串比對並補 `role`；
+  `video_call_screen::_safeHangUp` 於對方未接聽時送 `sendCancelCall`。
+
 ### 4.7 緊急通話
+
+> ★ 2026-11-07：後端 `on_emergency_call` 的 FCM data 補 `role`。前端 `resolveCallSenderRole`（`call_channel_guard.dart`）缺 `role` 時對 emergency-call
+> 視為 `'family'`，套用於 `main.dart` FG handler／Socket `onEmergencyCall`／`_showIncomingCallDialog` 與 `firebase_bg_handler.dart`。
+> 根因：缺 `role` 時舊程式退回會漂移的 prefs `user_role`／`saved_role`，長輩機被判成非長輩 → 跳一般來電 UI 而非自動接聽。
 
 家屬端發起 → 長輩端**無條件**自動接聽、強制開鏡頭（第二十二輪起不再限於 CCTV 模式）。與一般通話的差異：
 
@@ -835,6 +871,12 @@ APP 被殺死時接聽，`actionCallAccept` 事件可能發生在 `_setupCallKit
 | **監控機** `monitor` | `monitor_elder_{id}` | `true` | `monitor-wakeup` | 單向監控，家屬觀看 |
 
 一位長輩可同時擁有一台通訊機與多台監控機。
+
+> ★ 2026-11-07 **通道隔離（房間決定通道）**：後端 `_normalize_device_channel`／`_device_in_channel`；`_get_target_sockets_and_tokens` 與
+> `_get_all_known_fcm_tokens` 的長輩分支依「通話所在房間」過濾 `deviceMode`——`comm_` 房只送非 monitor、`monitor_` 房只送 monitor，
+> **在去重前過濾**。前端縱深防禦 `shouldIgnoreCallForDeviceChannel`（`call_channel_guard.dart`；`signaling.dart` call-request／emergency-call、
+> BG handler、FG handler 用 `saved_is_cctv`、`elder_screen::_checkPendingAcceptedCall`）。副作用：提醒、`send-heartbeat`、API 拒接取消推播（皆用 comm 房）
+> 不再送到監控機。根因：原本長輩分支固定掃 comm+monitor 兩房，家屬打 comm 房時監控機也收到並自動接聽。
 
 ### 6.2 裝置角色如何決定
 
@@ -995,6 +1037,7 @@ WHERE role='elder' AND (room_id IN (%s, %s) OR user_id = %s)
 |------|------|
 | `get-elder-devices` / `elder-devices-update` | 裝置清單查詢與推播。join／`delete-device`／`force-logout`／**disconnect**／改名都會廣播（見 §6.6，舊文件「只在 join 時廣播」是錯的） |
 | `monitor-renamed` | 家屬端改名後推送給**該監視機**：`{elderId, oldDeviceName, newDeviceName, deviceId}`，監視機更新標籤與 `saved_device_name`（G57） |
+| `monitor-switch-camera` | ★ 2026-11-07 家屬 → 後端 → 監控機：遠端切前／後鏡頭。C→S `{room, targetId, elderId, deviceName}`；S→監控機 `{room, elderId, deviceName(伺服器登記值), senderId}`。三關授權（monitor 房格式、發送者為房內家屬類且 `is_user_linked_to_elder`、target 為 `deviceMode=='monitor'`），不過靜默丟棄。家屬端 `VideoCallScreen`（`monitorViewOnly`）顯示「切換監視器鏡頭」，3 秒節流；監控機本機左上亦有切換鈕，結果存 `cctv_camera_facing`。長輩／家屬通話房 mirror 隨前後鏡頭 |
 | `delete-device` → `force-logout` | 家屬端移除長輩裝置；被踢裝置收到 `force-logout`（Socket + FCM 雙路）。**發送者必須是該長輩 comm/monitor 房間成員**（G46） |
 | `cctv-alert` | 後端 → 家屬：YOLO／測試跌倒警報（見 §3.2、§6.9） |
 | `cctv-alert-ack` | 回應影像告警；後端回 `cctv-alert-ack-success` / `cctv-alert-ack-failed`。**需通過關係驗證**，無權回 `{'reason': 'not_found'}`（G44/G45） |
@@ -1315,6 +1358,31 @@ IMU 航位推算漂移嚴重，且長輩常不隨身攜帶手機。相機方案�
 > 📌 **搬移門檻提示**：本文件中出現的「第 N 輪」，**N ≤ 42** 者其年表條目已遷至
 > `CLAUDE_call-monitor-history.md`；**N ≥ 43** 仍在本檔 §8。此門檻會隨每輪搬移而持續調高，
 > 調整時只需要更新本處（§8 開頭）的數字。
+
+### 2026-11-07 — 緊急通話角色、通訊機／監控機通道隔離、未接通取消的拒絕與通知、前後鏡頭切換（未編號）
+
+> 一次四件，分支 `fix/call-monitor-four-issues`（兩 repo）。**未新增護欄編號**。**本輪未同步 graphify**（本機無 graphify 工具）。
+
+**1. 緊急通話 FCM 缺 `role`**
+- **症狀**：長輩機收到家屬緊急通話，卻跳一般來電 UI 而非自動接聽。
+- **根因**：emergency-call FCM 沒帶 `role`，前端退回會漂移的 prefs `user_role`／`saved_role`，長輩機被判成非長輩。
+- **修復**：`socket_app.py::on_emergency_call` FCM data 補 `'role'`；前端 `call_channel_guard.dart::resolveCallSenderRole`（emergency-call 缺 role 視為 `family`），套用於 main.dart FG handler／Socket onEmergencyCall／`_showIncomingCallDialog`、`firebase_bg_handler.dart`。
+
+**2. 通訊機／監控機通道隔離**
+- **症狀**：家屬打通訊機（comm 房），同長輩的監控機也收到並自動接聽。
+- **根因**：長輩分支固定掃 comm+monitor 兩房。
+- **修復**：後端 `_normalize_device_channel`／`_device_in_channel`，`_get_target_sockets_and_tokens`、`_get_all_known_fcm_tokens` 依通話所在房間過濾 `deviceMode`（去重前）；前端 `shouldIgnoreCallForDeviceChannel` 縱深防禦（signaling call-request／emergency-call、BG handler、FG handler 用 `saved_is_cctv`、`elder_screen::_checkPendingAcceptedCall`）。副作用：提醒、`send-heartbeat`、API 拒接取消推播不再送監控機。
+
+**3. 發起端未接通前掛斷 → 被叫端拒絕無效、通知不消失**
+- **根因**：BG handler 為讓拒接鍵可用而保活（G82），FCM 背景 handler 序列執行，保活期間到達的 cancel-call FCM 要排隊；registry 只記部分 token、取消 FCM ttl 僅 10s、被叫端沒有跨 isolate 的「已取消」記錄，拒絕與取消又互相競態。
+- **修復（後端）**：call_registry 記錄實際收到來電 FCM 的完整 token（含 Layer B／C）；派送迴圈檢查 `_is_call_cancelled`；`on_cancel_call` 先標記取消；取消 FCM ttl 10s→60s；`on_call_busy`／`api_decline_call` 對已取消通話冪等；新增 `get_call_status` 與 `GET /api/call/status?callId=` → `{cancelled, active}`（`main.py`）。
+- **修復（前端）**：新增 `cancelled_call_store.dart`（`cancelledCallIds`，TTL 5 分鐘、上限 50，跨 isolate）、`call_surface_dismiss.dart`（`CallSurfaceDismisser.dismissAll`、`popDialogSafely`）；BG `_activeBgHolds` 放行 cancel-call、`cancelWatch`（每秒讀清單、每 3 秒問 `/call/status`）；拒絕本地優先；`elder_screen` 用 `_outgoingCallPending` 取代字串比對並補 role；`video_call_screen::_safeHangUp` 未接聽時送 `sendCancelCall`；各 `onCancelCall` 覆寫統一走 `dismissAll`。細節見 §4.6。
+
+**4. 前後鏡頭切換**
+- **需求**：長輩／家屬通話房 mirror 要隨前後鏡頭；監控機要能切鏡頭，家屬也要能遠端切。
+- **修復**：mirror 隨鏡頭；監控機 CCTV UI 左上切換鈕，prefs `cctv_camera_facing`，`openUserMedia(facingMode:)`；新 Socket 事件 `monitor-switch-camera`（§3.1／§6.7）三關授權、不過靜默丟棄；`Signaling.onMonitorSwitchCamera`（G102 identical 歸還）、`sendMonitorSwitchCamera`；家屬 `VideoCallScreen` `monitorViewOnly` 顯示「切換監視器鏡頭」，3 秒節流。
+
+**驗證**：後端 pytest 61 passed、1 skipped、1 failed（venv 缺 numpy 的既有失敗）；`main.py` 的 `/api/call/status` 與拒接冪等因 venv 無法匯入 main，**未被測試實際執行**；`flutter analyze` 0 error、`flutter test test/services` 99 passed；**未真機驗證**。
 
 ### 2026-11-07 — 家屬端「監看」監視機卻把長輩通訊機拉進緊急通話（後端；未編號）
 

@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
+import 'cancelled_call_store.dart';
 
 /// ★ 2026-07-22 第十一輪：原生高優先級通知備援。
 ///
@@ -117,6 +118,11 @@ class LocalCallNotification {
   static Future<void> show(Map<String, dynamic> data) async {
     if (kIsWeb) return;
     try {
+      // ★ 2026-11-07：發起端已取消／掛斷的來電不補發備援通知（見 CancelledCallStore）。
+      if (await CancelledCallStore.isCancelled((data['callId'] ?? '').toString())) {
+        debugPrint('🔕 [LocalNotif] 來電 ${data['callId']} 已被取消，不發備援通知');
+        return;
+      }
       await _ensureInit();
       final callerName =
           (data['callerName'] ?? data['senderName'] ?? '有人來電').toString();
@@ -220,7 +226,10 @@ class LocalCallNotification {
   /// 用獨立 channel／通知 ID，不影響既有的來電通知（[callNotificationId]）
   /// 與其 `FLAG_INSISTENT`／鈴聲設定（G83），也不佔用 [callNotificationId]
   /// 本身，避免互相取消。
-  static Future<void> showDeclineFeedback({required bool success}) async {
+  static Future<void> showDeclineFeedback({
+    required bool success,
+    bool alreadyEnded = false,
+  }) async {
     if (kIsWeb) return;
     try {
       await _ensureInit();
@@ -248,12 +257,15 @@ class LocalCallNotification {
         ongoing: false,
         autoCancel: true,
         // 成功時短暫顯示即可；失敗時留久一點，較有機會被使用者或旁人看到。
-        timeoutAfter: success ? 6000 : 20000,
+        timeoutAfter: (success || alreadyEnded) ? 6000 : 20000,
       );
+      // ★ 2026-11-07：發起端早已取消時，「拒絕」對使用者而言是成功（來電已消失），
+      //   不能顯示「拒接時發生問題，請確認網路」——那會讓人以為拒絕壞了。
+      final fb = declineFeedbackText(alreadyEnded: alreadyEnded, success: success);
       await _plugin.show(
         _declineFeedbackNotificationId,
-        success ? '已拒接來電' : '拒接時發生問題',
-        success ? '已通知對方您無法接聽' : '請確認網路連線後再試一次',
+        fb.title,
+        fb.body,
         NotificationDetails(android: androidDetails),
       );
       debugPrint('📮 [LocalNotif] 已顯示拒接回饋通知 (success=$success)');
@@ -342,6 +354,12 @@ Future<void> _persistTapAsAccepted(String? payload) async {
   if (payload == null || payload.isEmpty) return;
   try {
     final Map<String, dynamic> data = jsonDecode(payload);
+    // ★ 2026-11-07：發起端已取消的來電，「接聽」不得寫入 pendingAcceptedCall（否則冷啟動被導進一間沒人的房間）。
+    if (await CancelledCallStore.isCancelled((data['callId'] ?? '').toString())) {
+      debugPrint('🔕 [LocalNotif] 點擊接聽時來電已被取消，不寫入 pendingAcceptedCall (callId=${data['callId']})');
+      await LocalCallNotification.cancel();
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       'pendingAcceptedCall',
@@ -382,6 +400,12 @@ Future<void> _persistTapAsPendingRing(String? payload) async {
   if (payload == null || payload.isEmpty) return;
   try {
     final Map<String, dynamic> data = jsonDecode(payload);
+    // ★ 2026-11-07：同上——已取消的來電不寫「待接聽」鍵，免得 App 開起來又彈一個死掉的接聽／拒絕畫面。
+    if (await CancelledCallStore.isCancelled((data['callId'] ?? '').toString())) {
+      debugPrint('🔕 [LocalNotif] 點擊通知時來電已被取消，不寫入 pendingLocalRingCall (callId=${data['callId']})');
+      await LocalCallNotification.cancel();
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       'pendingLocalRingCall',
@@ -425,9 +449,38 @@ Future<void> _handleDecline(String? payload) async {
   // ★ 第四十輪（item 3）：追蹤 declineCall 是否真的送出成功，供最後一段的
   //   拒接回饋通知使用；沒有 roomId/senderId 而整段跳過時視為失敗（沒有
   //   任何東西被送出，回饋通知應該老實反映這一點）。
+  // ★ 2026-11-07：拒接＝本地優先＋冪等。順序改為：①關通知（按鈕本身 cancelNotification:true 已關，
+  //   這裡再保險）→ ②登記已結束並清 pending → ③發起端已取消就不必送 HTTP，否則才送（失敗不外洩）。
+  //   原本「先等 HTTP 最多 8 秒才清 prefs／關通知」，且對已取消的來電會顯示「拒接時發生問題」。
   bool declineSucceeded = false;
+  bool alreadyEnded = false;
   try {
-    if (roomId.isNotEmpty && senderId.isNotEmpty) {
+    await LocalCallNotification.cancel();
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 拒接關閉通知失敗: $e');
+  }
+
+  try {
+    alreadyEnded = await CancelledCallStore.isCancelled(callId);
+    await CancelledCallStore.mark(callId);
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 拒接登記已結束失敗: $e');
+  }
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pendingAcceptedCall');
+    await prefs.remove('pendingRingCallData');
+    await prefs.remove('pendingRingCall');
+    await prefs.remove('pendingLocalRingCall');
+  } catch (e) {
+    debugPrint('⚠️ [LocalNotif] 拒接清除 prefs 失敗: $e');
+  }
+
+  try {
+    if (!shouldSendDeclineToServer(alreadyEnded: alreadyEnded)) {
+      debugPrint('ℹ️ [LocalNotif] 發起端已取消，略過送出拒接 (callId=$callId)');
+    } else if (roomId.isNotEmpty && senderId.isNotEmpty) {
       debugPrint('🔕 [LocalNotif] 拒接 → HTTP declineCall (callId=$callId)');
       declineSucceeded = await ApiService.declineCall(
         roomId: roomId,
@@ -441,25 +494,11 @@ Future<void> _handleDecline(String? payload) async {
     debugPrint('⚠️ [LocalNotif] declineCall 失敗: $e');
   }
 
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('pendingAcceptedCall');
-    await prefs.remove('pendingRingCallData');
-    await prefs.remove('pendingRingCall');
-  } catch (e) {
-    debugPrint('⚠️ [LocalNotif] 拒接清除 prefs 失敗: $e');
-  }
-
-  try {
-    await LocalCallNotification.cancel();
-  } catch (e) {
-    debugPrint('⚠️ [LocalNotif] 拒接關閉通知失敗: $e');
-  }
-
   // ★ 第四十輪（item 3）：見 showDeclineFeedback 的說明——這是使用者在
   //   本備援通知按下「✕ 拒絕」後，唯一看得到的執行結果回饋。
   try {
-    await LocalCallNotification.showDeclineFeedback(success: declineSucceeded);
+    await LocalCallNotification.showDeclineFeedback(
+        success: declineSucceeded, alreadyEnded: alreadyEnded);
   } catch (e) {
     debugPrint('⚠️ [LocalNotif] 顯示拒接回饋通知失敗: $e');
   }

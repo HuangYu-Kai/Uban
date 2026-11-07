@@ -20,6 +20,7 @@ import 'family/family_subscription_screen.dart';
 import '../models/elder.dart';
 import '../services/elder_manager.dart';
 import '../services/signaling.dart';
+import '../services/call_surface_dismiss.dart';
 import '../services/api_service.dart';
 import 'video_call_screen.dart';
 import 'caregiver_pairing_screen.dart';
@@ -404,6 +405,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
   @override
   void initState() {
     super.initState();
+    // ★ 2026-11-07：註冊本畫面來電 dialog 的關閉回呼（FCM 取消／其他路徑也能關掉它）。
+    CallSurfaceDismisser.registerDialogCloser(_closeOwnIncomingDialog);
     WidgetsBinding.instance.addObserver(this);
     pendingAcceptedCall.addListener(_onPendingCallChanged);
     // 深淺色偏好改變時重建本 State，好讓資料分頁的 isDarkMode 參數同步（與改版前 setState 等效）。
@@ -645,12 +648,12 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
     // 監聽取消呼叫
     _ownCancelCall = (roomId, senderId, callId, [senderName]) {
-      if (!mounted) return;
       debugPrint('🔕 [FamilyMainScreen] 來電取消: room=$roomId');
-      if (_isIncomingCallDialogOpen && Navigator.canPop(context)) {
-        Navigator.of(context).pop();
-        _isIncomingCallDialogOpen = false;
-      }
+      // ★ 2026-11-07（G144）：本覆寫會蓋掉 main.dart 的全域 onCancelCall，原本只關本畫面的 dialog，
+      //   CallKit、備援通知、pending prefs、全域 dialog 全部沒人處理（家屬端「對方掛了通知還在」）。
+      //   統一走 CallSurfaceDismisser.dismissAll（不論是否 mounted 都要清）。
+      _closeOwnIncomingDialog();
+      unawaited(CallSurfaceDismisser.dismissAll(callId: callId?.toString()));
     };
     _signaling.onCancelCall = _ownCancelCall;
 
@@ -2183,8 +2186,24 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
     }
   }
 
+  /// ★ 2026-11-07：本畫面來電 dialog 自己的 context（見 elder_home_screen 同名欄位的說明）。
+  BuildContext? _incomingDialogContext;
+
+  /// 本地優先關閉本畫面的來電 dialog；可重複呼叫、永不丟例外。
+  void _closeOwnIncomingDialog() {
+    final BuildContext? ctx = _incomingDialogContext;
+    _incomingDialogContext = null;
+    _isIncomingCallDialogOpen = false;
+    CallSurfaceDismisser.popDialogSafely(ctx);
+  }
+
   void _showIncomingCallDialog(String roomId, String senderId, String? callId, {bool isEmergency = false, String? callerName}) {
     if (_isIncomingCallDialogOpen) return; // 防止重複彈窗
+    // ★ 2026-11-07：已取消／已拒接的來電（callId 在失效清單，含跨 isolate 登記者）不彈畫面。
+    if (callId != null && callId.isNotEmpty && _signaling.isCallInvalidated(callId)) {
+      debugPrint('🔕 [FamilyMainScreen] 來電 $callId 已被取消／拒接，不顯示 dialog');
+      return;
+    }
     _isIncomingCallDialogOpen = true;
 
     showDialog(
@@ -2192,6 +2211,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       barrierDismissible: false,
       barrierColor: _famScrim(),
       builder: (dialogContext) {
+        _incomingDialogContext = dialogContext;
         return FamilyThemeScope(
           child: Builder(builder: (themed) {
             final c = UbanColors.of(themed);
@@ -2236,9 +2256,15 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               actions: [
                 ElevatedButton.icon(
                   onPressed: () {
-                    _signaling.sendCallBusy(senderId, callId: callId);
-                    Navigator.of(dialogContext).pop();
-                    _isIncomingCallDialogOpen = false;
+                    // ★ 2026-11-07：拒接＝本地優先＋冪等（先關畫面，再盡力通知；發起端已取消則略過；例外不外洩）。
+                    _closeOwnIncomingDialog();
+                    try {
+                      _signaling.sendCallBusy(senderId, callId: callId);
+                    } catch (e) {
+                      debugPrint('⚠️ [FamilyMainScreen] 拒接：sendCallBusy 失敗（畫面已關，忽略）: $e');
+                    }
+                    unawaited(CallSurfaceDismisser.dismissAll(
+                        callId: callId, closeDialogs: false));
                   },
                   icon: const Icon(Icons.call_end),
                   label: const Text('拒接', style: TextStyle(fontSize: 16)),
@@ -2286,6 +2312,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
       },
     ).then((_) {
       _isIncomingCallDialogOpen = false;
+      _incomingDialogContext = null;
     });
   }
   /// 家屬彈窗／面板的遮罩色（本檔 State 的 context 在家屬主題之上，取不到 extension，
@@ -2443,6 +2470,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
 
   @override
   void dispose() {
+    CallSurfaceDismisser.unregisterDialogCloser(_closeOwnIncomingDialog);
     WidgetsBinding.instance.removeObserver(this);
     _deviceRefreshTimer?.cancel();
     _offlineConfirmTimer?.cancel();
