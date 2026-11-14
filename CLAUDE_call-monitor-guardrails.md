@@ -47,13 +47,13 @@
 > 過程中實際踩到的坑）。
 
 **改來電通知／CallKit／背景 isolate**
-- 前端卷：G2, G9, G19, G73, G82, G83, G87, G107–G110, G146
+- 前端卷：G2, G9, G19, G73, G82, G83, G87, G107–G110, G146, G208, G209
 - 後端卷：G33, G118
 - 建議關鍵字：`CallKit|來電|fullScreenIntent|背景|isolate|FCM|headless|喚醒|鈴聲|channel`
 - ⚠️ 「喚醒」也會命中語音助理喚醒詞相關護欄（如 G59），那與來電無關，出現時自行排除。
 
 **改通話房 UI（接聽、掛斷、畫面跳轉）**
-- 前端卷：G37, G38, G47, G50, G56, G60, G61, G69, G77, G81, G84, G87, G90
+- 前端卷：G37, G38, G47, G50, G56, G60, G61, G69, G77, G81, G84, G87, G90, G208, G209
 - 後端卷：G133, G199
 - 建議關鍵字：`接聽|掛斷|ElderScreen|VideoCallScreen|導航|pushAndRemoveUntil|通話房|計時|onTrack`
 
@@ -88,6 +88,37 @@
 - ⚠️ 不要用裸的 `IP` 當關鍵字——會誤中 `relationship`、`service`、`device` 等英文字尾（如
   `family_elder_relationsh IP`），G149／G95／G96 都曾被這樣誤掃進來，人工核對後已排除
   （G95／G96 實際內容是 CCTV IPS 掛鉤，已列在上方「監控 CCTV／警報」）。
+
+**改 AI 對話／串流解析／語音互動**
+- 前端卷：G206, G207
+- 建議關鍵字：`SSE|chunk|串流|語音|finalResult|TTS|STT|ai_chat_stream`
+- ⚠️ `串流` 也會命中 G88（任何 `request.send()` 都必須消費回應串流）——那是通用 HTTP
+  層規則，與 AI 對話串流解析無關。`語音`／`TTS`／`STT` 範圍較廣，除 G206／G207 外還會
+  連帶命中既有的 G59（語音喚醒預設關閉）、G100（全域音訊焦點必須維持 `none`）、G203
+  （TTS 播放期間不得開啟 STT）——這三條語意上與本類別相關，但不在本次新增範圍內，出現
+  時請自行核對是否真的要看。
+
+**改資料庫 schema／seed／排程工作**
+- 後端卷：G210, G211, G213
+- 建議關鍵字：`init_sqlite_db|CREATE TABLE|seed|排程|reminder|is_active|VARCHAR`
+- ⚠️ 裸的 `commit` 會誤中 git commit 語境的護欄（例如「新增全螢幕來電畫面時，同一個
+  commit 內就要補上這個標記」），與 SQLite 交易的 `conn.commit()` 無關，命中後務必看
+  上下文是不是資料庫交易。`排程`／`reminder` 範圍較廣，也會連帶命中既有的 G160
+  （`remote_reminders.elder_id` 必須是 4 碼房間代碼）、G162（排程 job 必須設足夠的
+  `misfire_grace_time`）、G192（排程 job 不得把整輪資料庫巡檢丟進主事件迴圈）——這三條
+  語意上與本類別相關，但不在本次新增範圍內。
+
+**改開發者主控台／帳號生命週期（刪除、封禁、解綁）／可調參數**
+- 後端卷：G212, G213, G214, G215
+- 建議關鍵字：`開發者主控台|封禁|unbind|app_settings|admin_action_log`
+- ⚠️ **不要用裸的 `ban` 當關鍵字**——專案名稱 `Uban`／`uban-api`／`uban-mysql` 本身就含
+  `ban` 子字串，實測後端卷 13 次命中裡有 11 次是這種假陽性、前端卷 12 次命中**全部**是
+  假陽性，一律改用 `封禁`。裸的 `刪除` 同樣過於寬泛（後端卷單獨 18 次命中，橫跨路由／
+  方法／模組等各種刪除語意，例如 G176、G185），改用更精確的 `unbind` 或既有的
+  `app_settings`／`admin_action_log`。`開發者主控台` 也會在 G193（推播函式必須回傳實際
+  送出對象數）裡以舉例形式出現一次，該條核心與本類別無關，人工核對標題即可排除。此外，
+  G116（`unbind_elder` 必須驗關係、scoped delete、剩餘綁定歸零才刪帳號）與本類別高度
+  相關（和 G214 談的是同一個函式），同樣不在本次新增範圍內，供下一輪參考。
 
 **純版面／樣式調整**
 - 前端卷：G63, G142, G159, G200（後端卷沒有——樣式是純前端概念）
