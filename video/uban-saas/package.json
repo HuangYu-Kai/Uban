@@ -1,0 +1,14 @@
+{
+  "name": "uban-saas-promo",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts UbanPromo out/uban_promo.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.536",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.536"
+  }
+}
