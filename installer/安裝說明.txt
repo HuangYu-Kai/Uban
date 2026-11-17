@@ -9,8 +9,8 @@ Uban 是 Android 手機 App。本安裝程式會把安裝工具放到這台電�
 一、系統需求
 --------------------------------------------------
 1. 電腦：Windows 10 或 Windows 11
-2. 手機：Android 8.0 以上，並備有可傳輸資料的 USB 線
-   或 Android Studio 模擬器（Android 8.0 以上）
+2. 手機：Android 7.0 以上，並備有可傳輸資料的 USB 線
+   或 Android Studio 模擬器（Android 7.0 以上）
 3. 網路連線（App 需連到正式站伺服器）
 
 二、方法一：以 USB 連接實體手機（建議）
