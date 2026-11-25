@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../utils/platform_file.dart';
 import 'api_client.dart';
 
 /// ★ 2026-10-07 每日一問（長輩端）：今天要問長輩的問題（題庫或家人出的）。
@@ -141,11 +141,11 @@ class ElderDailyQuestionApi {
       request.fields['elder_id'] = elderId.toString();
       if (clean.isNotEmpty) request.fields['text'] = clean;
       if (audioPath != null) {
-        final file = File(audioPath);
-        if (await file.length() > 5 * 1024 * 1024) {
+        // 網頁版為 blob 網址，改用 XFile 取大小（手機行為不變）
+        if (await pathLength(audioPath) > 5 * 1024 * 1024) {
           return const DailyAnswerResult(false, '錄音檔太大了，請錄短一點再送');
         }
-        request.files.add(await http.MultipartFile.fromPath('audio', audioPath));
+        request.files.add(await audioMultipartFromPath('audio', audioPath));
       }
       final streamed = await request.send().timeout(const Duration(seconds: 45));
       final response = await http.Response.fromStream(streamed);

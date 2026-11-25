@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
+import '../utils/platform_file.dart';
 import '../models/emotion_data.dart';
 import 'emotion_storage_service.dart';
 
@@ -17,6 +18,7 @@ class HealthReportService {
     required int elderId,
     required Map<String, dynamic> healthData,
   }) async {
+    ensureFileExportSupported();
     final pdf = pw.Document();
     final now = DateTime.now();
     final weekStart = now.subtract(Duration(days: now.weekday - 1));
@@ -68,6 +70,7 @@ class HealthReportService {
     required int elderId,
     required Map<String, dynamic> healthData,
   }) async {
+    ensureFileExportSupported();
     final pdf = pw.Document();
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);

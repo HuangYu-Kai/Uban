@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -13,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../globals.dart';
+import '../utils/platform_file.dart';
 import '../utils/stt_locale.dart';
 import '../services/api_service.dart';
 import '../services/friend_service.dart';
@@ -104,7 +107,7 @@ class _ChatMessage {
   DailyQuestion? dailyQuestion; // ★ 每日一問：非 null 時氣泡下方顯示「我來回答」
   final List<String> images; // ★ 家人分享轉述：氣泡下方的照片網址（可為相對路徑）
   final String? audioUrl; // ★ 家人打卡鼓勵的原始錄音（相對路徑）；有值則「再聽」播錄音而非 TTS
-  final File? localImage; // ★ 2026-10-17 拍照問小嘎：使用者氣泡的本機照片縮圖（不存進本機聊天紀錄）
+  final XFile? localImage; // ★ 2026-10-17 拍照問小嘎：使用者氣泡的本機照片縮圖（不存進本機聊天紀錄）
 
   _ChatMessage(
     this.text,
@@ -548,7 +551,9 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   Future<void> _initSpeech() async {
     try {
-      final status = await Permission.microphone.request();
+      // 網頁版：瀏覽器的 SpeechRecognition 在 listen 時自己會詢問麥克風權限，
+      // 不先走 permission_handler（避免重複詢問）；不支援的瀏覽器 initialize 會回 false。
+      final status = kIsWeb ? PermissionStatus.granted : await Permission.microphone.request();
       if (status.isGranted) {
         // 不依賴 onStatus：按住說話由按下／放開驅動；
         // 辨識器可能已被首頁喚醒詞初始化過，這裡不重設其回呼。
@@ -557,7 +562,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         );
         if (_speechReady) {
           final locales = await _speechToText.locales();
-          _sttLocaleToUse = pickChineseSttLocale(locales);
+          _sttLocaleToUse =
+              kIsWeb ? kWebSttLocale : pickChineseSttLocale(locales);
           debugPrint('🎙️ [STT Init] locale -> $_sttLocaleToUse');
         }
       } else {
@@ -585,7 +591,10 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       if (!_speechReady) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('這台裝置未授權麥克風權限，請改用打字或開啟權限喔')),
+            SnackBar(
+                content: Text(kIsWeb
+                    ? kWebSttUnsupportedMessage
+                    : '這台裝置未授權麥克風權限，請改用打字或開啟權限喔')),
           );
         }
         return;
@@ -626,10 +635,11 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
         //   畫面一律顯示「沒聽清楚」。pauseFor 依賴部分結果判斷停頓，
         //   沒有部分結果時會在 4 秒後誤切，所以一併拿掉；放開按鈕才結束。
         // ignore: deprecated_member_use
-        partialResults: false,
+        partialResults: kIsWeb,
         localeId: _sttLocaleToUse,
         listenOptions: SpeechListenOptions(
-          partialResults: false,
+          // 網頁版外掛永遠不回 finalResult，關閉部分結果會整個被丟棄，故網頁需開啟
+          partialResults: kIsWeb,
           cancelOnError: true,
           listenMode: ListenMode.dictation,
         ),
@@ -708,7 +718,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
   ///   傳到 `/ai/upload_image`，成功後才呼叫串流並帶上 `image_url`；之後的串流、TTS、
   ///   存檔流程與純文字訊息完全共用。沒打字就直接送照片時，用預設問句
   ///   [kChatPhotoDefaultText]。
-  Future<void> _send({File? photo}) async {
+  Future<void> _send({XFile? photo}) async {
     final typed = _controller.text.trim();
     final text = (photo != null && typed.isEmpty) ? kChatPhotoDefaultText : typed;
     if (text.isEmpty || _isThinking) return;
@@ -825,7 +835,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
 
   /// ★ 2026-10-17 拍照問小嘎：上傳照片到既有的 `/ai/upload_image`，成功回相對網址
   ///   （`/uploads/xxx.jpg`，後端直接從本機磁碟讀），逾時 30 秒或任何失敗回 null。
-  Future<String?> _uploadChatPhoto(File photo) async {
+  Future<String?> _uploadChatPhoto(XFile photo) async {
     try {
       final res = await ApiService.uploadImage(photo.path)
           .timeout(const Duration(seconds: 30));
@@ -869,7 +879,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       ErrorHandler.showWarning(context, '小嘎還在回答，等一下再傳照片喔');
       return;
     }
-    await _send(photo: File(picked.path));
+    await _send(photo: picked);
   }
 
   bool _isAutoDialing = false; // 防止同一句話重複撥號
@@ -1023,7 +1033,8 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       final engine = lang == 'taigi' ? 'yating' : 'edge';
 
       // 1. 優先檢查本地快取（特別是台語）
-      if (msg.ttsAudioPath != null &&
+      if (!kIsWeb &&
+          msg.ttsAudioPath != null &&
           File(msg.ttsAudioPath!).existsSync() &&
           File(msg.ttsAudioPath!).lengthSync() > 0) {
         debugPrint('🎙️ [TTS Cache Hit] 命中本地快取音檔: ${msg.ttsAudioPath} (語言: $lang, 引擎: $engine)');
@@ -1038,6 +1049,31 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
       final candidateUrls = [
         '${ApiService.baseUrl.replaceFirst('/api', '')}/api/voice/tts/stream?text=$encodedText&engine=$engine',
       ];
+
+      // 網頁版沒有檔案系統：下載 bytes 後以 BytesSource（data URI）直接播放，不存快取。
+      if (kIsWeb) {
+        Uint8List? bytes;
+        for (final targetUrl in candidateUrls) {
+          try {
+            final response = await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 30));
+            if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+              bytes = response.bodyBytes;
+              break;
+            }
+          } catch (e) {
+            debugPrint('⚠️ [TTS Download Error] $targetUrl 失敗: $e');
+          }
+        }
+        if (bytes != null) {
+          await _audioPlayer.play(BytesSource(bytes, mimeType: 'audio/mpeg'));
+        } else if (mounted) {
+          setState(() => msg.isPlayingAudio = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${lang == 'taigi' ? '台語' : '國語'}語音播放失敗，請檢查網路')),
+          );
+        }
+        return;
+      }
 
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/tts_cache');
@@ -1457,7 +1493,7 @@ class _ElderChatScreenState extends State<ElderChatScreen> {
             ? (msg.localImage != null
                 // ★ 2026-10-17 拍照問小嘎：使用者傳的照片縮圖＋文字
                 ? ChatPhotoBubbleContent(
-                    image: FileImage(msg.localImage!),
+                    image: pathImageProvider(msg.localImage!.path),
                     text: msg.text,
                     textColor: c.onBrand,
                   )

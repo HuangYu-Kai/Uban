@@ -337,7 +337,7 @@ chmod +x run.sh
 ```
 Uban/
 ├── mobile_app/              # Flutter 前端
-│   └── lib/
+│   ├── lib/
 │       ├── services/        # API、Signaling (WebRTC + Socket.IO)
 │       ├── screens/         # UI 頁面
 │       │   ├── elder_screen.dart        # 長輩端通話
@@ -346,6 +346,8 @@ Uban/
 │       │   ├── elder_tabs/             # 長輩端分頁
 │       │   └── zen_pond/               # 魚你聊聊 UI (原禪意池塘)
 │       └── globals.dart     # 全域狀態
+│   ├── web_demo/            # 問卷網頁體驗版外殼（/demo）
+│   └── tool/build_web_demo.py # 體驗版建置與瘦身
 ├── webrtc_test.html         # 瀏覽器版 WebRTC 測試工具 (v1.1)
 ├── test_call_simulator.py   # Socket.IO 信令測試腳本
 ├── run.sh                   # macOS/Linux 啟動腳本
@@ -501,6 +503,15 @@ void initPedometer() {
 > 第一批補於 2026-08-06，第二批補於 2026-08-13（08-06～08-12 落在 `main` 上、
 > 但只寫進 `CLAUDE_call-monitor.md` 沒進本日誌的通話／監控工作）。
 > 內容依 commit diff 與該文件重建，細節可能不如當事人寫得完整。
+
+### 2026-11-25 🌐 問卷網頁體驗版 `/demo`（`feat/web-demo` 分支）
+
+- **用途**：問卷受訪者用手機瀏覽器開 `https://<後端主機>/demo`，免安裝、免登入，就能在同一個畫面切換「長輩端／家屬端」。兩端都是本專案 App 的 Flutter Web 版，接同一台後端與 AI 伺服器；帳號由後端 `POST /api/demo/session` 自動配一組已綁定的王奶奶＋王小明（72 小時後刪除，見 `Uban-api/readme.md`）。
+- **外殼** `mobile_app/web_demo/`（純 HTML／JS）：首次進入說明（是什麼、使用情境、正常流程、正常綁定流程、開始前注意）、上方身分切換、6 項體驗任務（收到事件自動打勾）、緊急通話自動切到長輩端＋子母畫面、兩支手機 QR（`#join=<token>&role=elder`，重新整理後維持同一端）、LINE 等 App 內建瀏覽器提示。兩個 iframe 各跑一份 App（`?role=elder|family`），偏好設定以 `SharedPreferences.setPrefix('demo_<role>.')` 隔開。
+- **進入點** `lib/main_demo.dart`（手機版 `main.dart` 不受影響）；`lib/utils/demo_fake_firebase.dart` 讓網頁上 `FirebaseMessaging.getToken()` 回 null 而不丟例外。
+- **建置**：在 `mobile_app/` 執行 `TURN_SERVER=… TURN_USER=… TURN_PASS=… python tool/build_web_demo.py --install`（約 90 秒），產出瘦身後（字型子集、WebP、br／gz）複製到 `Uban-api/static/demo`，隨後端部署上線。本機測試加 `--server http://127.0.0.1:<port> --out <資料夾>`。需要 Python 套件 fonttools、brotli、Pillow。
+- **網頁相容**（皆為 `kIsWeb` 分支或等價寫法，手機行為不變）：語音播放改用記憶體音訊、錄音用 wav、圖片以 bytes 上傳、sqflite 略過、瀏覽器語音辨識用 `zh-TW`、YouTube 開新分頁；`elder_location_map_screen.dart` 網頁版不取消圖磚請求並補觸發一次重繪（否則底圖空白）；`elder_screen.dart` 網頁版一般通話接聽後的第一個 offer 直接視為已同意（否則會再跳一次「家屬來電」；緊急通話路徑未動）。
+- **網頁版沒有的功能**：背景通知與鎖屏響鈴、計步感測、內購、匯出檔案、監視機、台語語音快取。
 
 ### 2026-11-04 🤝 代理人協調：秘書交辦小嘎去問長輩，問到再回報（`feat/agent-coordination` 分支）
 

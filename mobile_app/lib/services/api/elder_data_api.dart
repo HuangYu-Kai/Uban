@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../utils/platform_file.dart';
 import 'api_client.dart';
 
 /// 長輩資料、個人檔案、家庭留言、生活足跡與活動日誌 API
@@ -391,7 +392,7 @@ class ElderDataApi {
         'POST',
         Uri.parse('${ApiClient.baseUrl}/user/$userId/avatar'),
       );
-      request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
+      request.files.add(await imageMultipartFromPath('avatar', filePath));
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
@@ -412,7 +413,7 @@ class ElderDataApi {
         'POST',
         Uri.parse('${ApiClient.baseUrl}/ai/upload_image'),
       );
-      request.files.add(await http.MultipartFile.fromPath('file', filePath));
+      request.files.add(await imageMultipartFromPath('file', filePath));
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);

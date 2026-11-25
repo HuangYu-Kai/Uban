@@ -95,6 +95,7 @@ class NewsSelectionList extends StatelessWidget {
                       child: hasImage
                           ? Image.network(
                               imageUrl,
+                              webHtmlElementStrategy: WebHtmlElementStrategy.fallback, // 外部圖片 CORS 退回 <img>
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) =>
                                   Container(color: const Color(0xFF2D3748)),

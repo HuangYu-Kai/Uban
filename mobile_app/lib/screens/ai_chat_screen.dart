@@ -417,6 +417,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       clipBehavior: Clip.antiAlias,
       child: Image.network(
         imageUrl,
+        webHtmlElementStrategy: WebHtmlElementStrategy.fallback, // 外部圖片 CORS 退回 <img>
         fit: BoxFit.cover,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -158,6 +159,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   void _initPedometer() async {
+    // 網頁版沒有計步感測器：靜默略過
+    if (kIsWeb) return;
     try {
       if (await Permission.activityRecognition.request().isGranted) {
         _stepCountStream = Pedometer.stepCountStream;

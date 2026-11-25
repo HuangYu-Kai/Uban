@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#F6F8F7">
+  <meta name="robots" content="noindex">
+  <title>Uban 體驗版</title>
+  <link rel="icon" type="image/png" href="./icon.png">
+  <link rel="apple-touch-icon" href="./icon.png">
+  <link rel="stylesheet" href="./shell.css">
+  <script>
+    // /demo 沒有結尾斜線時，相對路徑會指到錯的地方，先補上。
+    if (!/\/$|\.html$/.test(location.pathname)) {
+      location.replace(location.pathname + '/' + location.search + location.hash);
+    }
+  </script>
+</head>
+<body>
+<div id="app">
+  <header class="topbar" id="topbar">
+    <div class="seg" role="tablist" aria-label="切換長輩端與家屬端" id="seg">
+      <button role="tab" id="tab-elder" class="seg-btn" data-role="elder" aria-selected="true" aria-controls="stage">
+        <span class="seg-label">長輩端</span><span class="dot" hidden></span>
+      </button>
+      <button role="tab" id="tab-family" class="seg-btn" data-role="family" aria-selected="false" aria-controls="stage">
+        <span class="seg-label">家屬端</span><span class="dot" hidden></span>
+      </button>
+    </div>
+    <button class="tool" id="btn-tasks" type="button" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7l2 2 3-4M4 17l2 2 3-4M13 7h7M13 17h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>任務 <b id="task-count">0/6</b></span>
+    </button>
+    <button class="tool icon" id="btn-menu" type="button" aria-haspopup="dialog" aria-label="選單">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+
+  <main class="stage" id="stage" role="tabpanel" aria-live="off"></main>
+
+  <div class="stack" id="stack">
+    <div class="caption" id="caption" role="status" hidden></div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+
+  <section class="intro" id="intro" hidden aria-label="體驗說明"></section>
+
+  <div class="sheet-wrap" id="sheet-wrap" hidden>
+    <div class="backdrop" id="sheet-backdrop"></div>
+    <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
+      <div class="sheet-grab" aria-hidden="true"></div>
+      <div class="sheet-head">
+        <h2 id="sheet-title"></h2>
+        <button type="button" class="tool icon" id="sheet-close" aria-label="關閉">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="sheet-body" id="sheet-body"></div>
+    </div>
+  </div>
+</div>
+<noscript><p style="padding:24px;font-size:18px">此體驗版需要開啟 JavaScript 才能使用。</p></noscript>
+<script src="./vendor/qrcode.js"></script>
+<script src="./shell.js"></script>
+</body>
+</html>

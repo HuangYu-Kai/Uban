@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import '../utils/platform_file.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/emotion_data.dart';
 import '../models/care_task.dart';
@@ -21,6 +22,7 @@ class DataExportService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    ensureFileExportSupported();
     final start = startDate ?? DateTime.now().subtract(const Duration(days: 30));
     final end = endDate ?? DateTime.now();
     
@@ -46,6 +48,7 @@ class DataExportService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    ensureFileExportSupported();
     final start = startDate ?? DateTime.now().subtract(const Duration(days: 30));
     final end = endDate ?? DateTime.now();
     
@@ -73,6 +76,7 @@ class DataExportService {
 
   /// 導出任務數據
   Future<File> exportTasksAsJson({int? elderId}) async {
+    ensureFileExportSupported();
     final tasks = await _taskService.getAllTasks(elderId: elderId);
     
     final data = {
@@ -97,6 +101,7 @@ class DataExportService {
 
   /// 導出家庭協作數據
   Future<File> exportContributionData() async {
+    ensureFileExportSupported();
     final members = await _contributionService.getAllMembers();
     final weeklyStats = await _contributionService.getWeeklyStats();
     
@@ -128,6 +133,7 @@ class DataExportService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    ensureFileExportSupported();
     final start = startDate ?? DateTime.now().subtract(const Duration(days: 30));
     final end = endDate ?? DateTime.now();
     
@@ -183,6 +189,7 @@ class DataExportService {
     DateTime? endDate,
     ExportFormat format = ExportFormat.json,
   }) async {
+    ensureFileExportSupported();
     File file;
     
     switch (format) {
@@ -199,6 +206,7 @@ class DataExportService {
 
   /// 導出並分享任務數據
   Future<void> exportAndShareTasks({int? elderId}) async {
+    ensureFileExportSupported();
     final file = await exportTasksAsJson(elderId: elderId);
     await shareFile(file, subject: '任務數據導出');
   }
@@ -210,6 +218,7 @@ class DataExportService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    ensureFileExportSupported();
     final file = await exportCompleteHealthData(
       elderName: elderName,
       elderId: elderId,
@@ -221,6 +230,7 @@ class DataExportService {
 
   /// 匯入情緒數據
   Future<int> importEmotionsFromJson(File file) async {
+    ensureFileExportSupported();
     final jsonString = await file.readAsString();
     final data = json.decode(jsonString) as Map<String, dynamic>;
     
@@ -234,6 +244,7 @@ class DataExportService {
 
   /// 清理舊的導出文件（保留最近10個）
   Future<void> cleanupOldExports() async {
+    ensureFileExportSupported();
     final directory = await getApplicationDocumentsDirectory();
     final files = directory.listSync()
       .whereType<File>()

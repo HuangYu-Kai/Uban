@@ -1,8 +1,8 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../utils/platform_file.dart';
 import '../services/api_service.dart';
 import '../services/friend_service.dart';
 import '../widgets/ui/ui.dart';
@@ -193,8 +193,8 @@ class _FriendFeedBodyState extends State<FriendFeedBody> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(18),
-                        child: Image.file(
-                          File(selectedLocalImagePath!),
+                        child: Image(
+                          image: pathImageProvider(selectedLocalImagePath!),
                           width: double.infinity,
                           height: 160,
                           fit: BoxFit.cover,
@@ -252,7 +252,7 @@ class _FriendFeedBodyState extends State<FriendFeedBody> {
                           String? uploadedUrl;
                           if (selectedLocalImagePath != null) {
                             uploadedUrl = await ApiService.uploadCommunityImage(
-                              File(selectedLocalImagePath!),
+                              XFile(selectedLocalImagePath!),
                             );
                           }
                           final created = await FriendService.createPost(

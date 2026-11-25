@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
@@ -19,6 +20,12 @@ class YoutubeBubblePlayer extends StatelessWidget {
   void _playInModal(BuildContext context) {
     // 觸發停止背景 TTS
     onPlay?.call();
+
+    // 網頁版不支援 youtube_player_flutter（原生 WebView），改開新分頁播放
+    if (kIsWeb) {
+      _openExternalYoutube();
+      return;
+    }
 
     // 開啟完全隔離的獨立視訊 Modal 彈窗
     showDialog(
@@ -68,6 +75,8 @@ class YoutubeBubblePlayer extends StatelessWidget {
                   child: Image.network(
                     thumbnailUrl,
                     fit: BoxFit.cover,
+                    // 網頁版跨網域圖片：CORS 不允許時退回 <img> 元素顯示
+                    webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
                     errorBuilder: (ctx, err, stack) => Container(
                       color: Colors.grey[900],
                       child: const Icon(Icons.music_note, color: Colors.white54, size: 48),

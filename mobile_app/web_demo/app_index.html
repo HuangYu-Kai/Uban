@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <!-- 體驗版 Flutter 主機頁：建置後取代 build/web/index.html（base href 由 --base-href 注入）。 -->
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#F6F8F7">
+  <title>Uban</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <style>
+    html, body { margin: 0; height: 100%; background: #F6F8F7; overflow: hidden; }
+    #boot {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: #F6F8F7; z-index: 1; transition: opacity .25s ease;
+    }
+    #boot.gone { opacity: 0; pointer-events: none; }
+    #boot i {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 4px solid #DFF3EB; border-top-color: #3D9C7C;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { #boot i { animation-duration: 3s; } }
+  </style>
+  <script>
+    // 兩端各是一個 iframe，焦點切到另一端時瀏覽器會對這一端發 blur，Flutter 會當成 App 退到背景。
+    // 體驗版要模擬「兩支手機都在前景」，所以擋掉 window 的 blur；真正切走分頁仍由 visibilitychange 處理。
+    window.addEventListener('blur', function (e) {
+      if (e.target === window) e.stopImmediatePropagation();
+    }, true);
+  </script>
+</head>
+<body>
+  <div id="boot" role="status" aria-label="載入中"><i></i></div>
+  <script>
+    // Flutter 畫出第一個影格後移除載入圖示。
+    window.addEventListener('flutter-first-frame', function () {
+      var b = document.getElementById('boot');
+      if (b) { b.classList.add('gone'); setTimeout(function () { b.remove(); }, 400); }
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

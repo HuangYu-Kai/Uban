@@ -213,6 +213,8 @@ class FamilyStepSync {
 
   /// 使用者按下「開始計算我的步數」才呼叫：此時才申請 ACTIVITY_RECOGNITION。
   Future<FamilyStepOptIn> optIn({int? familyId}) async {
+    // 網頁版沒有計步感測器
+    if (kIsWeb && counterOverride == null) return FamilyStepOptIn.unavailable;
     try {
       final st = await Permission.activityRecognition.request();
       if (st.isGranted) {
@@ -232,6 +234,8 @@ class FamilyStepSync {
 
   /// App 啟動／回前景時呼叫；沒同意或沒權限就什麼都不做。立即同步一次並啟動 5 分鐘計時。
   Future<void> start({int? familyId}) async {
+    // 網頁版沒有計步感測器：靜默略過
+    if (kIsWeb && counterOverride == null) return;
     try {
       if (familyId != null) _familyId = familyId;
       if (!await hasConsent()) return;

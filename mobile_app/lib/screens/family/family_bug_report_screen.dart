@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../services/bug_report_service.dart';
@@ -91,6 +92,8 @@ class _FamilyBugReportScreenState extends State<FamilyBugReportScreen> {
   String _buildDeviceInfo() {
     String raw;
     try {
+      // 網頁版沒有 dart:io Platform（會丟 UnsupportedError）
+      if (kIsWeb) return 'Web 網頁體驗版';
       raw = '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';
     } catch (_) {
       // 理論上手機平台不會走到這裡，純粹防呆。

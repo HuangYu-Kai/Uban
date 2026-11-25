@@ -1,14 +1,15 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../globals.dart';
 import '../../services/api/elder_daily_question_api.dart';
+import '../../utils/platform_file.dart';
 import '../../utils/stt_locale.dart';
 import '../../widgets/ui/ui.dart';
 
@@ -144,14 +145,18 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
 
   Future<bool> _initSpeech() async {
     try {
-      final status = await Permission.microphone.request();
-      if (!status.isGranted) return false;
+      // 網頁版由瀏覽器 SpeechRecognition 自己詢問權限；不支援時 initialize 回 false
+      if (!kIsWeb) {
+        final status = await Permission.microphone.request();
+        if (!status.isGranted) return false;
+      }
       final stt = _stt ??= SpeechToText();
       _speechReady = await stt.initialize(
         onError: (err) => debugPrint('🎙️ [DailyQ STT error] $err'),
       );
       if (_speechReady) {
-        _sttLocale = pickChineseSttLocale(await stt.locales());
+        _sttLocale =
+            kIsWeb ? kWebSttLocale : pickChineseSttLocale(await stt.locales());
       }
     } catch (e) {
       debugPrint('🎙️ [DailyQ STT Init Failed] $e');
@@ -163,7 +168,9 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
   Future<void> _startListening() async {
     if (_sending || _busyMic) return;
     if (!_speechReady && !await _initSpeech()) {
-      _setError('這台裝置未授權麥克風權限，請改用打字或開啟權限喔');
+      _setError(kIsWeb
+          ? kWebSttUnsupportedMessage
+          : '這台裝置未授權麥克風權限，請改用打字或開啟權限喔');
       return;
     }
     if (!mounted) return;
@@ -197,10 +204,11 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
         //   畫面一律顯示「沒聽清楚」。pauseFor 依賴部分結果判斷停頓，
         //   沒有部分結果時會在 4 秒後誤切，所以一併拿掉；放開按鈕才結束。
         // ignore: deprecated_member_use
-        partialResults: false,
+        partialResults: kIsWeb,
         localeId: _sttLocale,
         listenOptions: SpeechListenOptions(
-          partialResults: false,
+          // 網頁版外掛永遠不回 finalResult，關閉部分結果會整個被丟棄，故網頁需開啟
+          partialResults: kIsWeb,
           cancelOnError: true,
           listenMode: ListenMode.dictation,
         ),
@@ -268,12 +276,9 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
         return;
       }
       await _stopPlayback();
-      final dir = await getTemporaryDirectory();
-      final path =
-          '${dir.path}/daily_answer_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final path = await voiceRecordPath('daily_answer');
       _pauseWakeWord();
-      await rec.start(const RecordConfig(encoder: AudioEncoder.aacLc),
-          path: path);
+      await rec.start(voiceRecordConfig(), path: path);
       if (!mounted) return;
       setState(() {
         _recording = true;
@@ -345,7 +350,7 @@ class _DailyQuestionAnswerSheetState extends State<DailyQuestionAnswerSheet> {
         if (mounted) setState(() => _playing = false);
       });
       setState(() => _playing = true);
-      await p.play(DeviceFileSource(path));
+      await p.play(audioSourceFromPath(path));
     } catch (e) {
       debugPrint('⚠️ [DailyQ] 試聽失敗: $e');
       if (mounted) setState(() => _playing = false);

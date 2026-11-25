@@ -217,6 +217,9 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
   /// 都不會再把進行中的通話誤判成新來電而 hangUp（緊急通話瞬間掛斷的直接成因）。
   String? _activeCallId;
 
+  /// 網頁體驗版限定：是否已收過本畫面的第一個 offer（見 `_ownIncomingCall`）。
+  bool _webFirstOfferSeen = false;
+
   /// ★ 2026-08-25（需求 3）：這個畫面「進場當下」裝置是否處於鎖定狀態——
   /// 用來分辨「這通電話是從鎖屏／背景喚醒才進來的」還是「使用者本來就已經在
   /// App 裡」。只有前者結束通話（`dispose()`）時才呼叫原生
@@ -1221,6 +1224,8 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
     //   這正是本次要移除的重複註冊。
     _ownIncomingCall = (callerId, callType) async {
       debugPrint("📞 [ElderScreen] Incoming Offer from $callerId (Type: $callType)");
+      final bool isFirstOffer = !_webFirstOfferSeen;
+      _webFirstOfferSeen = true;
       // ★ 2026-08-25（第三十三輪）：舊註解「只要在 ElderScreen 內就代表已經
       //   進入通話準備狀態，一律接聽」不成立——長輩端可能因為上一通通話、
       //   CCTV 監控或任何原因已經停留在本畫面，此時收到一般通話的 offer，
@@ -1241,6 +1246,21 @@ class _ElderScreenState extends State<ElderScreen> with WidgetsBindingObserver {
       //   都會先設定 `_isInCall = true` 才送 `sendCallAccept`）——這裡只是同一
       //   通電話後續送達的 WebRTC offer，照常接聽，行為與改動前完全相同。
       if (_isInCall) {
+        return true;
+      }
+
+      // 網頁體驗版限定（main_demo.dart）：使用者已在首頁來電畫面按下接聽才會帶著
+      // initialCallData 進來，但 `_isInCall` 要等 100ms 後的
+      // `_handleAcceptedCallFromBackground` 才設定；瀏覽器端 offer 回得比手機快，
+      // 會落在這個空檔被當成新來電、再問一次接聽。同一位來電者的第一個 offer 直接
+      // 視為已同意。kIsWeb 以外的行為完全不變。
+      final initialCall = widget.initialCallData;
+      if (kIsWeb &&
+          initialCall != null &&
+          isFirstOffer &&
+          initialCall['senderId']?.toString() == callerId) {
+        _activeCallId = initialCall['callId']?.toString();
+        if (mounted) setState(() => _isInCall = true);
         return true;
       }
 

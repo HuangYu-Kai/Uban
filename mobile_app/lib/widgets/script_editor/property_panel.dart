@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import '../../models/script_node.dart';
+import '../../utils/platform_file.dart';
 
 class PropertyPanel extends StatelessWidget {
   final ScriptNode node;
@@ -275,6 +275,7 @@ class PropertyPanel extends StatelessWidget {
                     child: node.mediaUrl!.startsWith('http')
                         ? Image.network(
                             node.mediaUrl!,
+                            webHtmlElementStrategy: WebHtmlElementStrategy.fallback, // 外部圖片 CORS 退回 <img>
                             height: 120,
                             width: double.infinity,
                             fit: BoxFit.cover,
@@ -284,8 +285,8 @@ class PropertyPanel extends StatelessWidget {
                                   color: Colors.white24,
                                 ),
                           )
-                        : Image.file(
-                            File(node.mediaUrl!),
+                        : Image(
+                            image: pathImageProvider(node.mediaUrl!),
                             height: 120,
                             width: double.infinity,
                             fit: BoxFit.cover,

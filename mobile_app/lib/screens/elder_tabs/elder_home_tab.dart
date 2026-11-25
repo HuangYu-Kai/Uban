@@ -1287,6 +1287,7 @@ class _ElderHomeTabState extends State<ElderHomeTab>
                         if (hasImage)
                           Image.network(
                             imageUrl,
+                            webHtmlElementStrategy: WebHtmlElementStrategy.fallback, // 外部圖片 CORS 退回 <img>
                             fit: BoxFit.cover,
                             loadingBuilder: (context, child, progress) =>
                                 progress == null ? child : fallbackHero,

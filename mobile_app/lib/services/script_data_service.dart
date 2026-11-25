@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -188,27 +189,31 @@ class ScriptDataService {
 
   Future<void> _loadFromDisk() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/scripts_registry.json');
-      debugPrint('Loading scripts from: ${file.path}');
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final List<dynamic> jsonList = jsonDecode(content);
-        _scripts.clear();
-        for (var item in jsonList) {
-          _scripts.add(ScriptMetadata.fromMap(item));
+      // 網頁版沒有檔案系統：只用記憶體（重新整理頁面後回到預設劇本）
+      if (!kIsWeb) {
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/scripts_registry.json');
+        debugPrint('Loading scripts from: ${file.path}');
+        if (await file.exists()) {
+          final content = await file.readAsString();
+          final List<dynamic> jsonList = jsonDecode(content);
+          _scripts.clear();
+          for (var item in jsonList) {
+            _scripts.add(ScriptMetadata.fromMap(item));
+          }
         }
-      }
 
-      // Load individual nodes for each script
-      for (var script in _scripts) {
-        final nodeFile = File('${directory.path}/nodes_${script.title}.json');
-        if (await nodeFile.exists()) {
-          final nodeContent = await nodeFile.readAsString();
-          final List<dynamic> nodeJsonList = jsonDecode(nodeContent);
-          _scriptNodes[script.title] =
-              nodeJsonList.map((e) => ScriptNodeData.fromMap(e)).toList();
+        // Load individual nodes for each script
+        for (var script in _scripts) {
+          final nodeFile = File('${directory.path}/nodes_${script.title}.json');
+          if (await nodeFile.exists()) {
+            final nodeContent = await nodeFile.readAsString();
+            final List<dynamic> nodeJsonList = jsonDecode(nodeContent);
+            _scriptNodes[script.title] =
+                nodeJsonList.map((e) => ScriptNodeData.fromMap(e)).toList();
+          }
         }
+
       }
 
       if (_scripts.isEmpty) {
@@ -238,6 +243,7 @@ class ScriptDataService {
   }
 
   Future<void> _saveToDisk() async {
+    if (kIsWeb) return;
     try {
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/scripts_registry.json');
@@ -262,6 +268,7 @@ class ScriptDataService {
     _scripts.removeWhere((s) => s.title == title);
     _scriptNodes.remove(title);
     await _saveToDisk();
+    if (kIsWeb) return;
 
     try {
       final directory = await getApplicationDocumentsDirectory();
@@ -282,6 +289,7 @@ class ScriptDataService {
         _scriptNodes[newTitle] = _scriptNodes.remove(oldTitle)!;
       }
       await _saveToDisk();
+      if (kIsWeb) return;
 
       try {
         final directory = await getApplicationDocumentsDirectory();
@@ -328,6 +336,7 @@ class ScriptDataService {
       }
       await _saveToDisk();
     }
+    if (kIsWeb) return;
 
     try {
       final directory = await getApplicationDocumentsDirectory();

@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,6 +13,8 @@ import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/family_theme.dart';
 import '../../utils/error_handler.dart';
+import '../../utils/platform_file.dart';
+import '../../utils/stt_locale.dart';
 import '../../services/api/agent_task_api.dart';
 import '../../services/api/daily_question_api.dart';
 import '../../services/checkin_notification.dart';
@@ -64,7 +66,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
   bool _isSending = false;
 
   /// 待附的照片（送出時先上傳、再帶 image_url 給後端）。
-  File? _attachedImage;
+  XFile? _attachedImage;
 
   // 後端會串接 Ollama→Gemini 兩段 LLM 呼叫，常超過預設 15 秒，故此端點放寬到 45 秒。
   static const Duration _copilotTimeout = Duration(seconds: 45);
@@ -364,7 +366,10 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
     if (!_speechReady) {
       _speechInitializing = true;
       try {
-        final permStatus = await Permission.microphone.request();
+        // 網頁版由瀏覽器 SpeechRecognition 自己詢問麥克風權限（見 elder_chat_screen）
+        final permStatus = kIsWeb
+            ? PermissionStatus.granted
+            : await Permission.microphone.request();
         if (!permStatus.isGranted) {
           if (!mounted) return;
           // ★ 第五十輪（適老化）：改用統一的大字級／高對比 SnackBar 封裝，
@@ -398,7 +403,11 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
         if (!_speechReady) {
           if (!mounted) return;
           // 裝置能力限制、可改用打字繼續完成任務，用 showWarning 而非硬錯誤。
-          ErrorHandler.showWarning(context, '這台裝置目前無法使用語音輸入，請改用打字');
+          ErrorHandler.showWarning(
+              context,
+              kIsWeb
+                  ? kWebSttUnsupportedMessage
+                  : '這台裝置目前無法使用語音輸入，請改用打字');
           return;
         }
       } finally {
@@ -413,7 +422,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
     _speechToText.errorListener = _onCopilotSttError;
     _speechToText.statusListener = _onCopilotSttStatus;
     await _speechToText.listen(
-      localeId: 'zh_TW',
+      localeId: kIsWeb ? kWebSttLocale : 'zh_TW',
       listenOptions: SpeechListenOptions(
         partialResults: true,
         cancelOnError: false,
@@ -600,7 +609,7 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
         maxWidth: 1600,
       );
       if (picked == null || !mounted) return;
-      setState(() => _attachedImage = File(picked.path));
+      setState(() => _attachedImage = picked);
     } catch (e) {
       debugPrint('⚠️ [FamilyCopilot] 選照片失敗：$e');
       if (!mounted) return;
@@ -1110,12 +1119,15 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
                           msg['text'],
                           style: FamChatBubble.textStyle(context, mine: isUser),
                         ),
-                        if (isUser && localImage is File) ...[
+                        if (isUser && localImage is XFile) ...[
                           const SizedBox(height: 6),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(10),
-                            child: Image.file(localImage,
-                                width: 120, height: 120, fit: BoxFit.cover),
+                            child: Image(
+                                image: pathImageProvider(localImage.path),
+                                width: 120,
+                                height: 120,
+                                fit: BoxFit.cover),
                           ),
                         ] else if (isUser && restoredImageUrl != null) ...[
                           const SizedBox(height: 6),
@@ -1213,8 +1225,11 @@ class _FamilyAiCopilotScreenState extends State<FamilyAiCopilotScreen>
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: Image.file(_attachedImage!,
-                            width: 64, height: 64, fit: BoxFit.cover),
+                        child: Image(
+                            image: pathImageProvider(_attachedImage!.path),
+                            width: 64,
+                            height: 64,
+                            fit: BoxFit.cover),
                       ),
                       Positioned(
                         top: -6,

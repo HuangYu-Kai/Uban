@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
@@ -111,13 +112,16 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       await _flutterTts.setSpeechRate(0.5);
       await _flutterTts.setVolume(1.0);
       await _flutterTts.setPitch(1.0);
-      await _flutterTts.setIosAudioCategory(
-        IosTextToSpeechAudioCategory.playback,
-        [
-          IosTextToSpeechAudioCategoryOptions.mixWithOthers,
-          IosTextToSpeechAudioCategoryOptions.duckOthers,
-        ],
-      );
+      // 網頁版 flutter_tts 沒實作此方法（會丟 Unimplemented 而中斷問候），略過
+      if (!kIsWeb) {
+        await _flutterTts.setIosAudioCategory(
+          IosTextToSpeechAudioCategory.playback,
+          [
+            IosTextToSpeechAudioCategoryOptions.mixWithOthers,
+            IosTextToSpeechAudioCategoryOptions.duckOthers,
+          ],
+        );
+      }
 
       final greeting = "怎麼了嗎 ${widget.userName}";
       setState(() {
@@ -188,7 +192,8 @@ class _GoogleAssistantOverlayState extends State<GoogleAssistantOverlay>
       // Android 辨識引擎不認得這個 ID，會靜默退回英文等裝置預設語系。
       if (_speechReady) {
         final locales = await _speechToText.locales();
-        _sttLocaleToUse = pickChineseSttLocale(locales);
+        _sttLocaleToUse =
+            kIsWeb ? kWebSttLocale : pickChineseSttLocale(locales);
         debugPrint('🤖 [ASR Locale] 選用語系: $_sttLocaleToUse');
       }
     } catch (e) {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'dart:io';
 import '../../models/script_node.dart';
+import '../../utils/platform_file.dart';
 
 class ElderSimulator extends StatelessWidget {
   final List<ScriptNode> allNodes;
@@ -142,6 +142,7 @@ class ElderSimulator extends StatelessWidget {
                                                     .startsWith('http')
                                                 ? Image.network(
                                                     currentNode.mediaUrl!,
+                                                    webHtmlElementStrategy: WebHtmlElementStrategy.fallback, // 外部圖片 CORS 退回 <img>
                                                     fit: BoxFit.cover,
                                                     errorBuilder:
                                                         (
@@ -153,8 +154,8 @@ class ElderSimulator extends StatelessWidget {
                                                           color: Colors.grey,
                                                         ),
                                                   )
-                                                : Image.file(
-                                                    File(currentNode.mediaUrl!),
+                                                : Image(
+                                                    image: pathImageProvider(currentNode.mediaUrl!),
                                                     fit: BoxFit.cover,
                                                     errorBuilder:
                                                         (

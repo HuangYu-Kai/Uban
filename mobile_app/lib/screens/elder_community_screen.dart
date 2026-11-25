@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/platform_file.dart';
 import '../models/community_post.dart';
 import '../services/api_service.dart';
 import '../services/community_service.dart';
@@ -196,8 +198,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
         ),
       );
     } else {
-      return Image.file(
-        File(imageSource),
+      return Image(
+        image: pathImageProvider(imageSource),
         height: height,
         width: width,
         fit: fit,
@@ -335,8 +337,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(18),
-                        child: Image.file(
-                          File(selectedLocalImagePath!),
+                        child: Image(
+                          image: pathImageProvider(selectedLocalImagePath!),
                           width: double.infinity,
                           height: 160,
                           fit: BoxFit.cover,
@@ -394,7 +396,7 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                           String? uploadedUrl;
                           if (selectedLocalImagePath != null) {
                             uploadedUrl = await ApiService.uploadCommunityImage(
-                              File(selectedLocalImagePath!),
+                              XFile(selectedLocalImagePath!),
                             );
                           }
 
@@ -520,8 +522,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(18),
-                        child: Image.file(
-                          File(selectedImagePath!),
+                        child: Image(
+                          image: pathImageProvider(selectedImagePath!),
                           width: double.infinity,
                           height: 130,
                           fit: BoxFit.cover,
@@ -587,8 +589,8 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
                                 if (selectedImagePath != null) {
                                   uploadedUrl =
                                       await ApiService.uploadCommunityImage(
-                                    File(selectedImagePath!),
-                                  );
+                                        XFile(selectedImagePath!),
+                                      );
                                 }
 
                                 if (!context.mounted) return;
@@ -638,6 +640,9 @@ class _ElderCommunityScreenState extends State<ElderCommunityScreen>
         maxWidth: 1600,
       );
       if (pickedImage == null) return null;
+
+      // 網頁版沒有檔案系統：直接使用 blob 網址，不複製到文件目錄
+      if (kIsWeb) return pickedImage.path;
 
       final documentsDirectory = await getApplicationDocumentsDirectory();
       final imageDirectory = Directory(

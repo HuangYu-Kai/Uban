@@ -26,6 +26,16 @@ class ApiClient {
   }
 
   static String get serverRootUrl {
+    // 網頁版本機測試：SERVER_IP 已帶 http(s):// 時直接沿用（與 baseUrl 一致）
+    if (serverIp.startsWith('http://') || serverIp.startsWith('https://')) {
+      var root = serverIp.endsWith('/api')
+          ? serverIp.substring(0, serverIp.length - 4)
+          : serverIp;
+      while (root.endsWith('/')) {
+        root = root.substring(0, root.length - 1);
+      }
+      return root;
+    }
     return serverIp.contains('ngrok') || serverIp.contains('ts.net')
         ? 'https://$serverIp'
         : 'http://$serverIp:8000';

@@ -1,4 +1,5 @@
 // lib/services/database_helper.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:async';
@@ -240,7 +241,9 @@ class DatabaseHelper {
   // 通用 CRUD 操作
   // ========================================
 
+  // 網頁版沒有 sqflite：所有讀寫一律 no-op／回傳空結果（GPS 離線佇列、關心劇本在網頁體驗版不使用）
   Future<int> insert(String table, Map<String, dynamic> data) async {
+    if (kIsWeb) return 0;
     final db = await database;
     return await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -252,6 +255,7 @@ class DatabaseHelper {
     String? orderBy,
     int? limit,
   }) async {
+    if (kIsWeb) return const [];
     final db = await database;
     return await db.query(
       table,
@@ -268,6 +272,7 @@ class DatabaseHelper {
     String? where,
     List<dynamic>? whereArgs,
   }) async {
+    if (kIsWeb) return 0;
     final db = await database;
     return await db.update(
       table,
@@ -282,6 +287,7 @@ class DatabaseHelper {
     String? where,
     List<dynamic>? whereArgs,
   }) async {
+    if (kIsWeb) return 0;
     final db = await database;
     return await db.delete(
       table,
@@ -326,6 +332,7 @@ class DatabaseHelper {
 
   /// 獲取今日用藥記錄
   Future<List<Map<String, dynamic>>> getTodayMedicationLogs(int elderId) async {
+    if (kIsWeb) return const [];
     final today = DateTime.now().toIso8601String().split('T')[0];
     final db = await database;
     
@@ -428,6 +435,7 @@ class DatabaseHelper {
 
   /// 關閉資料庫連接
   Future<void> close() async {
+    if (kIsWeb) return;
     final db = await database;
     await db.close();
     _database = null;

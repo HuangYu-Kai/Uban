@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../../../services/api/checkin_api.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/platform_file.dart';
 import '../../../widgets/ui/uban_sheet.dart';
 import '../widgets/fam_ui.dart';
 
@@ -125,10 +125,8 @@ class _SendCheerSheetState extends State<SendCheerSheet> {
         return;
       }
       await _stopPlayback();
-      final dir = await getTemporaryDirectory();
-      final path =
-          '${dir.path}/cheer_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await rec.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+      final path = await voiceRecordPath('cheer');
+      await rec.start(voiceRecordConfig(), path: path);
       if (!mounted) return;
       setState(() {
         _recording = true;
@@ -197,7 +195,7 @@ class _SendCheerSheetState extends State<SendCheerSheet> {
         if (mounted) setState(() => _playing = false);
       });
       setState(() => _playing = true);
-      await p.play(DeviceFileSource(path));
+      await p.play(audioSourceFromPath(path));
     } catch (e) {
       debugPrint('⚠️ [SendCheerSheet] 試聽失敗: $e');
       if (mounted) setState(() => _playing = false);

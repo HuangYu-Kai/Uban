@@ -568,6 +568,8 @@ class _ElderPetTabState extends State<ElderPetTab>
   }
 
   Future<void> _startStepTracking() async {
+    // 網頁版沒有計步感測器（pedometer 無 web 實作），靜默略過
+    if (kIsWeb) return;
     try {
       final permission = await Permission.activityRecognition.request();
       if (!permission.isGranted) return;
@@ -667,6 +669,14 @@ class _ElderPetTabState extends State<ElderPetTab>
   }
 
   LocationSettings _buildLocationSettings() {
+    // 網頁版 defaultTargetPlatform 會是瀏覽器所在系統（Android Chrome 會是 android），
+    // 但沒有前景服務／背景定位，一律用通用設定。
+    if (kIsWeb) {
+      return const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 6,
+      );
+    }
     if (defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,

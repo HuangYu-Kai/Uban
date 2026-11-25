@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../utils/platform_file.dart';
 import 'api_client.dart';
 
 /// ★ 2026-10-07 打卡雙向互動：送出鼓勵的結果。[message] 一律是可直接給家屬看的
@@ -53,11 +53,11 @@ class CheckinApi {
       if (questionId != null) request.fields['question_id'] = questionId.toString();
       if (cleanText.isNotEmpty) request.fields['text'] = cleanText;
       if (audioPath != null) {
-        final file = File(audioPath);
-        if (await file.length() > 3 * 1024 * 1024) {
+        // 網頁版為 blob 網址，改用 XFile 取大小（手機行為不變）
+        if (await pathLength(audioPath) > 3 * 1024 * 1024) {
           return const CheerResult(false, '錄音檔太大了，請錄短一點再送');
         }
-        request.files.add(await http.MultipartFile.fromPath('audio', audioPath));
+        request.files.add(await audioMultipartFromPath('audio', audioPath));
       }
       final streamed = await request.send().timeout(const Duration(seconds: 45));
       final response = await http.Response.fromStream(streamed);

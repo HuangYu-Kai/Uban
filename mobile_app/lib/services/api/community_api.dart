@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../utils/platform_file.dart';
 import 'api_client.dart';
 
 /// 家庭溫馨社群貼文、點讚、留言與圖片上傳 API
@@ -184,11 +185,12 @@ class CommunityApi {
   }
 
   /// 上傳社群圖片（Multipart Form-Data）
-  static Future<String?> uploadCommunityImage(File imageFile) async {
+  static Future<String?> uploadCommunityImage(XFile imageFile) async {
     try {
       final uri = Uri.parse('${ApiClient.baseUrl}/community/upload');
       final request = http.MultipartRequest('POST', uri);
-      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+      request.files.add(await imageMultipartFromPath('file', imageFile.path,
+          mimeType: imageFile.mimeType));
 
       final streamedResponse = await request.send().timeout(ApiClient.timeout);
       final response = await http.Response.fromStream(streamedResponse);

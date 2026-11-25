@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:record/record.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../models/elder.dart';
 import '../../../../services/api_service.dart';
 import '../../../../services/api/checkin_api.dart';
 import '../../../../theme/app_theme.dart';
+import '../../../../utils/platform_file.dart';
 import '../../../../widgets/ui/uban_segmented.dart';
 import '../../../../widgets/ui/uban_sheet.dart';
 import '../../widgets/fam_ui.dart';
@@ -311,12 +311,11 @@ class _SendCareCardSheetState extends State<SendCareCardSheet> {
                 GestureDetector(
                   onLongPressStart: (_) async {
                     if (await _audioRecorder.hasPermission()) {
-                      final tempDir = await getTemporaryDirectory();
-                      final filePath = '${tempDir.path}/voice_note_${DateTime.now().millisecondsSinceEpoch}.m4a';
-                      await _audioRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: filePath);
+                      final filePath = await voiceRecordPath('voice_note');
+                      await _audioRecorder.start(voiceRecordConfig(), path: filePath);
                       setState(() {
                         _isRecording = true;
-                        _recordedFilePath = filePath;
+                        _recordedFilePath = filePath.isEmpty ? null : filePath;
                         _recordingDuration = 0;
                       });
                       _recordingTimer?.cancel();
@@ -386,7 +385,7 @@ class _SendCareCardSheetState extends State<SendCareCardSheet> {
                         setState(() => _isPlayingPreview = false);
                       } else {
                         setState(() => _isPlayingPreview = true);
-                        await _audioPlayer.play(DeviceFileSource(_recordedFilePath!));
+                        await _audioPlayer.play(audioSourceFromPath(_recordedFilePath!));
                         _audioPlayer.onPlayerComplete.listen((_) {
                           if (mounted) {
                             setState(() => _isPlayingPreview = false);

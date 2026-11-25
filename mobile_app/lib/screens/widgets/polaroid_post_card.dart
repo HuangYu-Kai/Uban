@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import '../../utils/platform_file.dart';
 import '../../models/community_post.dart';
 import '../../widgets/ui/ui.dart';
 import '../elder_tabs/widgets/elder_social_widgets.dart';
@@ -171,8 +171,8 @@ class _PolaroidPostCardState extends State<PolaroidPostCard>
         errorBuilder: (_, __, ___) => broken(),
       );
     }
-    return Image.file(
-      File(imagePath),
+    return Image(
+      image: pathImageProvider(imagePath),
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => broken(),
     );

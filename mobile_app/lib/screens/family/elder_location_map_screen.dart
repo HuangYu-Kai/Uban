@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/map_tiles.dart';
@@ -71,6 +72,29 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
   int _loadSeq = 0;
   Timer? _pollTimer;
   final MapController _mapController = MapController();
+
+  /// 網頁版專用（體驗版）：進地圖時版面會重掛一次，套件預設會在卸載時關掉自己的
+  /// http client 並中止進行中的圖磚請求，瀏覽器上整片底圖就空白。改用不關閉的共用
+  /// client、也不主動取消；手機版維持套件預設。
+  static final http.Client _webTileClient = http.Client();
+  static TileProvider _webTileProvider() =>
+      NetworkTileProvider(httpClient: _webTileClient, abortObsoleteRequests: false);
+
+  /// 網頁版：初始框選後圖磚雖已載入，卻要等下一次鏡頭變動才會畫出來（否則底圖空白）。
+  /// 進圖後以肉眼看不出的極小縮放差補觸發重繪；網路較慢時再補一次。
+  void _nudgeWebTiles() {
+    for (final ms in const [500, 2000]) {
+      Future.delayed(Duration(milliseconds: ms), () {
+        if (!mounted) return;
+        try {
+          final cam = _mapController.camera;
+          _mapController.move(cam.center, cam.zoom + 0.0001);
+        } catch (_) {
+          // 地圖已卸載，忽略。
+        }
+      });
+    }
+  }
 
   // 家屬主題之下的 context：State 自己的 context 在 FamilyThemeScope 之上，
   // 由它開出來的 sheet／日期選擇器會吃到 App 預設主題；每次 build 都在 _buildScreen 更新。
@@ -696,6 +720,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
             initialZoom: 16,
             // 有 2 個以上不同的點時框住整段軌跡
             initialCameraFit: canFit ? _trailFit(boundsPts) : null,
+            onMapReady: kIsWeb ? _nudgeWebTiles : null,
             backgroundColor: c.mapLand,
             // 長按地圖任一點：在該處新增常去地點
             onLongPress: (tapPos, latLng) => _createPlaceAt(latLng),
@@ -704,6 +729,7 @@ class _ElderLocationMapScreenState extends State<ElderLocationMapScreen> {
             TileLayer(
               urlTemplate: MapTiles.urlTemplate,
               userAgentPackageName: MapTiles.userAgentPackageName,
+              tileProvider: kIsWeb ? _webTileProvider() : null,
             ),
             // 常去地點範圍（以公尺為單位的圓）：畫在軌跡之下；家＝brandFill、其他＝info
             if (_places.isNotEmpty)

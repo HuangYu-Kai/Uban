@@ -53,7 +53,7 @@
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -174,6 +174,14 @@ class _SubscriptionTestScreenState extends State<SubscriptionTestScreen> {
 
   /// 首次進頁：確保 SDK 已 configure → 讀權限狀態 + 抓 offering。
   Future<void> _bootstrap() async {
+    // 網頁版沒有 RevenueCat（purchases_flutter 無 web 實作）：友善提示，不初始化
+    if (kIsWeb) {
+      setState(() {
+        _initialLoading = false;
+        _loadError = '網頁體驗版不支援購買訂閱，請使用手機 App';
+      });
+      return;
+    }
     setState(() {
       _initialLoading = true;
       _loadError = null;

@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import 'api/api_client.dart';
 import 'api/auth_api.dart';
@@ -526,6 +527,6 @@ class ApiService {
         imageUrl: imageUrl,
       );
 
-  static Future<String?> uploadCommunityImage(File imageFile) =>
+  static Future<String?> uploadCommunityImage(XFile imageFile) =>
       CommunityApi.uploadCommunityImage(imageFile);
 }

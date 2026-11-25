@@ -12,6 +12,12 @@ import 'package:speech_to_text/speech_to_text.dart';
 /// 這份邏輯原本只存在於 `elder_chat_tab.dart`，本輪抽成共用實作供
 /// `google_assistant_overlay.dart` 一併使用，避免兩處各自維護一份幾乎
 /// 相同、容易漂移的判斷。
+/// 網頁版（Chrome／Safari 的 SpeechRecognition）固定使用的中文語系。
+const String kWebSttLocale = 'zh-TW';
+
+/// 網頁版瀏覽器沒有語音辨識（例如 LINE 內建瀏覽器、部分 iOS）時的提示。
+const String kWebSttUnsupportedMessage = '這個瀏覽器不支援語音輸入，請改用打字';
+
 String? pickChineseSttLocale(List<LocaleName> locales) {
   final zhTw = locales.where(
     (l) =>
@@ -41,6 +47,13 @@ String sttFailureMessage(String? errorMsg) {
       e.contains('error_busy') ||
       e.contains('error_recognizer_busy')) {
     return '麥克風正在被其他程式使用（例如螢幕錄影），請關掉後再試一次';
+  }
+  // 網頁版 SpeechRecognition 的錯誤碼：not-allowed／service-not-allowed／network
+  if (e.contains('not-allowed')) {
+    return '沒有麥克風權限，請允許瀏覽器使用麥克風，或改用打字';
+  }
+  if (e == 'network') {
+    return '語音辨識需要網路，請確認網路後再試一次';
   }
   if (e.contains('error_network') || e.contains('error_server')) {
     return '語音辨識需要網路，請確認網路後再試一次';

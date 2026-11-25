@@ -187,7 +187,11 @@ class ElderLocationService {
     if (_isRunning || _isStarting || _elderId == null) return;
     _isStarting = true;
     try {
-      final granted = await _requestPermission();
+      // 網頁版定位被拒或瀏覽器不支援時不可丟例外（靜默視為未授權）
+      var granted = false;
+      try {
+        granted = await _requestPermission();
+      } catch (_) {}
       // 走完權限流程後，不論成功與否都回報最新狀態（背景送出，不阻擋啟動）。
       // 沒拿到權限時串流不會啟動，家屬端靠這筆回報才知道原因。
       unawaited(_refreshAndReportStatus());
@@ -261,6 +265,13 @@ class ElderLocationService {
   }
 
   LocationSettings _buildLocationSettings() {
+    // 網頁版：不可用 AndroidSettings 的前景通知（Android Chrome 的 defaultTargetPlatform 也是 android）
+    if (kIsWeb) {
+      return LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: _distanceFilterMeters,
+      );
+    }
     if (defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
         accuracy: LocationAccuracy.high,
