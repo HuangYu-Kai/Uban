@@ -46,6 +46,7 @@
   var S = { introDone: false, seen: {}, tasks: {}, surveyPrompted: false };
   try { var raw = lget(LS_MAIN); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) { /* ignore */ }
   var firstVisit = lget(LS_MAIN) == null;
+  if (S.tv !== 2) { S.tv = 2; S.tasks = {}; S.surveyPrompted = false; } // 任務清單改版，舊的勾選作廢
   function save() { lset(LS_MAIN, JSON.stringify(S)); }
 
   var session = null;          // 後端 session
@@ -166,12 +167,12 @@
   }
   function hideToast() { $('toast').hidden = true; clearTimeout(toastTimer); }
   var captionTimer = null;
-  function caption(main, small, calm) {
+  function caption(main, small, calm, ms) {
     var c = $('caption'); c.textContent = ''; c.className = 'caption' + (calm ? ' calm' : '');
     c.appendChild(h('p', null, main, small ? h('small', { text: small }) : null));
     c.appendChild(h('button', { type: 'button', 'aria-label': '關閉說明', text: '×', onclick: function () { c.hidden = true; } }));
     c.hidden = false;
-    clearTimeout(captionTimer); captionTimer = setTimeout(function () { c.hidden = true; }, 12000);
+    clearTimeout(captionTimer); captionTimer = setTimeout(function () { c.hidden = true; }, ms || 12000);
   }
 
   /* ---------- iframe 與載入面板 ---------- */
@@ -272,7 +273,7 @@
     if (!switchVisible && !opts.force && role !== active) return;
     active = role; badges[role] = false;
     if (!frames[role] || frames[role].state === 'idle') loadFrame(role);
-    applyLayout(); renderPanels();
+    applyLayout(); renderPanels(); pingPresence();
     if (!opts.silent && started && !S.seen[role]) openRoleSheet(role);
   }
   ROLES.forEach(function (role) {
@@ -296,22 +297,26 @@
     }
   };
   var TASKS = [
-    { id: 1, role: 'elder', text: '請小嘎傳話給家人', how: '到「聊天」分頁，對小嘎說或打字：「幫我問兒子週六要不要回來」。', ev: ['family', 'elder-question'] },
-    { id: 2, role: 'family', text: '回覆長輩的問題', how: '在「首頁」最上面的「爸媽問你的問題」按「回覆」，輸入答案後按「送出」。', ev: ['elder', 'elder-question-answered'] },
-    { id: 3, role: 'elder', text: '完成一項提醒打卡', how: '到「我的」分頁的「今日任務」，在任一項按「打卡」。', ev: ['family', 'elder-checkin'] },
-    { id: 4, role: 'family', text: '送出鼓勵或點心', how: '在「首頁」的「今日打卡」按「鼓勵」，或到「互動」分頁按「送點心給小豬」。', ev: ['elder', 'checkin-cheer', 'pet-gift'] },
-    { id: 5, role: 'family', text: '查看今天的位置與行程', how: '在「首頁」往下捲，點開顯示「今天外出…」或「今天移動…」的位置卡片，看地圖與行程。看過後請自行勾選。', manual: true },
-    { id: 6, role: 'family', text: '撥打緊急通話', how: '到「互動」分頁按「視訊通話」，選「緊急強制通話」。', ev: ['elder', 'emergency-call'] }
+    { id: 'ai', role: 'elder', text: 'AI 小嘎陪聊與傳話', how: '到「聊天」分頁，先跟小嘎聊聊天氣，再說或打字：「幫我問兒子週六要不要回來」。家屬端會馬上收到，回覆後小嘎會念給奶奶聽。', ev: ['family', 'elder-question'] },
+    { id: 'fall', role: 'family', text: '監控跌倒偵測', how: '打開客廳監視機，按「模擬跌倒」。家屬手機會跳出警報並念出來，按「查看監視畫面」看即時影像，小嘎也會開口關心奶奶。', ev: ['family', 'cctv-alert'], go: '打開監視機' },
+    { id: 'call', role: 'family', text: '緊急強制通話', how: '到「互動」分頁按「視訊通話」，選「緊急強制通話」，看奶奶的手機自動接通。', ev: ['elder', 'emergency-call'] },
+    { id: 'pet', role: 'elder', text: '小豬養成', how: '到「小豬」分頁按小豬旁邊的紅蘿蔔，餵一根看小豬長大。走路和完成打卡都能賺紅蘿蔔，家屬也能在「互動」送點心。', net: /\/api\/pet\/feed(\?|$)/ },
+    { id: 'copilot', role: 'family', text: 'AI 照護秘書', how: '到「互動」分頁點「AI 照護秘書」，問「奶奶今天過得怎麼樣？」，或請它「幫我問奶奶週六回診要上午還是下午」，小嘎會去問奶奶再回報。', net: /\/api\/ai\/family_copilot\/chat(\?|$)/ }
   ];
+  var QUICK = [
+    { role: 'family', text: '定位守護', how: '在「首頁」往下捲，點位置卡片，看奶奶今天走過的路線與停留點。' },
+    { role: 'elder', text: '新聞朗讀與祝賀圖', how: '在「首頁」點「今日頭條」聽小嘎念新聞；到「小豬」分頁往下捲，有每日吉祥祝賀圖。' }
+  ];
+  var SURVEY_AT = 3;
   function doneCount() { return TASKS.filter(function (t) { return S.tasks[t.id]; }).length; }
   function renderTaskCount() {
-    var n = doneCount(); $('task-count').textContent = n + '/6';
-    $('btn-tasks').classList.toggle('done', n === 6);
+    var n = doneCount(); $('task-count').textContent = n + '/' + TASKS.length;
+    $('btn-tasks').classList.toggle('done', n === TASKS.length);
   }
   function markTask(id, val) {
     if (!!S.tasks[id] === val) return;
     S.tasks[id] = val; save(); renderTaskCount();
-    if (val && doneCount() >= 4 && !S.surveyPrompted && session && session.survey_url) {
+    if (val && doneCount() >= SURVEY_AT && !S.surveyPrompted && session && session.survey_url) {
       S.surveyPrompted = true; save();
       setTimeout(function () { toast('做得很好！有空的話歡迎填問卷。', '填問卷', openSurvey); }, 1200);
     }
@@ -343,7 +348,21 @@
       }, 1000);
     }
   }
+  // 沒有 socket 事件的操作（餵小豬、問 AI 秘書）：看同源 iframe 送出的 API 請求。
+  function observeNet(role) {
+    try {
+      var w = frames[role].el.contentWindow;
+      if (w.__ubanNet || !w.PerformanceObserver) return;
+      w.__ubanNet = true;
+      new w.PerformanceObserver(function (list) {
+        list.getEntries().forEach(function (en) {
+          TASKS.forEach(function (t) { if (t.net && t.role === role && t.net.test(en.name)) markTask(t.id, true); });
+        });
+      }).observe({ type: 'resource' });
+    } catch (e) { /* 舊瀏覽器：請使用者自行勾選 */ }
+  }
   function onCall(role, d) {
+    var wasActive = callState[role].active;
     callState[role] = { active: !!d.active, emergency: !!d.emergency };
     var both = callState.elder.active && callState.family.active;
     if (both && !pipOn) {
@@ -359,7 +378,8 @@
       applyLayout(); renderPanels();
       if (o && o !== active) setActive(o, { silent: true, force: true });
     }
-    if (!callState.elder.active && !callState.family.active) { lastCaller = null; if (!pipOn) callState.elder.emergency = false; }
+    // 只有「剛結束通話」才清掉撥號者；接通前也會收到 active=false 的狀態更新。
+    if (wasActive && !callState.elder.active && !callState.family.active) { lastCaller = null; if (!pipOn) callState.elder.emergency = false; }
   }
   function muteAll() {
     ROLES.forEach(function (r) {
@@ -371,7 +391,7 @@
   }
   function onHome(role) {
     var f = frames[role]; if (!f) return;
-    clearTimeout(f.timer); f.state = 'home'; renderPanels();
+    clearTimeout(f.timer); f.state = 'home'; renderPanels(); observeNet(role);
     if (role === active && !lowMem && switchVisible) {
       var other = role === 'elder' ? 'family' : 'elder';
       setTimeout(function () { if (!frames[other] && !(other === 'elder' && elderRemote)) loadFrame(other); }, 1500);
@@ -382,12 +402,79 @@
     var d = e.data; if (!d || d.src !== 'uban-demo' || ROLES.indexOf(d.role) < 0) return;
     var f = frames[d.role]; if (!f || e.source !== f.el.contentWindow) return;
     try {
-      if (d.type === 'ready') { if (f.state === 'loading') f.state = 'ready'; }
+      if (d.type === 'ready') { if (f.state === 'loading') f.state = 'ready'; observeNet(d.role); }
       else if (d.type === 'home') onHome(d.role);
       else if (d.type === 'event' && typeof d.name === 'string') onEvent(d.role, d.name);
       else if (d.type === 'call') onCall(d.role, d);
     } catch (err) { /* ignore */ }
   });
+
+  /* ---------- 客廳監視機（示意動畫，連線與警報是真的） ---------- */
+  var mon = null, monBusy = false, monStatus = null, monFallBtn = null, monUpBtn = null;
+  function startMonitor() {
+    if (mon || !window.UbanMonitor || !session || !session.monitor || joinMode || S.only) return;
+    mon = window.UbanMonitor.create({
+      token: session.token, room: session.monitor.room, deviceName: session.monitor.device_name, userId: session.elder.user_id,
+      iceServers: window.UBAN_DEMO_ICE || [{ urls: 'stun:stun.l.google.com:19302' }],
+      onState: renderMonitor
+    });
+    mon.start();
+    // 動畫裡一直看得到奶奶：看家屬端時每 5 秒回報「鏡頭前有人」，家屬首頁的所在位置才會一致。
+    setInterval(pingPresence, 5000);
+  }
+  function pingPresence() {
+    if (mon && mon.online && active === 'family' && !document.hidden) fetch('../api/demo/session/' + encodeURIComponent(session.token) + '/presence', { method: 'POST' }).catch(function () {});
+  }
+  function renderMonitor() {
+    if (!mon || !monStatus || !monStatus.isConnected) return;
+    monStatus.textContent = mon.viewing ? '家屬正在看這個畫面' : (mon.online ? '監視機已連線' : '監視機連線中…');
+    monStatus.className = 'mon-status' + (mon.online ? ' on' : '');
+    monFallBtn.disabled = monBusy || !mon.online;
+    monFallBtn.textContent = monBusy ? '模擬中…' : (mon.scene === 'fallen' ? '再模擬一次跌倒' : '模擬跌倒');
+    monUpBtn.hidden = mon.scene !== 'fallen' || monBusy;
+  }
+  function openMonitor() {
+    if (!mon) { toast(S.only || joinMode ? '監視機在另一支手機上操作。' : '監視機還在準備中，請稍後再試。'); return; }
+    var box = h('div', { class: 'mon-box' });
+    monStatus = h('p', { class: 'mon-status', role: 'status' });
+    monFallBtn = h('button', { type: 'button', class: 'btn danger block', onclick: simulateFall });
+    monUpBtn = h('button', { type: 'button', class: 'btn ghost block', text: '讓奶奶站起來', onclick: function () { mon.setScene('normal'); renderMonitor(); } });
+    openSheet('客廳監視機', [
+      h('p', { class: 'lead', text: '這是放在奶奶家客廳的監視機。真實使用時由 AI 從鏡頭畫面判斷跌倒；體驗版用動畫代替鏡頭，由您按按鈕觸發。' }),
+      box, monStatus, monFallBtn, monUpBtn,
+      h('p', { text: '按下後會切到家屬端，警報、朗讀與即時畫面都走真正的系統流程。' })
+    ], function () { mon.unmount(); });
+    mon.mount(box);
+    renderMonitor();
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function waitFamilyHome() {
+    var t0 = Date.now(), wasHome = frameState('family') === 'home';
+    return (function loop() {
+      if (frameState('family') === 'home') return wait(wasHome ? 600 : 2500); // 剛載入完要等它連上即時通道
+      if (Date.now() - t0 > 60000) return Promise.reject(new Error('家屬端還沒準備好，請稍後再試。'));
+      return wait(400).then(loop);
+    })();
+  }
+  function postFall() {
+    return fetch('../api/demo/session/' + encodeURIComponent(session.token) + '/fall', { method: 'POST', headers: { 'Accept': 'application/json' } }).then(function (r) {
+      return r.json().catch(function () { return null; }).then(function (j) { if (!r.ok) throw new Error(httpError(r.status, j)); });
+    }, function () { throw new Error('網路不穩，警報沒有送出，請再試一次。'); });
+  }
+  function simulateFall() {
+    if (monBusy || !mon) return;
+    monBusy = true;
+    var again = mon.scene === 'fallen';
+    if (again) mon.setScene('normal');
+    renderMonitor();
+    wait(again ? 1700 : 0).then(function () { mon.setScene('fallen'); return wait(2600); }).then(function () {
+      closeSheet();
+      setActive('family', { silent: true, force: true });
+      return waitFamilyHome();
+    }).then(postFall).then(function () {
+      caption('監視機偵測到跌倒，警報已送到家屬手機。', '按「查看監視畫面」看即時影像；小嘎也會在奶奶的手機開口關心。', true, 15000);
+    }).catch(function (e) { toast(e.message || '模擬失敗，請再試一次。'); }).then(function () { monBusy = false; renderMonitor(); });
+  }
 
   /* ---------- 各種面板 ---------- */
   function openSurvey() { if (session && session.survey_url) window.open(session.survey_url, '_blank', 'noopener'); }
@@ -398,32 +485,35 @@
     var tabs = el ? ['首頁', '電話', '小豬', '聊天', '我的'] : ['首頁', '互動', '資料'];
     var nodes = [
       h('p', { class: 'lead', text: el
-        ? '這是王奶奶（78 歲，一個人住）的手機。她用它看新聞、跟 AI 夥伴「小嘎」聊天、照時間吃藥，也能打電話給家人。'
-        : '這是兒子王小明的手機。他用它看奶奶今天的狀況、回覆奶奶的問題、送上鼓勵，緊急時直接撥打緊急通話。' }),
+        ? '這是王奶奶（78 歲，一個人住）的手機。她用它跟 AI 夥伴「小嘎」聊天、聽新聞、養小豬、照時間吃藥，也能打電話給家人。'
+        : '這是兒子王小明的手機。他用它看奶奶今天的狀況、回覆奶奶的問題、問 AI 照護秘書；監視機偵測到跌倒時會收到警報，緊急時直接撥打緊急通話。' }),
       h('h3', { text: '最下面的 ' + tabs.length + ' 個分頁' }),
       h('div', { class: 'chips' }, tabs.map(function (t) { return h('span', { class: 'chip', text: t }); })),
       h('h3', { text: '可以這樣試試看' })
     ];
     var says = el
-      ? ['「幫我問兒子週六要不要回來」', '「今天天氣怎麼樣」', '到「我的」完成一項「今日任務」打卡']
-      : ['在「首頁」回覆「爸媽問你的問題」', '在「今日打卡」按「鼓勵」', '到「互動」試試「緊急強制通話」'];
+      ? ['到「聊天」說「幫我問兒子週六要不要回來」', '到「小豬」按紅蘿蔔餵小豬', '在「首頁」點「今日頭條」聽新聞']
+      : ['在「首頁」回覆「爸媽問你的問題」', '到「互動」問「AI 照護秘書」：奶奶今天過得怎麼樣？', '到「互動」試試「緊急強制通話」'];
     says.forEach(function (s) { nodes.push(h('div', { class: 'say' + (el ? '' : ' family'), text: s })); });
     nodes.push(h('p', { text: el ? '說話時請按畫面上的麥克風鈕，或直接打字。' : '兩端是同時在跑的，奶奶做的事這裡馬上看得到。' }));
     nodes.push(h('button', { type: 'button', class: 'btn block ' + (el ? 'primary' : 'family'), text: '開始體驗' + ROLE_NAME[role], onclick: closeSheet }));
     openSheet(el ? '長輩端：王奶奶的手機' : '家屬端：王小明的手機', nodes);
   }
 
+  function goTo(t) {
+    if (t.role === 'elder' && elderRemote) toast('長輩端在另一支手機上，請到那支手機操作。');
+    else if (!switchVisible && t.role !== onlyRole) toast('請先在選單開啟「顯示兩端切換」。');
+    else { setActive(t.role, { force: true, silent: true }); caption(t.text, t.how, true, 25000); }
+  }
   function openTasks() {
     var n = doneCount();
     var list = h('ul', { class: 'list' });
     TASKS.forEach(function (t) {
       var done = !!S.tasks[t.id];
       var act = h('div', { class: 'task-act' });
-      act.appendChild(h('button', { type: 'button', class: 'btn ghost', text: '帶我去', onclick: function () {
+      act.appendChild(h('button', { type: 'button', class: 'btn ghost', text: t.go || '帶我去', onclick: function () {
         closeSheet();
-        if (t.role === 'elder' && elderRemote) toast('長輩端在另一支手機上，請到那支手機操作。');
-        else if (!switchVisible && t.role !== onlyRole) toast('請先在選單開啟「顯示兩端切換」。');
-        else setActive(t.role, { force: true });
+        if (t.id === 'fall') setTimeout(openMonitor, 50); else goTo(t);
       } }));
       act.appendChild(h('button', { type: 'button', class: 'btn ghost', 'aria-pressed': done ? 'true' : 'false', text: done ? '取消完成' : '我完成了', onclick: function () { markTask(t.id, !done); openTasks(); } }));
       list.appendChild(h('li', null, h('div', { class: 'task' + (done ? ' done' : '') },
@@ -432,15 +522,21 @@
         h('div', { class: 'task-how', text: t.how }), act)));
     });
     var nodes = [
-      h('p', { class: 'lead', text: '做完 6 件事，就把兩端的主要功能都玩過一遍。完成會自動打勾，也可以自己勾選。' }),
-      h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 6, 'aria-valuenow': n, 'aria-label': '任務進度' }, h('i', { style: 'width:' + (n / 6 * 100) + '%' })),
-      list
+      h('p', { class: 'lead', text: '這 ' + TASKS.length + ' 件事是 Uban 的重點功能。完成會自動打勾，也可以自己勾選。' }),
+      h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': TASKS.length, 'aria-valuenow': n, 'aria-label': '任務進度' }, h('i', { style: 'width:' + (n / TASKS.length * 100) + '%' })),
+      list,
+      h('h3', { text: '快速體驗' }),
+      h('p', { text: '其他功能，有空再看看。' }),
+      h('ul', { class: 'list' }, QUICK.map(function (q) {
+        return h('li', null, h('button', { type: 'button', class: 'menu-item', onclick: function () { closeSheet(); goTo(q); } },
+          h('span', null, h('span', { class: 'task-role ' + q.role, text: ROLE_NAME[q.role] }), q.text, h('small', { text: q.how })), svg(CHEV, 18)));
+      }))
     ];
-    if (n >= 4 && session && session.survey_url) {
+    if (n >= SURVEY_AT && session && session.survey_url) {
       nodes.push(h('div', { class: 'note' }, '已經完成 ' + n + ' 項，非常感謝！方便的話請花一分鐘填寫問卷。'));
       nodes.push(h('button', { type: 'button', class: 'btn primary block', text: '填問卷', onclick: openSurvey }));
     }
-    openSheet('體驗任務（' + n + '/6）', nodes);
+    openSheet('體驗任務（' + n + '/' + TASKS.length + '）', nodes);
   }
 
   function openMenu() {
@@ -449,6 +545,7 @@
       ['這一端怎麼用', '目前：' + ROLE_NAME[active], function () { closeSheet(); setTimeout(function () { openRoleSheet(active); }, 50); }],
       ['兩支手機一起體驗', '用另一支手機當王奶奶的手機', function () { closeSheet(); setTimeout(openTwoPhone, 50); }]
     ];
+    if (mon) items.splice(2, 0, ['客廳監視機', '看示意畫面、模擬跌倒', function () { closeSheet(); setTimeout(openMonitor, 50); }]);
     if (!switchVisible) items.push(['顯示兩端切換', '這支手機也能操作另一端', function () { switchVisible = true; onlyRole = null; S.only = ''; save(); closeSheet(); applyLayout(); onHome(active); }]);
     if (session && session.survey_url) items.push(['填寫問卷', '會在新分頁開啟', function () { closeSheet(); openSurvey(); }]);
     items.push(['重新載入', '畫面卡住時使用', function () { closeSheet(); ROLES.forEach(function (r) { if (frames[r] && frames[r].state !== 'idle') reloadFrame(r); }); }]);
@@ -541,6 +638,7 @@
           h('div', { class: 'brand' }, h('img', { src: './icon.png', alt: '', width: 56, height: 56 }), h('div', null, h('div', { style: 'font-weight:800;font-size:20px', text: 'Uban' }), h('div', { class: 'sub', text: '問卷體驗版' }))),
           h('h1', { text: '讓長輩有人陪、家人放心' }),
           h('p', { text: '這是問卷用的體驗版，約需 5 分鐘。' }),
+          h('div', { class: 'chips' }, ['AI 小嘎陪伴', '監控跌倒偵測', '緊急強制通話', '小豬養成', 'AI 照護秘書'].map(function (t) { return h('span', { class: 'chip', text: t }); })),
           h('p', { class: 'sub', text: joinMode
             ? '這支手機是' + (onlyRole === 'family' ? '兒子王小明的「家屬端」' : '王奶奶的「長輩端」') + '，會和另一支手機即時互通。'
             : '畫面上方可以切換「長輩端」和「家屬端」，兩邊是同時運作的真實 App。' })
@@ -552,8 +650,8 @@
         title: '使用情境', body: [
           h('h1', { text: '王奶奶與王小明' }),
           h('p', { text: '78 歲的王奶奶一個人住在臺北，兒子王小明在外地工作。' }),
-          h('div', { class: 'card' }, h('h3', { text: '平常' }), h('p', { text: '奶奶跟 AI 夥伴「小嘎」聊天、聽新聞、照時間吃藥；小明用手機看奶奶今天的狀況、回覆奶奶的問題、送上鼓勵。' })),
-          h('div', { class: 'card' }, h('h3', { text: '緊急時' }), h('p', { text: '奶奶跌倒或聯絡不上，小明按「緊急通話」，奶奶的手機會自動接通。' }))
+          h('div', { class: 'card' }, h('h3', { text: '平常' }), h('p', { text: '奶奶跟 AI 夥伴「小嘎」聊天、聽新聞，走路和吃藥打卡能賺紅蘿蔔養小豬；小明用手機看奶奶今天的狀況，也能請 AI 照護秘書代問奶奶。' })),
+          h('div', { class: 'card' }, h('h3', { text: '緊急時' }), h('p', { text: '客廳的監視機偵測到奶奶跌倒，小明的手機馬上跳出警報，可以看現場畫面；按「緊急通話」，奶奶的手機會自動接通。' }))
         ]
       };
     },
@@ -561,13 +659,14 @@
       var li = function (a, b) { return h('li', null, a, b ? h('small', { text: b }) : null); };
       return {
         title: '正常的使用流程', body: [
-          h('h1', { text: '真實使用時的 6 個步驟' }),
+          h('h1', { text: '真實使用時的 7 個步驟' }),
           h('ol', { class: 'timeline' },
             li('長輩與家屬各自在自己的手機安裝 Uban'),
             li('打開後選擇身分', '「我是長者」或「我是家屬／照護者」'),
             li('家屬註冊並登入帳號'),
             li('兩支手機完成綁定', '下一頁會說明怎麼綁'),
             li('填寫基本資料', '並允許通知、麥克風、相機、定位'),
+            li('想要跌倒偵測，再拿一支舊手機放客廳當監視機', '家屬產生監控配對碼，在那支手機輸入就完成'),
             li('開始使用'))
         ]
       };
@@ -662,6 +761,7 @@
     $('btn-menu').hidden = false;
     renderTaskCount();
     active = role; loadFrame(role); applyLayout(); renderPanels();
+    startMonitor();
     if (notice && !joinMode) toast(notice);
     if (!S.seen[role]) setTimeout(function () { openRoleSheet(role); }, 400);
   }

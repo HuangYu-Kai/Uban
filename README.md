@@ -507,7 +507,10 @@ void initPedometer() {
 ### 2026-11-25 🌐 問卷網頁體驗版 `/demo`（`feat/web-demo` 分支）
 
 - **用途**：問卷受訪者用手機瀏覽器開 `https://<後端主機>/demo`，免安裝、免登入，就能在同一個畫面切換「長輩端／家屬端」。兩端都是本專案 App 的 Flutter Web 版，接同一台後端與 AI 伺服器；帳號由後端 `POST /api/demo/session` 自動配一組已綁定的王奶奶＋王小明（72 小時後刪除，見 `Uban-api/readme.md`）。
-- **外殼** `mobile_app/web_demo/`（純 HTML／JS）：首次進入說明（是什麼、使用情境、正常流程、正常綁定流程、開始前注意）、上方身分切換、6 項體驗任務（收到事件自動打勾）、緊急通話自動切到長輩端＋子母畫面、兩支手機 QR（`#join=<token>&role=elder`，重新整理後維持同一端）、LINE 等 App 內建瀏覽器提示。兩個 iframe 各跑一份 App（`?role=elder|family`），偏好設定以 `SharedPreferences.setPrefix('demo_<role>.')` 隔開。
+- **外殼** `mobile_app/web_demo/`（純 HTML／JS）：首次進入說明（是什麼、使用情境、正常流程、正常綁定流程、開始前注意）、上方身分切換、5 項重點任務（AI 小嘎陪聊與傳話、監控跌倒偵測、緊急強制通話、小豬養成、AI 照護秘書）＋「快速體驗」（定位守護、新聞朗讀與祝賀圖）（收到事件自動打勾）、緊急通話自動切到長輩端＋子母畫面、兩支手機 QR（`#join=<token>&role=elder`，重新整理後維持同一端）、LINE 等 App 內建瀏覽器提示。兩個 iframe 各跑一份 App（`?role=elder|family`），偏好設定以 `SharedPreferences.setPrefix('demo_<role>.')` 隔開。
+- **客廳監視機（示意）** `web_demo/monitor.js`：畫布動畫代替鏡頭，以 `monitor_elder_<id>` 的監視機身分連上真正的 Socket.IO 並應答 WebRTC，家屬端看到的是真的即時影像；「模擬跌倒」呼叫 `POST /api/demo/session/{token}/fall`，警報、朗讀、小嘎關心都走正式流程。STUN／TURN 設定在建置時寫進 `config.js`。只在第一支手機執行，加入的第二支手機不會開。
+- **瀏覽器相容**（`web_demo/app_index.html`，不動受保護的通話程式）：把原生 WebRTC 的 `mandatory.OfferToReceiveVideo` 換成只收的 transceiver（否則看監視畫面收不到影像）；拒絕麥克風／相機時通話改用無聲音軌與示意畫面。
+- **任務打勾**：有 Socket 事件的看事件；餵小豬與 AI 照護秘書沒有事件，改看同源 iframe 送出的 API 請求（`PerformanceObserver`）。
 - **進入點** `lib/main_demo.dart`（手機版 `main.dart` 不受影響）；`lib/utils/demo_fake_firebase.dart` 讓網頁上 `FirebaseMessaging.getToken()` 回 null 而不丟例外。
 - **建置**：在 `mobile_app/` 執行 `TURN_SERVER=… TURN_USER=… TURN_PASS=… python tool/build_web_demo.py --install`（約 90 秒），產出瘦身後（字型子集、WebP、br／gz）複製到 `Uban-api/static/demo`，隨後端部署上線。本機測試加 `--server http://127.0.0.1:<port> --out <資料夾>`。需要 Python 套件 fonttools、brotli、Pillow。
 - **網頁相容**（皆為 `kIsWeb` 分支或等價寫法，手機行為不變）：語音播放改用記憶體音訊、錄音用 wav、圖片以 bytes 上傳、sqflite 略過、瀏覽器語音辨識用 `zh-TW`、YouTube 開新分頁；`elder_location_map_screen.dart` 網頁版不取消圖磚請求並補觸發一次重繪（否則底圖空白）；`elder_screen.dart` 網頁版一般通話接聽後的第一個 offer 直接視為已同意（否則會再跳一次「家屬來電」；緊急通話路徑未動）。

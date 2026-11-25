@@ -30,6 +30,60 @@
     window.addEventListener('blur', function (e) {
       if (e.target === window) e.stopImmediatePropagation();
     }, true);
+    // App 用原生 WebRTC 的舊式參數 mandatory.OfferToReceiveVideo 要求「沒開鏡頭也要收影像」，瀏覽器不認得，
+    // 看監視畫面時 offer 就沒有影像欄位。這裡換成標準寫法（只收不送的 transceiver）。
+    (function () {
+      var P = window.RTCPeerConnection; if (!P) return;
+      var create = P.prototype.createOffer;
+      P.prototype.createOffer = function (o) {
+        try {
+          var m = o && o.mandatory, pc = this;
+          if (m) ['Audio', 'Video'].forEach(function (k) {
+            var kind = k.toLowerCase();
+            if (m['OfferToReceive' + k] && !pc.getTransceivers().some(function (t) { return t.receiver.track.kind === kind; })) pc.addTransceiver(kind, { direction: 'recvonly' });
+          });
+        } catch (e) { /* 維持原本行為 */ }
+        return create.apply(this, arguments);
+      };
+    })();
+    // 受訪者拒絕（或沒有）麥克風、相機時，通話與監視畫面改用無聲音軌＋示意畫面，流程照樣能體驗完。
+    // 只處理通話（App 通話的參數一定帶 video 欄位）；錄音說話仍照原本的失敗提示。
+    (function () {
+      var md = navigator.mediaDevices; if (!md || !md.getUserMedia) return;
+      var real = md.getUserMedia.bind(md);
+      function fake(wantVideo) {
+        var ac = new (window.AudioContext || window.webkitAudioContext)();
+        var dest = ac.createMediaStreamDestination(), stream = dest.stream;
+        var osc = ac.createOscillator(), g = ac.createGain(); g.gain.value = 0; osc.connect(g); g.connect(dest); osc.start();
+        if (wantVideo) {
+          var c = document.createElement('canvas'); c.width = 480; c.height = 640;
+          var x = c.getContext('2d');
+          var draw = function () {
+            x.fillStyle = '#2E4A40'; x.fillRect(0, 0, 480, 640);
+            x.fillStyle = '#DFF3EB'; x.beginPath(); x.arc(240, 260, 70, 0, 7); x.fill();
+            x.beginPath(); x.ellipse(240, 440, 130, 95, 0, 0, 7); x.fill();
+            x.fillStyle = '#fff'; x.font = '22px "Noto Sans TC","Microsoft JhengHei",sans-serif'; x.textAlign = 'center';
+            x.fillText('鏡頭未開啟（示意畫面）', 240, 150);
+          };
+          draw();
+          var vt = c.captureStream(5).getVideoTracks()[0], timer = setInterval(draw, 500);
+          vt.addEventListener('ended', function () { clearInterval(timer); });
+          var stop = vt.stop.bind(vt); vt.stop = function () { clearInterval(timer); stop(); };
+          stream.addTrack(vt);
+        }
+        return stream;
+      }
+      md.getUserMedia = function (c) {
+        var isCall = c && c.audio && 'video' in c;
+        return real(c).catch(function (e) {
+          if (!isCall) throw e;
+          return real({ audio: true, video: false }).then(function (a) {
+            if (c.video) fake(true).getVideoTracks().forEach(function (t) { a.addTrack(t); });
+            return a;
+          }, function () { return fake(!!c.video); });
+        });
+      };
+    })();
   </script>
 </head>
 <body>

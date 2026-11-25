@@ -166,6 +166,13 @@ h1, h2, h3, p { margin: 0; }
 .progress { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
 .progress i { display: block; height: 100%; background: var(--elder); border-radius: 4px; transition: width .3s ease; }
 
+/* 監視機 */
+.mon-box { border-radius: 16px; overflow: hidden; background: #22302B; aspect-ratio: 1 / 1; }
+.mon-box canvas { display: block; }
+.mon-status { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.mon-status::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--line); flex: none; }
+.mon-status.on::before { background: var(--elder); }
+
 /* QR */
 .qr { display: grid; place-items: center; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
 .qr svg { width: min(220px, 60vw); height: auto; display: block; }

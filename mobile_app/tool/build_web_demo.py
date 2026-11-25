@@ -7,6 +7,7 @@
 
 產出（預設 mobile_app/build/web_demo_out）可整個複製到 Uban-api/static/demo：
     <out>/index.html, shell.css, shell.js, vendor/...   <- 來自 mobile_app/web_demo/（排除 app_index.html、mock/）
+    <out>/config.js                                     <- 示意監視機（monitor.js）的 STUN/TURN 設定，建置時產生
     <out>/app/...                                       <- Flutter build（base-href /demo/app/），已瘦身
     <out>/build_id.txt
 
@@ -78,6 +79,16 @@ def human(n: float) -> str:
 
 def dir_size(p: Path, skip_ext=()) -> int:
     return sum(f.stat().st_size for f in p.rglob("*") if f.is_file() and f.suffix not in skip_ext)
+
+
+def shell_config() -> str:
+    """外殼的示意監視機要用的 ICE 設定（與 Flutter 端同一組 TURN，來源相同的環境變數）。"""
+    ice = [{"urls": "stun:stun.l.google.com:19302"}]
+    server = os.environ.get("TURN_SERVER")
+    if server:
+        ice.append({"urls": [f"turn:{server}", f"turn:{server}?transport=tcp"],
+                    "username": os.environ.get("TURN_USER", ""), "credential": os.environ.get("TURN_PASS", "")})
+    return "window.UBAN_DEMO_ICE = " + json.dumps(ice) + ";\n"
 
 
 def rmtree(p: Path):
@@ -705,6 +716,7 @@ def main():
                 shutil.copyfile(p, out / p.name)
     else:
         log("警告：mobile_app/web_demo 不存在，只輸出 app/")
+    (out / "config.js").write_text(shell_config(), encoding="utf8")
     shutil.copytree(work_app, out / "app")
     marker.write_text(build_id + "\n", encoding="utf8")
 
