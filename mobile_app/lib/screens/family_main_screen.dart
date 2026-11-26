@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 添加觸覺反饋
 import 'package:shared_preferences/shared_preferences.dart';
@@ -2805,6 +2806,8 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
               ),
             ),
       actions: [
+        // 網頁體驗版（kIsWeb）不顯示訂閱入口：網頁沒有 RevenueCat，進去只會看到讀取失敗。
+        if (!kIsWeb) ...[
         Tooltip(
           message: '訂閱測試（為長輩開通）',
           child: InkWell(
@@ -2840,6 +2843,7 @@ class _FamilyMainScreenState extends State<FamilyMainScreen> with WidgetsBinding
           ),
         ),
         const SizedBox(width: 8),
+        ],
         Tooltip(
           message: '配對新長輩',
           child: InkWell(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../widgets/ui/ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -710,6 +711,8 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 name: '裝置配對與加值服務',
                 builder: () => _fadeIn(
                   FamGroup(title: '裝置與加值', children: [
+                    // 網頁體驗版（kIsWeb）不顯示訂閱入口：網頁沒有 RevenueCat，進去只會看到讀取失敗。
+                    if (!kIsWeb)
                     FamSetRow(
                       title: '訂閱方案與設備上限管理',
                       subtitle: '當前方案：$_subscriptionDisplay，管理監視設備數量與雲端功能',
@@ -830,9 +833,10 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 ),
               ],
             ),
+            // 快速方案狀態：整列可點，進訂閱頁。網頁體驗版不顯示（同上，沒有訂閱可管理）。
+            if (!kIsWeb) ...[
             const SizedBox(height: 12),
             Container(height: 1, color: c.line),
-            // 快速方案狀態：整列可點，進訂閱頁。
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _openSubscription,
@@ -851,6 +855,7 @@ class _FamilyDataTabState extends State<FamilyDataTab>
                 ),
               ),
             ),
+            ],
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,

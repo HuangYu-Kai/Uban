@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1365,8 +1366,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
           FamSecHead(
             title: '遠端視訊監控',
             // ★ Task B4：訂閱層級徽章（點擊進入訂閱頁）。tierDisplayName 長度不可控，
-            //   限寬並在徽章內省略（鐵律 #14）。
-            trailing: ConstrainedBox(
+            //   限寬並在徽章內省略（鐵律 #14）。網頁體驗版（kIsWeb）沒有訂閱，不顯示。
+            trailing: kIsWeb ? null : ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 132),
               child: FamTier(
                 label: widget.tierDisplayName,
@@ -1402,8 +1403,8 @@ class _FamilyInteractionTabState extends State<FamilyInteractionTab>
                 monitorRoomId: monitorRoomId,
                 first: i == 0,
               ),
-            // 達到上限提示
-            if (reachedLimit)
+            // 達到上限提示（含「升級」進訂閱頁；網頁體驗版沒有訂閱，不顯示）
+            if (reachedLimit && !kIsWeb)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: _buildDeviceLimitWarning(),
